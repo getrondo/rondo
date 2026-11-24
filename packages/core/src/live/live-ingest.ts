@@ -213,7 +213,9 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
         Option.filter(fact => !fact.isReserve && !fact.isChoice && fact.sport === 'football')
     );
     const lineup = Option.fromNullishOr(extractLineup(telegramMessage, config, venueOf));
-    const cancellation = Option.fromNullishOr(extractCancellation(telegramMessage, config, new Set([message.senderName])));
+    const cancellation = Option.fromNullishOr(extractCancellation(telegramMessage, config, new Set([message.senderName]))).pipe(
+        Option.filter(({ isExplicit }) => isExplicit)
+    );
 
     if (Option.isSome(poll)) {
         const sessionId = yield* ensureSession(communityId, config, poll.value);

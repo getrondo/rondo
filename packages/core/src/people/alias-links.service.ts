@@ -17,6 +17,7 @@ import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 import { latestVotes } from '../signups/latest-votes';
 
+import { linkedPersonsOf, recordDecision, requireNoOtherPeriod } from './alias-decisions';
 import { arePeopleOf } from './people.service';
 
 type LineupEntry = typeof lineupEntry.$inferSelect;
@@ -32,8 +33,6 @@ interface EntryTarget {
     readonly entryId: string;
     readonly actorPersonId: string | null;
 }
-
-const minSuggestionScore = 0.5;
 
 export const requireAlias = Effect.fn('Core.requireAlias')(function* (communityId: string, aliasId: string) {
     const db = yield* Db;
@@ -81,7 +80,9 @@ export const linkAlias = Effect.fn('Core.linkAlias')((input: AliasTarget & { rea
                 return yield* ActionFailedError.make({ reason: 'this player and this nickname are in the same line-up' });
             }
 
+            yield* requireNoOtherPeriod(alias, input.personId);
             yield* guestPersonOf(alias);
+            yield* recordDecision({ alias, personId: input.personId, status: 'approved', actorPersonId: input.actorPersonId });
             yield* assignAlias({ alias, personId: input.personId, resolution: 'confirmed', resolvedBy: 'alias' });
             yield* recordAudit({
                 ...input,
@@ -101,6 +102,17 @@ export const unlinkAlias = Effect.fn('Core.unlinkAlias')((input: AliasTarget) =>
         { id: input.communityId },
         Effect.gen(function* () {
             const alias = yield* requireAlias(input.communityId, input.aliasId);
+            const linked = yield* linkedPersonsOf(alias);
+            const [only, ...others] = linked;
+
+            if (isNotEmptyArray(others)) {
+                return yield* ActionFailedError.make({ reason: 'several players have periods under this nickname, undo them per game' });
+            }
+
+            if (isDefined(only)) {
+                yield* recordDecision({ alias, personId: only, status: 'rejected', actorPersonId: input.actorPersonId });
+            }
+
             const personId = alias.kind === 'placeholder' ? null : yield* guestPersonOf(alias);
             yield* assignAlias({ alias, personId, resolution: 'guest', resolvedBy: 'guest' });
             yield* recordAudit({
@@ -187,18 +199,20 @@ export const unlinkEntry = Effect.fn('Core.unlinkEntry')((input: EntryTarget) =>
         Effect.gen(function* () {
             const { entry, alias } = yield* requireEntry(input);
 
-            if (entry.resolvedBy !== 'manual' && entry.resolvedBy !== 'vote') {
+            const isAutomatic = entry.resolvedBy === 'vote' || entry.resolvedBy === 'alias';
+
+            if (entry.resolvedBy !== 'manual' && !isAutomatic) {
                 return yield* ActionFailedError.make({ reason: 'this line-up entry is not linked' });
             }
 
-            const automatic = entry.resolvedBy === 'vote' ? alias?.guestPersonId : alias?.personId;
+            const automatic = isAutomatic ? alias?.guestPersonId : alias?.personId;
             const personId = alias?.kind === 'placeholder' ? null : (automatic ?? null);
             const isTaken = isDefined(personId) && (yield* isInLineup(entry, personId));
             const automaticResolution = isDefined(alias) ? aliasResolution(alias) : 'guest';
 
             return yield* assignEntry(input, entry, {
                 personId: isTaken ? null : personId,
-                resolvedBy: entry.resolvedBy === 'vote' ? 'manual' : automaticResolution,
+                resolvedBy: isAutomatic ? 'manual' : automaticResolution,
                 action: 'entry.unlink'
             });
         })
@@ -222,6 +236,7 @@ export const reviewEntries = Effect.fn('Core.reviewEntries')(function* (communit
             resolvedBy: lineupEntry.resolvedBy,
             shared: sql<boolean>`coalesce(${personAlias.kind} = 'placeholder', false)`,
             occurrences: personAlias.occurrences,
+            isTeamUndecided: lineupEntry.isTeamUndecided,
             candidatePersonIds: sql<
                 string[]
             >`coalesce(array_agg(${vote.personId}::text) filter (where ${vote.personId} is not null and ${unlisted}), '{}')`
@@ -241,8 +256,5 @@ export const reviewEntries = Effect.fn('Core.reviewEntries')(function* (communit
 export const suggestAliasLinks = Effect.fn('Core.suggestAliasLinks')(function* (communityId: string, limit: number) {
     const ranked = yield* rankedLinks(communityId);
 
-    return ranked
-        .filter(({ conflict, score }) => !conflict && score >= minSuggestionScore)
-        .slice(0, limit)
-        .map(({ alias, personId, games, shared, score }) => ({ aliasId: alias.id, alias: alias.alias, personId, games, shared, score }));
+    return ranked.slice(0, limit).map(({ alias, ...suggestion }) => Object.assign(suggestion, { alias: alias.alias }));
 });

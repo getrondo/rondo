@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { aliasesIn } from '../identity/aliases-in';
+import { applyApproved } from '../identity/apply-approved';
 import { countOccurrences } from '../identity/count-occurrences';
 import { ensureAliases } from '../identity/ensure-aliases';
 import { loadDirectory } from '../identity/load-directory';
@@ -11,6 +12,7 @@ import { markShared } from '../identity/mark-shared';
 
 import { alignGuests } from './align-guests';
 import { entriesOf } from './entries-of';
+import { markUndecidedTeams } from './mark-undecided-teams';
 import { syncSessionRoster } from './sync-session-roster';
 
 import type { LineupFact } from '../extract/fact.model';
@@ -34,6 +36,8 @@ export const storeLineup = Effect.fn('IngestTelegram.storeLineup')(function* ({ 
     yield* db.insert(lineupEntry).values(entriesOf(sessionId, lineup, directory, manual));
     yield* countOccurrences(communityId);
     yield* markShared(communityId);
+    yield* applyApproved(communityId);
+    yield* markUndecidedTeams(communityId);
     yield* alignGuests(communityId);
     yield* syncSessionRoster([sessionId]);
 });

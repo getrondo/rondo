@@ -1,6 +1,6 @@
 import { isDefined } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
-import { telegramPoll } from '@rondo/db/schema/platform.schema';
+import { pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
@@ -158,6 +158,29 @@ const setSignup = Effect.fn('Core.setSignup')(function* (sessionId: string, pers
     return Option.some<PollAnswerOutcome>({ sessionId, status, promoted });
 });
 
+interface Ballot {
+    readonly pollId: string;
+    readonly tgUserId: bigint;
+    readonly sessionId: string;
+    readonly choice: PollChoice | null;
+}
+
+const storeBallot = Effect.fn('Core.storeBallot')(function* ({ choice, ...ballot }: Ballot) {
+    const db = yield* Db;
+
+    if (!isDefined(choice)) {
+        yield* db.delete(pollVote).where(and(eq(pollVote.pollId, ballot.pollId), eq(pollVote.tgUserId, ballot.tgUserId)));
+
+        return;
+    }
+
+    const answer = { choice: choice === 'out' ? 'no' : 'yes', votedAt: yield* DateTime.nowAsDate };
+    yield* db
+        .insert(pollVote)
+        .values({ ...ballot, ...answer })
+        .onConflictDoUpdate({ target: [pollVote.pollId, pollVote.tgUserId], set: answer });
+});
+
 export const applyPollAnswer = Effect.fn('Core.applyPollAnswer')(function* (input: {
     readonly pollId: string;
     readonly user: TelegramUser;
@@ -178,7 +201,18 @@ export const applyPollAnswer = Effect.fn('Core.applyPollAnswer')(function* (inpu
     const chosen = poll.options[input.optionIds[0] ?? -1];
     const choice = pollChoices.find(candidate => candidate === chosen) ?? 'out';
 
-    return yield* db.transaction(() => setSignup(poll.sessionId, personId, choice, poll.options.includes('gk')));
+    return yield* db.transaction(() =>
+        Effect.gen(function* () {
+            yield* storeBallot({
+                pollId: input.pollId,
+                tgUserId: input.user.id,
+                sessionId: poll.sessionId,
+                choice: isDefined(chosen) ? choice : null
+            });
+
+            return yield* setSignup(poll.sessionId, personId, choice, poll.options.includes('gk'));
+        })
+    );
 });
 
 export const rosterOf = Effect.fn('Core.rosterOf')(function* (sessionId: string) {

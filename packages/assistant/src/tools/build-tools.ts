@@ -4,18 +4,11 @@ import { requireActionScope } from '@rondo/core/actions/execute-action';
 import { proposeAction } from '@rondo/core/actions/pending-action.service';
 import { suggestAliasLinks } from '@rondo/core/people/alias-links.service';
 import { searchPeople, unresolvedAliases } from '@rondo/core/people/people.service';
-import { listSessions, listVenues, requireSession } from '@rondo/core/sessions/session.service';
+import { gamesToReview, listSessions, listVenues, requireSession } from '@rondo/core/sessions/session.service';
 import { signedUpByVotes } from '@rondo/core/signups/signed-up-by-votes';
 import { rosterOf } from '@rondo/core/signups/signup.service';
-import {
-    attendanceCoverage,
-    communitySummary,
-    inactivePlayers,
-    playerHistory,
-    topAttendance,
-    venueUsage,
-    type DateRange
-} from '@rondo/core/stats/stats.service';
+import { rankings, topPlayers } from '@rondo/core/stats/participation.service';
+import { communitySummary, inactivePlayers, playerHistory, venueUsage } from '@rondo/core/stats/stats.service';
 import { proposeTeams } from '@rondo/core/teams/team.service';
 import { tool } from 'ai';
 import * as Effect from 'effect/Effect';
@@ -23,6 +16,7 @@ import * as Predicate from 'effect/Predicate';
 import * as Schema from 'effect/Schema';
 
 import { IsoDate, LocalTime, optionalNullable, toolSchema } from './tool-schema';
+import { withCoverage } from './with-coverage';
 
 import type { Action } from '@rondo/core/actions/action.model';
 import type { Locale } from '@rondo/core/i18n/locale';
@@ -61,12 +55,6 @@ const knownDetails = (details: {
     ...(isDefined(details.indoor) ? { indoor: details.indoor } : {})
 });
 
-const withCoverage = <Value, Failure, Requirements>(
-    scope: ToolScope,
-    query: Effect.Effect<Value, Failure, Requirements>,
-    range?: DateRange
-) => Effect.all({ result: query, coverage: attendanceCoverage(scope.communityId, range) });
-
 const venueFields = {
     shortName: optionalNullable(Schema.String.annotate({ description: 'name shown in polls' })),
     station: optionalNullable(Schema.String.annotate({ description: 'nearest station as shown in polls' })),
@@ -93,7 +81,7 @@ const readTools = (scope: ToolScope, run: ToolRunner) => ({
     }),
     session_roster: tool({
         description:
-            'Who signed up for a game. signups: via the bot poll, status in/out/waitlisted and role field/gk. votes: yes votes of imported polls in time order, not proof of playing.',
+            'Who signed up for a game. signups: via the bot poll, status in/out/waitlisted and role field/gk. votes: yes votes of all polls in time order, not proof of playing.',
         inputSchema: toolSchema(SessionRef),
         execute: async input =>
             await run(
@@ -102,10 +90,23 @@ const readTools = (scope: ToolScope, run: ToolRunner) => ({
                 )
             )
     }),
+    games_to_review: tool({
+        description: 'Games an admin must check because it is unclear whether they were played, with the reason.',
+        inputSchema: toolSchema(Schema.Struct({})),
+        execute: async () => await run(gamesToReview(scope.communityId))
+    }),
     top_players: tool({
-        description: 'Players ranked by number of games played in a date range.',
-        inputSchema: toolSchema(Schema.Struct({ ...Range.fields, limit: Limit })),
-        execute: async input => await run(withCoverage(scope, topAttendance(scope.communityId, input, input.limit ?? 10), input))
+        description:
+            'Players ranked by one data point in a date range. by: participation (default, distinct games with a yes vote), squads (named in a posted line-up) or attendance (recorded). Never add them.',
+        inputSchema: toolSchema(Schema.Struct({ ...Range.fields, by: optionalNullable(Schema.Literals(rankings)), limit: Limit })),
+        execute: async input =>
+            await run(
+                withCoverage(
+                    scope,
+                    topPlayers(scope.communityId, input, { by: input.by ?? 'participation', limit: input.limit ?? 10 }),
+                    input
+                )
+            )
     }),
     inactive_players: tool({
         description: 'Regular players (at least minGames games) who have not played since a date.',
@@ -129,7 +130,8 @@ const readTools = (scope: ToolScope, run: ToolRunner) => ({
         execute: async input => await run(searchPeople(scope.communityId, input.query, 10))
     }),
     player_history: tool({
-        description: 'Games played, games signed up for by poll votes, first and last game and nicknames of one player.',
+        description:
+            'One player, total and per year, as separate data points: polls (unit polls: answered, participation yes with two or more answers, no, unreadable, reserve) and games (unit games: with a yes vote, named in a posted squad, yes and in squad, yes without any posted squad, yes but not in the posted squad, in squad without a vote or despite a no, attendance recorded). Also name and nicknames. Polls and games are different units.',
         inputSchema: toolSchema(Schema.Struct({ personId: Schema.String })),
         execute: async input => await run(withCoverage(scope, playerHistory(scope.communityId, input.personId)))
     }),

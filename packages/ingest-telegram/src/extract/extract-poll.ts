@@ -1,8 +1,9 @@
 import { isDefined } from '@rnw-community/shared';
 import * as Option from 'effect/Option';
 
-import { findLocalTime, resolveGameDate, statedDateConfidence } from './game-date';
+import { findLocalTime, withoutNumericDates, resolvePollDate, statedDateConfidence } from './game-date';
 import { compile, matchesAny } from './normalize';
+import { answerChoice, plusAnswer } from './poll-answers';
 import { instantToLocalDate } from './zoned-time';
 
 import type { CommunityConfig } from '../config/community-config';
@@ -46,6 +47,11 @@ const fieldsOf = (text: string): number | undefined =>
 
 const formatOf = (text: string): string | undefined => /\b(\d{1,2})\s?[xхX×]\s?(\d{1,2})\b/u.exec(text)?.slice(1, 3).join('x');
 
+const isDeadlineOnly = (title: string): boolean => /сегодня до|до сегодня/iu.test(title);
+
+export const isReservePoll = (poll: NonNullable<TelegramMessage['poll']>): boolean =>
+    /резерв/iu.test(poll.question) || /кто там/iu.test(poll.answers.join(' '));
+
 const buildPollFact = (
     message: TelegramMessage,
     { poll, sentAt }: { poll: NonNullable<TelegramMessage['poll']>; sentAt: Date },
@@ -53,9 +59,18 @@ const buildPollFact = (
     venueOf: (text: string) => string | undefined
 ): PollFact => {
     const title = poll.question;
-    const { date, confidence } = resolveGameDate(title, instantToLocalDate(sentAt, config.timeZone));
+    const postedDate = instantToLocalDate(sentAt, config.timeZone);
+    const { date, confidence } = resolvePollDate(title, postedDate);
     const everything = [title, ...poll.answers].join('\n');
     const isDated = confidence >= statedDateConfidence;
+    const choices = poll.answers.map((_, index) => answerChoice(poll.answers, index));
+    const answerDates = poll.answers
+        .map(answer => resolvePollDate(withoutNumericDates(answer), postedDate))
+        .flatMap(resolved => (resolved.confidence >= statedDateConfidence ? [resolved.date] : []));
+    const isPlusPoll = plusAnswer.test((poll.answers[0] ?? '').trim());
+    const offered = [...new Set(answerDates)];
+    const isDateChoice = offered.length > 1;
+    const joinDates = isDateChoice || !isDated ? offered : [date];
 
     return {
         messageId: message.id,
@@ -67,10 +82,13 @@ const buildPollFact = (
         capacityMax: capacityOf(title),
         fieldsPlanned: fieldsOf(title),
         format: formatOf(title),
-        isReserve: /резерв/iu.test(title) || /кто там/iu.test(poll.answers.join(' ')),
+        isReserve: isReservePoll(poll),
         isChoice: poll.answers.length > 2,
-        isGame: isDated && (isDefined(venueOf(everything)) || isDefined(findLocalTime(everything))),
-        joinsGame: isDated && /^[+➕✔✅]/u.test((poll.answers[0] ?? '').trim()),
+        isGame:
+            isDated && !(isDateChoice && isDeadlineOnly(title)) && (isDefined(venueOf(everything)) || isDefined(findLocalTime(everything))),
+        isDateChoice,
+        joinDates: isPlusPoll || (poll.answers.length > 2 && choices.includes('yes')) ? joinDates : [],
+        yesVoters: choices.reduce((total, choice, index) => total + (choice === 'yes' ? (poll.voters?.[index] ?? 0) : 0), 0),
         title,
         confidence
     };

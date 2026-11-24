@@ -1,0 +1,776 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "cf121b5f-6e59-4db5-aae7-a0de6af9e51c",
+    "prevIds": ["afe8b22c-82bb-4328-aa2e-b853345f6354"],
+    "footprints": [
+        {
+            "statementType": "create_enum",
+            "statementTarget": ["enum", "identity", "alias_link_method"],
+            "writes": [
+                "s|enum|identity.alias_link_method",
+                "n|enum|identity.alias_link_method",
+                "e|enum|identity.alias_link_method",
+                "n|type|identity.alias_link_method"
+            ],
+            "reads": ["n|sch|identity"]
+        },
+        {
+            "statementType": "create_enum",
+            "statementTarget": ["enum", "identity", "alias_link_status"],
+            "writes": [
+                "s|enum|identity.alias_link_status",
+                "n|enum|identity.alias_link_status",
+                "e|enum|identity.alias_link_status",
+                "n|type|identity.alias_link_status"
+            ],
+            "reads": ["n|sch|identity"]
+        },
+        {
+            "statementType": "create_enum",
+            "statementTarget": ["enum", "comms", "imported_poll_kind"],
+            "writes": [
+                "s|enum|comms.imported_poll_kind",
+                "n|enum|comms.imported_poll_kind",
+                "e|enum|comms.imported_poll_kind",
+                "n|type|comms.imported_poll_kind"
+            ],
+            "reads": ["n|sch|comms"]
+        },
+        {
+            "statementType": "create_enum",
+            "statementTarget": ["enum", "scheduling", "session_review"],
+            "writes": [
+                "s|enum|scheduling.session_review",
+                "n|enum|scheduling.session_review",
+                "e|enum|scheduling.session_review",
+                "n|type|scheduling.session_review"
+            ],
+            "reads": ["n|sch|scheduling"]
+        },
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "identity", "alias_link"],
+            "writes": [
+                "s|tbl|identity.alias_link",
+                "n|tbl|identity.alias_link",
+                "e|tbl|identity.alias_link",
+                "n|rel|identity.alias_link",
+                "n|type|identity.alias_link",
+                "n|rel|identity.alias_link_pkey"
+            ],
+            "reads": ["n|sch|identity", "n|enum|identity.alias_link_method", "n|enum|identity.alias_link_status"]
+        },
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "comms", "imported_poll"],
+            "writes": [
+                "s|tbl|comms.imported_poll",
+                "n|tbl|comms.imported_poll",
+                "e|tbl|comms.imported_poll",
+                "n|rel|comms.imported_poll",
+                "n|type|comms.imported_poll",
+                "n|rel|comms.imported_poll_pkey"
+            ],
+            "reads": ["n|sch|comms", "n|enum|comms.imported_poll_kind"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "play", "lineup_entry", "is_team_undecided"],
+            "writes": [
+                "s|col|play.lineup_entry.is_team_undecided",
+                "n|col|play.lineup_entry.is_team_undecided",
+                "e|col|play.lineup_entry.is_team_undecided"
+            ],
+            "reads": ["n|tbl|play.lineup_entry", "n|sch|play"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "scheduling", "session", "review_reason"],
+            "writes": [
+                "s|col|scheduling.session.review_reason",
+                "n|col|scheduling.session.review_reason",
+                "e|col|scheduling.session.review_reason"
+            ],
+            "reads": ["n|tbl|scheduling.session", "n|sch|scheduling", "n|enum|scheduling.session_review"]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": ["index", "identity", "alias_link", "alias_link_alias_idx"],
+            "writes": [
+                "s|idx|identity.alias_link_alias_idx",
+                "n|idx|identity.alias_link_alias_idx",
+                "e|idx|identity.alias_link_alias_idx",
+                "n|rel|identity.alias_link_alias_idx"
+            ],
+            "reads": ["n|tbl|identity.alias_link", "n|sch|identity", "n|col|identity.alias_link.alias_id"]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": ["index", "identity", "alias_link", "alias_link_person_idx"],
+            "writes": [
+                "s|idx|identity.alias_link_person_idx",
+                "n|idx|identity.alias_link_person_idx",
+                "e|idx|identity.alias_link_person_idx",
+                "n|rel|identity.alias_link_person_idx"
+            ],
+            "reads": ["n|tbl|identity.alias_link", "n|sch|identity", "n|col|identity.alias_link.person_id"]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": ["index", "comms", "imported_poll", "imported_poll_session_idx"],
+            "writes": [
+                "s|idx|comms.imported_poll_session_idx",
+                "n|idx|comms.imported_poll_session_idx",
+                "e|idx|comms.imported_poll_session_idx",
+                "n|rel|comms.imported_poll_session_idx"
+            ],
+            "reads": ["n|tbl|comms.imported_poll", "n|sch|comms", "n|col|comms.imported_poll.session_id"]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": ["index", "comms", "imported_poll", "imported_poll_community_idx"],
+            "writes": [
+                "s|idx|comms.imported_poll_community_idx",
+                "n|idx|comms.imported_poll_community_idx",
+                "e|idx|comms.imported_poll_community_idx",
+                "n|rel|comms.imported_poll_community_idx"
+            ],
+            "reads": ["n|tbl|comms.imported_poll", "n|sch|comms", "n|col|comms.imported_poll.community_id"]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "identity", "alias_link"],
+            "writes": [
+                "s|fk|identity.alias_link.alias_link_alias_id_person_alias_id_fkey",
+                "n|fk|identity.alias_link.alias_link_alias_id_person_alias_id_fkey",
+                "e|fk|identity.alias_link.alias_link_alias_id_person_alias_id_fkey",
+                "n|con|identity.alias_link.alias_link_alias_id_person_alias_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|identity.alias_link",
+                "n|sch|identity",
+                "n|tbl|identity.person_alias",
+                "n|sch|identity",
+                "n|col|identity.alias_link.alias_id",
+                "n|col|identity.person_alias.id",
+                "e|uniqueness|identity.person_alias.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "identity", "alias_link"],
+            "writes": [
+                "s|fk|identity.alias_link.alias_link_person_id_person_id_fkey",
+                "n|fk|identity.alias_link.alias_link_person_id_person_id_fkey",
+                "e|fk|identity.alias_link.alias_link_person_id_person_id_fkey",
+                "n|con|identity.alias_link.alias_link_person_id_person_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|identity.alias_link",
+                "n|sch|identity",
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|col|identity.alias_link.person_id",
+                "n|col|identity.person.id",
+                "e|uniqueness|identity.person.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "identity", "alias_link"],
+            "writes": [
+                "s|fk|identity.alias_link.alias_link_decided_by_person_id_fkey",
+                "n|fk|identity.alias_link.alias_link_decided_by_person_id_fkey",
+                "e|fk|identity.alias_link.alias_link_decided_by_person_id_fkey",
+                "n|con|identity.alias_link.alias_link_decided_by_person_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|identity.alias_link",
+                "n|sch|identity",
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|col|identity.alias_link.decided_by",
+                "n|col|identity.person.id",
+                "e|uniqueness|identity.person.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "comms", "imported_poll"],
+            "writes": [
+                "s|fk|comms.imported_poll.imported_poll_community_id_community_id_fkey",
+                "n|fk|comms.imported_poll.imported_poll_community_id_community_id_fkey",
+                "e|fk|comms.imported_poll.imported_poll_community_id_community_id_fkey",
+                "n|con|comms.imported_poll.imported_poll_community_id_community_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|comms.imported_poll",
+                "n|sch|comms",
+                "n|tbl|org.community",
+                "n|sch|org",
+                "n|col|comms.imported_poll.community_id",
+                "n|col|org.community.id",
+                "e|uniqueness|org.community.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "comms", "imported_poll"],
+            "writes": [
+                "s|fk|comms.imported_poll.imported_poll_session_id_session_id_fkey",
+                "n|fk|comms.imported_poll.imported_poll_session_id_session_id_fkey",
+                "e|fk|comms.imported_poll.imported_poll_session_id_session_id_fkey",
+                "n|con|comms.imported_poll.imported_poll_session_id_session_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|comms.imported_poll",
+                "n|sch|comms",
+                "n|tbl|scheduling.session",
+                "n|sch|scheduling",
+                "n|col|comms.imported_poll.session_id",
+                "n|col|scheduling.session.id",
+                "e|uniqueness|scheduling.session.id"
+            ]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "name": "alias_link",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "name": "imported_poll",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "name": "alias_link_method",
+                "values": ["admin", "owner_list"],
+                "entityType": "enums"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "name": "alias_link_status",
+                "values": ["approved", "rejected"],
+                "entityType": "enums"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "name": "imported_poll_kind",
+                "values": ["participation", "reserve", "other"],
+                "entityType": "enums"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "scheduling",
+                "name": "session_review",
+                "values": ["unclear_cancellation"],
+                "entityType": "enums"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "community_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "alias_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "person_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "during",
+                "type": "daterange",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "method",
+                "type": "alias_link_method",
+                "typeSchema": "identity",
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "status",
+                "type": "alias_link_status",
+                "typeSchema": "identity",
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "decided_by",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "decided_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "imported_poll",
+                "name": "poll_id",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "imported_poll",
+                "name": "community_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "imported_poll",
+                "name": "session_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "imported_poll",
+                "name": "message_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "imported_poll",
+                "name": "posted_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "imported_poll",
+                "name": "kind",
+                "type": "imported_poll_kind",
+                "typeSchema": "comms",
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "imported_poll",
+                "name": "answers",
+                "type": "smallint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "is_team_undecided",
+                "type": "boolean",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "false",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "scheduling",
+                "table": "session",
+                "name": "review_reason",
+                "type": "session_review",
+                "typeSchema": "scheduling",
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "alias_link_alias_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "alias_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "alias_link_person_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "person_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "imported_poll",
+                "name": "imported_poll_session_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "session_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "imported_poll",
+                "name": "imported_poll_community_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "community_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "alias_link_alias_id_person_alias_id_fkey",
+                "nameExplicit": false,
+                "columns": ["alias_id"],
+                "schemaTo": "identity",
+                "tableTo": "person_alias",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "alias_link_person_id_person_id_fkey",
+                "nameExplicit": false,
+                "columns": ["person_id"],
+                "schemaTo": "identity",
+                "tableTo": "person",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "alias_link_decided_by_person_id_fkey",
+                "nameExplicit": false,
+                "columns": ["decided_by"],
+                "schemaTo": "identity",
+                "tableTo": "person",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "SET NULL",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "imported_poll",
+                "name": "imported_poll_community_id_community_id_fkey",
+                "nameExplicit": false,
+                "columns": ["community_id"],
+                "schemaTo": "org",
+                "tableTo": "community",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "imported_poll",
+                "name": "imported_poll_session_id_session_id_fkey",
+                "nameExplicit": false,
+                "columns": ["session_id"],
+                "schemaTo": "scheduling",
+                "tableTo": "session",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "SET NULL",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "alias_link",
+                "name": "alias_link_pkey",
+                "columns": ["id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "imported_poll",
+                "name": "imported_poll_pkey",
+                "columns": ["poll_id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        }
+    ]
+}

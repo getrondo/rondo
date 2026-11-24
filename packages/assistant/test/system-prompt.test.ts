@@ -20,7 +20,9 @@ describe('system prompt', () => {
         expect(prompt).toContain('(Alex)');
         expect(prompt).toContain('own player record is person-1');
         expect(prompt).toContain('similar nicknames can be different people');
-        expect(prompt).toContain('"at least"');
+        expect(prompt).toContain('Polls and squads are separate data points');
+        expect(prompt).toContain('Never add these numbers together');
+        expect(prompt).toContain('coverageText');
         expect(prompt).toContain('Friday 2026-12-04 (time zone Europe/Vienna)');
     });
 

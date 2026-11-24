@@ -11,7 +11,7 @@ const nickname = sql`(
 )`;
 
 const telegramName = sql`(
-    select concat_ws(' ', account.first_name, nullif(account.last_name, '')) from identity.telegram_account account
+    select nullif(concat_ws(' ', account.first_name, nullif(account.last_name, '')), '') from identity.telegram_account account
     where account.person_id = ${person.id}
     order by (concat_ws(' ', account.first_name, nullif(account.last_name, '')) = ${person.displayName}) desc, account.last_seen_at desc limit 1
 )`;

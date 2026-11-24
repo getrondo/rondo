@@ -26,7 +26,10 @@ export const assignAlias = Effect.fn('IngestTelegram.assignAlias')(function* ({
     resolvedBy
 }: AliasAssignment) {
     const db = yield* Db;
-    const placed = alias.kind === 'placeholder' ? [] : [isNotNull(lineupEntry.personId)];
+    const placed = [
+        ...(alias.kind === 'placeholder' ? [] : [isNotNull(lineupEntry.personId)]),
+        ...(resolvedBy === 'vote' ? [ne(lineupEntry.resolvedBy, 'alias')] : [])
+    ];
 
     const former = yield* db.selectDistinct({ personId: lineupEntry.personId }).from(lineupEntry).where(eq(lineupEntry.aliasId, alias.id));
     const formerPersonIds = [alias.personId, ...former.map(entry => entry.personId)];

@@ -13,7 +13,7 @@ import type { LoadContext } from '../interface/load-context.interface';
 interface ProvenanceInput {
     readonly fileSha256: string;
     readonly sessionIds: readonly string[];
-    readonly stats: Record<string, number>;
+    readonly stats: Record<string, unknown>;
 }
 
 export const sessionEntity = 'scheduling.session';

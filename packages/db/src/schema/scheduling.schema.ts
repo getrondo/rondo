@@ -26,6 +26,7 @@ export const scheduling = pgSchema('scheduling');
 export const sessionStatusEnum = scheduling.enum('session_status', ['draft', 'open', 'full', 'locked', 'played', 'cancelled', 'moved']);
 export const sessionKindEnum = scheduling.enum('session_kind', ['casual', 'training', 'tournament', 'event']);
 export const cancelReasonEnum = scheduling.enum('cancel_reason', ['weather', 'low_turnout', 'venue', 'holiday', 'organizer', 'other']);
+export const sessionReviewEnum = scheduling.enum('session_review', ['unclear_cancellation']);
 export const signupRoleEnum = scheduling.enum('signup_role', ['field', 'gk']);
 export const signupStatusEnum = scheduling.enum('signup_status', ['in', 'maybe', 'out', 'waitlisted', 'offered']);
 export const signupPriorityEnum = scheduling.enum('signup_priority', ['normal', 'held', 'reserve_bonus']);
@@ -74,6 +75,7 @@ export const session = scheduling.table(
         signupOpensAt: instant('signup_opens_at'),
         cancelCutoffAt: instant('cancel_cutoff_at'),
         cancelReason: cancelReasonEnum('cancel_reason'),
+        reviewReason: sessionReviewEnum('review_reason'),
         movedToSessionId: ref('moved_to_session_id'),
         title: text('title'),
         source: recordSourceEnum('source').notNull().default('bot'),

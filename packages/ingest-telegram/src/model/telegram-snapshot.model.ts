@@ -12,6 +12,7 @@ export const SnapshotUserSchema = Schema.Struct({
 
 export const SnapshotMessageSchema = Schema.Struct({
     id: Schema.Int,
+    topic: Schema.optional(Schema.NullOr(Schema.Int)),
     poll: Schema.optional(
         Schema.Struct({ id: Schema.String, answers: Schema.Array(Schema.Struct({ option: Schema.String, text: Schema.String })) })
     )
@@ -42,5 +43,6 @@ export interface SnapshotVote {
 export interface TelegramSnapshot {
     readonly users: ReadonlyMap<number, SnapshotUser>;
     readonly pollIdByMessage: ReadonlyMap<number, string>;
+    readonly topicByMessage?: ReadonlyMap<number, number>;
     readonly votes: readonly SnapshotVote[];
 }

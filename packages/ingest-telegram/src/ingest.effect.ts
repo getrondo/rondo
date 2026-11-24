@@ -81,7 +81,7 @@ const readSnapshot = Effect.fn('IngestTelegram.readSnapshot')(function* (exportD
     return Option.fromNullishOr(snapshot);
 });
 
-const readConfig = Effect.fn('IngestTelegram.readConfig')(function* (configPath: string) {
+export const readConfig = Effect.fn('IngestTelegram.readConfig')(function* (configPath: string) {
     const fs = yield* FileSystem.FileSystem;
     const raw = yield* fs.readFileString(configPath);
 
@@ -93,13 +93,24 @@ interface ExportContent {
     readonly messages: readonly TelegramMessage[];
     readonly fileSha256: string;
     readonly snapshot: Option.Option<TelegramSnapshot>;
+    readonly allowRemoval?: boolean;
 }
+
+const gamePosts = (config: CommunityConfig, snapshot: Option.Option<TelegramSnapshot>) =>
+    Option.match(snapshot, {
+        onNone: () => ({}),
+        onSome: ({ topicByMessage, pollIdByMessage }) => ({
+            pollIdByMessage,
+            isGamePost: (messageId: number) => topicByMessage?.get(messageId) === config.gamesTopicId
+        })
+    });
 
 export const importMessages = Effect.fn('IngestTelegram.importMessages')(function* ({
     config,
     messages,
     fileSha256,
-    snapshot
+    snapshot,
+    allowRemoval
 }: ExportContent) {
     const now = yield* DateTime.nowAsDate;
     const lastSent = messages.findLast(message => isDefined(message.sentAt))?.sentAt ?? now;
@@ -108,18 +119,21 @@ export const importMessages = Effect.fn('IngestTelegram.importMessages')(functio
         { slug: config.slug },
         Effect.gen(function* () {
             const unhandled = yield* withoutLiveMessages(config.slug, messages);
-            const plan = assemblePlan(extractAll(unhandled, config), instantToLocalDate(lastSent, config.timeZone));
+            const plan = assemblePlan(
+                extractAll(unhandled, config, gamePosts(config, snapshot)),
+                instantToLocalDate(lastSent, config.timeZone)
+            );
 
-            return yield* loadPlan(config, plan, fileSha256, Option.getOrUndefined(snapshot));
+            return yield* loadPlan(config, plan, { fileSha256, snapshot: Option.getOrUndefined(snapshot), allowRemoval });
         })
     );
 });
 
-export const ingest = Effect.fn('IngestTelegram.ingest')(function* (exportDir: string, configPath: string) {
+export const ingest = Effect.fn('IngestTelegram.ingest')(function* (exportDir: string, configPath: string, allowRemoval: boolean) {
     const config = yield* readConfig(configPath);
     const { messages, fileSha256 } = yield* readMessages(exportDir, config);
     const snapshot = yield* readSnapshot(exportDir);
-    const stats = yield* importMessages({ config, messages, fileSha256, snapshot });
+    const stats = yield* importMessages({ config, messages, fileSha256, snapshot, allowRemoval });
 
     yield* Effect.logInfo('Telegram export ingested', stats);
 

@@ -38,7 +38,8 @@ export const CommunityConfigSchema = Schema.Struct({
     venues: Schema.Array(VenueConfigSchema),
     teamColors: Schema.Array(TeamColorConfigSchema),
     squads: Schema.Array(SquadConfigSchema),
-    guestPatterns: Schema.optional(Schema.Array(Schema.String))
+    guestPatterns: Schema.optional(Schema.Array(Schema.String)),
+    gamesTopicId: Schema.optional(Schema.Int)
 });
 
 export type CommunityConfig = typeof CommunityConfigSchema.Type;
