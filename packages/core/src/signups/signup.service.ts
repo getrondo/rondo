@@ -192,7 +192,7 @@ export const rosterOf = Effect.fn('Core.rosterOf')(function* (sessionId: string)
         .orderBy(asc(signup.createdAt));
 });
 
-const settledPoll = /poll has already been closed|poll to stop not found/iu;
+const settledPoll = /poll has already been closed|to stop not found/iu;
 
 export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId: string) {
     const db = yield* Db;

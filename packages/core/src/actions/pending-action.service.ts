@@ -16,6 +16,8 @@ import { ActionSchema, type Action } from './action.model';
 import { runAdminAction, type ActionContext } from './execute-action';
 
 const confirmationWindowMs = 30 * 60_000;
+// A second tap must not report an action that is still running
+const runningMs = 65_000;
 
 export type DecisionOutcome =
     | { readonly _tag: 'missing' }
@@ -59,7 +61,7 @@ const reasonOf = (failure: unknown): string => {
     return Schema.is(ActionFailedError)(failure) ? failure.reason : 'unexpected error';
 };
 
-const reportCutOff = Effect.fn('Core.reportCutOff')(function* (actionId: string, tgUserId: bigint) {
+const reportCutOff = Effect.fn('Core.reportCutOff')(function* (actionId: string, tgUserId: bigint, now: Date) {
     const db = yield* Db;
     const [cutOff] = yield* db
         .update(pendingAction)
@@ -69,6 +71,7 @@ const reportCutOff = Effect.fn('Core.reportCutOff')(function* (actionId: string,
                 eq(pendingAction.id, actionId),
                 eq(pendingAction.requestedByTgUserId, tgUserId),
                 eq(pendingAction.status, 'confirmed'),
+                lt(pendingAction.decidedAt, addMillis(now, -runningMs)),
                 isNull(pendingAction.result)
             )
         )
@@ -101,7 +104,7 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
         .returning();
 
     if (!isDefined(claimed)) {
-        return yield* reportCutOff(input.actionId, input.tgUserId);
+        return yield* reportCutOff(input.actionId, input.tgUserId, now);
     }
 
     if (claimed.expiresAt < now) {

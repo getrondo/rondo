@@ -1,5 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { messageRef, pendingAction, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { team } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { refusal } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -167,12 +168,20 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             const summary = yield* describeAction(announce, 'uk', communityId);
             const actionId = yield* proposeAction({ communityId, tgUserId: admin, action: announce, summary });
             const before = countOfCalls('sendPoll');
+            const shorter = yield* proposeAction({
+                communityId,
+                tgUserId: admin,
+                action: announce,
+                summary: summary.replace('\n\n', '\n\nMore\n\n')
+            });
+            const prefixed = yield* decide(shorter);
             yield* db.update(session).set({ capacityMax: 9 }).where(eq(session.id, sessionId));
             const changed = yield* decide(actionId);
             const sentChanged = countOfCalls('sendPoll') - before;
             const first = yield* confirm(communityId, announce);
             const second = yield* confirm(communityId, announce);
 
+            expect(reasonIn(prefixed)).toContain('changed after the preview');
             expect(reasonIn(changed)).toContain('changed after the preview');
             expect(sentChanged).toBe(0);
             expect(first.outcome._tag).toBe('done');
@@ -211,6 +220,27 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
         })
     );
 
+    it.effect('keeps the posted teams when Telegram refuses new ones', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig('publish-teams-fc'));
+            const sessionId = yield* createSession(gameOf(communityId));
+            const teamsOf = (strength: number): Action => ({
+                _tag: 'publish_teams',
+                sessionId,
+                teams: [{ ordinal: 1, players: [], strength }]
+            });
+            yield* confirm(communityId, teamsOf(5));
+            const refused = refusal('sendMessage', 'Bad Request: not enough rights');
+            const { outcome } = yield* failing('sendMessage', refused, confirm(communityId, teamsOf(6)));
+            const stored = yield* db.select().from(team).where(eq(team.sessionId, sessionId));
+
+            expect(outcome._tag).toBe('failed');
+            expect(stored.map(row => Number(row.predictedStrength))).toEqual([5]);
+            expect(stored[0]?.publishedAt).toBeInstanceOf(Date);
+        })
+    );
+
     it.effect('keeps the poll when it cannot be pinned', () =>
         Effect.gen(function* () {
             const db = yield* Db;
@@ -235,10 +265,19 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('publish-cut-fc'));
             const actionId = yield* proposeAction({ communityId, tgUserId: admin, action: createAction, summary: 'create' });
-            yield* db.update(pendingAction).set({ status: 'confirmed' }).where(eq(pendingAction.id, actionId));
+            yield* db
+                .update(pendingAction)
+                .set({ status: 'confirmed', decidedAt: new Date(0) })
+                .where(eq(pendingAction.id, actionId));
+            const running = yield* decide(actionId);
+            yield* db
+                .update(pendingAction)
+                .set({ decidedAt: new Date(-66_000) })
+                .where(eq(pendingAction.id, actionId));
             const outcome = yield* decide(actionId);
             const [stored] = yield* db.select().from(pendingAction).where(eq(pendingAction.id, actionId));
 
+            expect(running._tag).toBe('missing');
             expect(outcome._tag).toBe('failed');
             expect(reasonIn(outcome)).toContain('uncertain, check the group');
             expect(stored?.status).toBe('failed');

@@ -122,6 +122,7 @@ const storeTeams = Effect.fn('Core.storeTeams')(function* ({ target, teams }: Pu
         return yield* ActionFailedError.make({ reason: 'player not found in this community' });
     }
 
+    const publishedAt = yield* DateTime.nowAsDate;
     yield* db.delete(team).where(eq(team.sessionId, target.id));
 
     for (const entry of teams) {
@@ -131,7 +132,8 @@ const storeTeams = Effect.fn('Core.storeTeams')(function* ({ target, teams }: Pu
                 sessionId: target.id,
                 ordinal: entry.ordinal,
                 colorId: colorIds[entry.ordinal - 1],
-                predictedStrength: entry.strength
+                predictedStrength: entry.strength,
+                publishedAt
             })
             .returning({ id: team.id });
 
@@ -151,46 +153,42 @@ const storeTeams = Effect.fn('Core.storeTeams')(function* ({ target, teams }: Pu
     return target.id;
 });
 
+// Stored and sent in one transaction, so a refused post keeps the teams that are in the group
 export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: PublishInput) {
     const db = yield* Db;
     const telegram = yield* Telegram;
     const { communityId } = input.target;
-    const colors = yield* withCommunityLock(
-        { id: communityId },
-        Effect.gen(function* () {
-            const stored = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId)).orderBy(asc(teamColor.name));
-            yield* storeTeams(
-                input,
-                stored.map(color => color.id)
-            );
-
-            return stored;
-        })
-    );
-    const emojis = colors.map(color => color.emoji ?? '');
-    const sent = yield* telegram.call('sendMessage', api =>
-        api.sendMessage(Number(input.group.chatId), lineupText(input.locale, input.target, input.teams, emojis), {
-            parse_mode: 'HTML',
-            ...topicOptions(input.group)
-        })
-    );
-    const publishedAt = yield* DateTime.nowAsDate;
-    yield* db.update(team).set({ publishedAt }).where(eq(team.sessionId, input.target.id));
-    yield* db
-        .insert(messageRef)
-        .values({
-            chatId: input.group.chatId,
-            messageId: sent.message_id,
-            purpose: 'lineup',
+    const publish = Effect.gen(function* () {
+        const colors = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId)).orderBy(asc(teamColor.name));
+        yield* storeTeams(
+            input,
+            colors.map(color => color.id)
+        );
+        yield* recordAudit({
+            communityId,
+            actorPersonId: input.actorPersonId,
+            action: 'teams.publish',
             entityType: 'session',
             entityId: input.target.id
-        })
-        .onConflictDoNothing();
-    yield* recordAudit({
-        communityId,
-        actorPersonId: input.actorPersonId,
-        action: 'teams.publish',
-        entityType: 'session',
-        entityId: input.target.id
+        });
+        const emojis = colors.map(color => color.emoji ?? '');
+        const sent = yield* telegram.call('sendMessage', api =>
+            api.sendMessage(Number(input.group.chatId), lineupText(input.locale, input.target, input.teams, emojis), {
+                parse_mode: 'HTML',
+                ...topicOptions(input.group)
+            })
+        );
+        yield* db
+            .insert(messageRef)
+            .values({
+                chatId: input.group.chatId,
+                messageId: sent.message_id,
+                purpose: 'lineup',
+                entityType: 'session',
+                entityId: input.target.id
+            })
+            .onConflictDoNothing();
     });
+
+    yield* withCommunityLock({ id: communityId }, publish);
 });

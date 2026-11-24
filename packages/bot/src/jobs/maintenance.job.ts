@@ -8,6 +8,7 @@ import { lt, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 const dayMs = 24 * 60 * 60_000;
+const closePollsMs = 20_000;
 const finishAfterMs = 2 * 60 * 60_000;
 
 export const runMaintenance = Effect.fn('Bot.runMaintenance')(function* (now: Date) {
@@ -15,7 +16,7 @@ export const runMaintenance = Effect.fn('Bot.runMaintenance')(function* (now: Da
 
     yield* expireStaleActions(now);
     const finished = yield* finishPastSessions(addMillis(now, -finishAfterMs));
-    yield* closeFinishedPolls();
+    yield* closeFinishedPolls().pipe(Effect.timeoutOption(closePollsMs));
     yield* db.delete(processedUpdate).where(lt(processedUpdate.at, addMillis(now, -7 * dayMs)));
     yield* db.delete(assistantMessage).where(lt(assistantMessage.at, addMillis(now, -30 * dayMs)));
     yield* db.execute(sql`select analytics.refresh_all()`);

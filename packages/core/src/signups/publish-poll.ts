@@ -37,6 +37,7 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
     const telegram = yield* Telegram;
     const { chatId } = input.group;
     const sentMessage = yield* Ref.make<number | null>(null);
+    const isWritten = yield* Ref.make(false);
 
     const publish = Effect.gen(function* () {
         const sessionId = yield* input.prepare;
@@ -59,7 +60,7 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
         const target = yield* requireSession(input.communityId, sessionId);
         const poll = yield* pollFor(input.communityId, target, input.note);
 
-        if (isDefined(input.approvedSummary) && !input.approvedSummary.endsWith(`\n\n${previewOf(poll)}`)) {
+        if (isDefined(input.approvedSummary) && input.approvedSummary.split('\n\n').slice(1).join('\n\n') !== previewOf(poll)) {
             return yield* ActionFailedError.make({ reason: 'the poll changed after the preview, ask for a new one' });
         }
 
@@ -79,6 +80,7 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
             .values({ chatId, messageId, purpose: 'poll', entityType: 'session', entityId: sessionId })
             .onConflictDoNothing();
         yield* input.settle({ sessionId, messageId });
+        yield* Ref.set(isWritten, true);
 
         return { sessionId, messageId };
     });
@@ -95,18 +97,20 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
                     }
 
                     yield* Effect.logError('[poll] sent but not saved', cause);
+                    const uncertain = ActionFailedError.make({ reason: 'the poll was sent but the result is uncertain, check the group' });
                     const saved = yield* db
                         .select({ sessionId: telegramPoll.sessionId })
                         .from(telegramPoll)
                         .where(and(eq(telegramPoll.chatId, chatId), eq(telegramPoll.messageId, sent)))
-                        .pipe(
-                            Effect.mapError(() =>
-                                ActionFailedError.make({ reason: 'the poll was sent but the result is uncertain, check the group' })
-                            )
-                        );
+                        .pipe(Effect.mapError(() => uncertain));
 
                     if (isNotEmptyArray(saved)) {
                         return { sessionId: saved[0].sessionId, messageId: sent };
+                    }
+
+                    // Only the commit can have failed, and it may still go through
+                    if (yield* Ref.get(isWritten)) {
+                        return yield* uncertain;
                     }
 
                     const stopped = yield* Effect.exit(telegram.call('stopPoll', api => api.stopPoll(Number(chatId), sent)));
