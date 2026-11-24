@@ -246,13 +246,28 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
                 .update(personAlias)
                 .set({ personId: legacy?.id, guestPersonId: legacy?.id, resolution: 'suggested', occurrences: 99 })
                 .where(eq(personAlias.id, before.alias('олег')?.id ?? ''));
+            const [stale] = yield* db.insert(person).values({ displayName: 'Stale', source: 'import' }).returning({ id: person.id });
+            yield* db.insert(personAlias).values({
+                communityId: before.communityId,
+                personId: stale?.id,
+                guestPersonId: stale?.id,
+                alias: 'Нет такого',
+                aliasNorm: 'нет такого',
+                resolution: 'suggested'
+            });
             const after = yield* load(slug, messages);
+            const leftovers = yield* db
+                .select({ id: person.id })
+                .from(person)
+                .where(eq(person.id, stale?.id ?? ''));
             const sessions = yield* db
                 .select({ ids: sql<string>`string_agg(${session.id}::text, ',' order by ${session.localDate})` })
                 .from(session)
                 .where(eq(session.communityId, after.communityId));
 
             expect(after.alias('олег')).toMatchObject({ personId: legacy?.id, occurrences: 6 });
+            expect(after.alias('нет такого')).toBeUndefined();
+            expect(leftovers).toEqual([]);
             expect(after.entries.map(({ entry }) => entry.sessionId)).toEqual(before.entries.map(({ entry }) => entry.sessionId));
             expect(sessions[0]?.ids.split(',')).toHaveLength(games);
         })

@@ -14,6 +14,7 @@ import { insertPeople } from './load-people';
 import { recordProvenance } from './load-provenance';
 import { loadSessions } from './load-sessions';
 import { insertVotes } from './load-votes';
+import { removeUnusedNicknames } from './remove-unused-nicknames';
 
 import type { CommunityConfig } from '../config/community-config';
 import type { ImportPlan } from '../extract/assemble-plan';
@@ -45,6 +46,7 @@ export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
             yield* countOccurrences(communityId);
             const links = yield* linkByVotes(communityId);
             yield* alignGuests(communityId);
+            yield* removeUnusedNicknames(context);
             yield* refreshNames(released);
             const fixtures = yield* insertMoneyAndLeague(context, reference.venueIdByKey);
             const stats = {
