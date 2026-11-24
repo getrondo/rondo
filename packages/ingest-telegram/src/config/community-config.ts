@@ -23,6 +23,12 @@ const SquadConfigSchema = Schema.Struct({
     contextPatterns: Schema.Array(Schema.String)
 });
 
+export const defaultGuestPatterns: readonly string[] = [
+    '^(?:друг|подруга|friend)\\s+(?<host>.+)$',
+    '^(?:новый|новенький|новий|новичок|гость|guest)(?:\\s+(?:человек|игрок|player))?$',
+    '^\\+\\.?\\s*(?<count>\\d{1,2})\\s+(?:с|из|from)\\s'
+];
+
 export const CommunityConfigSchema = Schema.Struct({
     slug: Schema.String,
     name: Schema.String,
@@ -31,7 +37,8 @@ export const CommunityConfigSchema = Schema.Struct({
     selfAliases: Schema.Array(Schema.String),
     venues: Schema.Array(VenueConfigSchema),
     teamColors: Schema.Array(TeamColorConfigSchema),
-    squads: Schema.Array(SquadConfigSchema)
+    squads: Schema.Array(SquadConfigSchema),
+    guestPatterns: Schema.optional(Schema.Array(Schema.String))
 });
 
 export type CommunityConfig = typeof CommunityConfigSchema.Type;

@@ -11,7 +11,9 @@ them outside the repository (e.g. `~/getrondo/rondo-data/`); `.gitignore` blocks
 ## 1. Export the chat
 
 Telegram Desktop → group → ⋮ → **Export chat history**. Untick photos, videos, voice and files
-(they aren't used). The format can be **HTML** or JSON (HTML is supported today).
+(they aren't used). Choose **JSON** (`result.json`): it carries author ids. HTML still works, without ids.
+
+Optional snapshot files in the same folder, read from the owner's account, add accounts, polls and voters: `messages.jsonl` (polls with `poll.id` and answers), `votes*.jsonl` and `users*.json` (schemas in `packages/ingest-telegram/src/model/telegram-snapshot.model.ts`). Without `messages.jsonl` the import runs without them.
 
 ## 2. Write the community config
 
@@ -36,6 +38,7 @@ A JSON file validated by `CommunityConfigSchema` (`packages/ingest-telegram/src/
 - `organizers`: authors whose messages count as authoritative (cancellations, prices, results).
 - `selfAliases`: how the organizer lists himself in line-ups ("Я" = "me").
 - `venues[].patterns` and `squads[].patterns`: case-insensitive regexes, tried in order.
+- `guestPatterns` (optional): case-insensitive regexes for tokens that describe a one-game guest instead of naming a player; the named groups `host` and `count` are read. It replaces the generic default in `community-config.ts`.
 - `squads[].contextPatterns`: message-level hints (league level) that pick the squad.
 
 ## 3. Run
@@ -50,18 +53,38 @@ pnpm -F @rondo/ingest-telegram ingest
 psql "$DATABASE_URL" -c "select analytics.refresh_all()"
 ```
 
-The import runs in one transaction. It replaces only the import-scoped facts of that community
-(sessions and fixtures with `source = 'import'`, price rules with `note = 'import'`, plus ingest runs) and upserts the
-rest: venues by `(community_id, name)` (venue names in the config must be unique; an existing venue keeps its `kind`), aliases by `(community_id, alias_norm)` and authors by
-`(community_id, display_name)`. Re-running it on a newer export is safe **before go-live**: imported sessions are recreated with new ids, so once the bot attaches data to imported sessions, stop re-importing. Until then, curated data (alias
-resolution and person links, manually added venues, bot-created sessions) is never overwritten, and
-persons are created only for aliases that did not exist yet. An export folder without any
-`messages*.html` page is rejected.
+The import runs in one transaction and can be repeated. Sessions are matched by their messages, then by local date and sport,
+and updated in place. Games an admin changed keep their date, time, venue and status. Imported sessions that are gone are
+deleted unless they carry sign-ups, manual attendance, manual entries, admin changes or messages the bot handled.
+Fixtures, price rules and provenance of the import are replaced. Venues are upserted by `(community_id, name)`, aliases by
+`(community_id, alias_norm)`. Messages in `comms.message_ref` are skipped, and a line-up the bot took live is left alone.
+Confirmed and undone links, manual line-up entries and manual attendance survive. Vote links are recomputed
+([ADR-0003](../adr/0003-identity.md)). A fresh snapshot overwrites account names, usernames and membership.
+
+Run it outside game hours. The import holds the community lock, so live line-ups and admin changes wait until it ends. On a local copy of
+production (20,078 messages, 405 games) one import takes about 5 seconds; over the network to Neon expect longer.
+
+The lock test needs two real sessions and is skipped without a local Postgres:
+`RONDO_TEST_DATABASE_URL=postgres://… pnpm -F @rondo/core test`.
+
+### Rehearse first
+
+On a restored copy of production on localhost:
+
+```bash
+DATABASE_URL=postgres://rondo:rondo@localhost:54330/rondo \
+RONDO_EXPORT_DIR=/path/to/export RONDO_COMMUNITY_CONFIG=/path/to/community.json \
+pnpm -F @rondo/ingest-telegram rehearse
+```
+
+It migrates, imports twice and prints counts before and after. It refuses any other host and prints no names. The second
+import must report that it changed nothing.
 
 ## 4. Review
 
-- **Aliases:** `identity.person_alias` holds every line-up name with occurrences and first/last seen. Merge duplicates and typos and link them to Telegram accounts (E15 alias-resolution UI). Your resolutions survive re-imports.
-- **Sessions without a line-up** are marked `played` with confidence ≤ 0.6; cancelled ones carry `cancel_reason`.
+- **Aliases:** `identity.person_alias` holds every line-up name. `vote` links are automatic: check them and unlink wrong ones. Ask the assistant for link suggestions. Shared nicknames (`placeholder`) are linked per line-up entry. `reviewEntries`, `linkEntry` and `unlinkEntry` in `@rondo/core` list and fix entries (no UI yet).
+- **Guest messages:** `unassignedGuestRequests` counts chat messages "+N" that reply to no game poll; they are not stored.
+- **Sessions without a line-up** are marked `played` with confidence ≤ 0.6 and have no attendance, only sign-ups from votes; cancelled ones carry `cancel_reason`.
 - **Prices** are the monthly mode of "€N on the field" messages, scoped per venue when the message names one.
 
 ## What it extracts

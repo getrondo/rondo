@@ -5,6 +5,7 @@ import * as Option from 'effect/Option';
 import { grantAdmin, isAdminOf } from '../access/admin-access';
 import { ActionFailedError } from '../error/action-failed.error';
 import { notifySessionCancelled, notifySessionChanged } from '../notify/notifier';
+import { linkAlias, requireAlias, unlinkAlias } from '../people/alias-links.service';
 import { arePeopleOf, createPerson, mergePeople, renamePerson } from '../people/people.service';
 import { cancelSession, createSession, requireSession, updateSession } from '../sessions/session.service';
 import { announceSession, closePollsOf } from '../signups/signup.service';
@@ -103,6 +104,12 @@ const executeAction = Effect.fn('Core.executeAction')(function* (action: Action,
                 asResult
             );
         }
+        case 'link_alias': {
+            return yield* linkAlias({ ...action, communityId, actorPersonId }).pipe(Effect.as({ personId: action.personId }), asResult);
+        }
+        case 'unlink_alias': {
+            return yield* unlinkAlias({ ...action, communityId, actorPersonId }).pipe(Effect.as({ aliasId: action.aliasId }), asResult);
+        }
         case 'rename_person': {
             return yield* renamePerson({ ...action, communityId, actorPersonId }).pipe(Effect.as({ personId: action.personId }), asResult);
         }
@@ -146,11 +153,13 @@ const peopleIn = (action: Action): readonly string[] => {
         case 'merge_people': {
             return [action.fromPersonId, action.intoPersonId];
         }
+        case 'link_alias':
         case 'rename_person':
         case 'grant_admin':
         case 'set_rating': {
             return [action.personId];
         }
+        case 'unlink_alias':
         case 'create_person':
         case 'create_venue':
         case 'update_venue':
@@ -173,6 +182,10 @@ export const requireActionScope = Effect.fn('Core.requireActionScope')(function*
 
     if ('sessionId' in action && isDefined(action.sessionId)) {
         yield* requireSession(communityId, action.sessionId);
+    }
+
+    if ('aliasId' in action) {
+        yield* requireAlias(communityId, action.aliasId);
     }
 
     if ('venueId' in action && isDefined(action.venueId)) {

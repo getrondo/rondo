@@ -37,6 +37,10 @@ const PublishTeamsAction = Schema.TaggedStruct('publish_teams', { sessionId: Sch
 
 const MergePeopleAction = Schema.TaggedStruct('merge_people', { fromPersonId: Schema.String, intoPersonId: Schema.String });
 
+const LinkAliasAction = Schema.TaggedStruct('link_alias', { aliasId: Schema.String, personId: Schema.String });
+
+const UnlinkAliasAction = Schema.TaggedStruct('unlink_alias', { aliasId: Schema.String });
+
 const RenamePersonAction = Schema.TaggedStruct('rename_person', { personId: Schema.String, displayName: Schema.String });
 
 const GrantAdminAction = Schema.TaggedStruct('grant_admin', { personId: Schema.String });
@@ -75,6 +79,8 @@ export const ActionSchema = Schema.Union([
     AnnounceSessionAction,
     PublishTeamsAction,
     MergePeopleAction,
+    LinkAliasAction,
+    UnlinkAliasAction,
     RenamePersonAction,
     GrantAdminAction,
     SetRatingAction,

@@ -3,6 +3,8 @@ import * as Option from 'effect/Option';
 
 import { addDays, isCalendarDate, weekdayOf } from './zoned-time';
 
+export const statedDateConfidence = 0.8;
+
 const weekdays: readonly (readonly [number, RegExp])[] = [
     [1, /(?:понедельник|понеділ(?:ок|ка))(?!\p{L})/iu],
     [2, /(?:вторник|вівтор(?:ок|ка))(?!\p{L})/iu],

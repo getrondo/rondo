@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+    bigint,
     boolean,
     check,
     doublePrecision,
@@ -14,7 +15,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { createdAt, id, instant, ref, updatedAt, requiredRef } from './columns';
-import { person } from './identity.schema';
+import { person, personAlias, telegramAccount } from './identity.schema';
 import { activity, community } from './org.schema';
 import { session } from './scheduling.schema';
 import { field } from './venue.schema';
@@ -73,6 +74,34 @@ export const teamMember = play.table(
         assignedBy: assignedByEnum('assigned_by').notNull().default('organizer')
     },
     t => [primaryKey({ columns: [t.teamId, t.personId] }), uniqueIndex('team_member_session_person_uq').on(t.sessionId, t.personId)]
+);
+
+export const entryResolutionEnum = play.enum('entry_resolution', ['account', 'handle', 'alias', 'vote', 'manual', 'guest']);
+
+export const lineupEntry = play.table(
+    'lineup_entry',
+    {
+        id: id(),
+        sessionId: requiredRef('session_id', () => session.id),
+        messageId: bigint('message_id', { mode: 'number' }).notNull(),
+        teamOrdinal: smallint('team_ordinal').notNull(),
+        position: smallint('position').notNull(),
+        raw: text('raw'),
+        aliasId: ref('alias_id').references(() => personAlias.id, { onDelete: 'set null' }),
+        tgUserId: bigint('tg_user_id', { mode: 'bigint' }).references(() => telegramAccount.tgUserId, { onDelete: 'set null' }),
+        personId: ref('person_id').references(() => person.id, { onDelete: 'restrict' }),
+        guestOfPersonId: ref('guest_of_person_id').references(() => person.id, { onDelete: 'restrict' }),
+        resolvedBy: entryResolutionEnum('resolved_by').notNull(),
+        isGk: boolean('is_gk').notNull().default(false),
+        isNewcomer: boolean('is_newcomer').notNull().default(false),
+        isGuest: boolean('is_guest').notNull().default(false)
+    },
+    t => [
+        uniqueIndex('lineup_entry_position_uq').on(t.sessionId, t.teamOrdinal, t.position),
+        index('lineup_entry_alias_idx').on(t.aliasId),
+        index('lineup_entry_person_idx').on(t.personId),
+        check('lineup_entry_player_ck', sql`case when ${t.isGuest} then ${t.personId} is null else ${t.guestOfPersonId} is null end`)
+    ]
 );
 
 export const formatRule = play.table('format_rule', {

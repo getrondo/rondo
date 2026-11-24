@@ -1,10 +1,13 @@
 import { isDefined } from '@rnw-community/shared';
 import { person, personAlias } from '@rondo/db/schema/identity.schema';
+import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db, type Database } from '@rondo/db/service/db.service';
-import { and, between, count, countDistinct, desc, eq, inArray, max, sql } from 'drizzle-orm';
+import { and, between, count, countDistinct, desc, eq, inArray, isNull, max, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
+
+import { latestVotes } from '../signups/latest-votes';
 
 export interface DateRange {
     readonly from: string;
@@ -19,6 +22,18 @@ const playedGames = (db: Database) =>
         .from(attendance)
         .innerJoin(session, eq(session.id, attendance.sessionId))
         .innerJoin(person, eq(person.id, attendance.personId));
+
+const signedUpGames = Effect.fn('Core.signedUpGames')(function* (communityId: string, personId: string) {
+    const db = yield* Db;
+    const vote = latestVotes(db);
+    const [row] = yield* db
+        .select({ games: count() })
+        .from(vote)
+        .innerJoin(session, eq(session.id, vote.sessionId))
+        .where(and(eq(session.communityId, communityId), eq(vote.personId, personId), eq(vote.choice, 'yes')));
+
+    return row?.games ?? 0;
+});
 
 export const attendanceCoverage = Effect.fn('Core.attendanceCoverage')(function* (communityId: string, range?: DateRange) {
     const db = yield* Db;
@@ -113,7 +128,21 @@ export const communitySummary = Effect.fn('Core.communitySummary')(function* (co
             )
         );
 
-    return { ...sessions, ...players };
+    const [entries] = yield* db
+        .select({ unidentifiedAppearances: count() })
+        .from(lineupEntry)
+        .innerJoin(session, eq(session.id, lineupEntry.sessionId))
+        .where(
+            and(
+                eq(session.communityId, communityId),
+                between(session.localDate, range.from, range.to),
+                eq(session.status, 'played'),
+                eq(lineupEntry.isGuest, false),
+                isNull(lineupEntry.personId)
+            )
+        );
+
+    return { ...sessions, ...players, ...entries };
 });
 
 export const playerHistory = Effect.fn('Core.playerHistory')(function* (communityId: string, personId: string) {
@@ -139,5 +168,7 @@ export const playerHistory = Effect.fn('Core.playerHistory')(function* (communit
         .from(personAlias)
         .where(and(eq(personAlias.communityId, communityId), eq(personAlias.personId, personId)));
 
-    return { ...summary, aliases };
+    const signedUp = yield* signedUpGames(communityId, personId);
+
+    return { ...summary, signedUp, aliases };
 });

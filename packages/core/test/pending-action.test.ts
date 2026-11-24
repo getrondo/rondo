@@ -2,7 +2,7 @@ import { expect, layer } from '@effect/vitest';
 import { person } from '@rondo/db/schema/identity.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -103,7 +103,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
         })
     );
 
-    it.effect('merges two records of the same player without double-counting a shared game', () =>
+    it.effect('refuses to merge two records that played one game, and merges them once they share none', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('merge-fc'));
@@ -133,10 +133,16 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
                 { sessionId: sessionIds[1] ?? '', personId: fullNameId, outcome: 'attended' }
             ]);
 
-            yield* mergePeople({ communityId, fromPersonId: nicknameId, intoPersonId: fullNameId, actorPersonId: null });
+            const merge = mergePeople({ communityId, fromPersonId: nicknameId, intoPersonId: fullNameId, actorPersonId: null });
+            const refused = yield* Effect.flip(merge);
+            const untouched = yield* db.select().from(attendance).where(eq(attendance.personId, nicknameId));
+            yield* db.delete(attendance).where(and(eq(attendance.personId, fullNameId), eq(attendance.sessionId, sessionIds[1] ?? '')));
+            yield* merge;
             const games = yield* db.select().from(attendance).where(eq(attendance.personId, fullNameId));
             const [tombstone] = yield* db.select().from(person).where(eq(person.id, nicknameId));
 
+            expect(refused._tag).toBe('ActionFailedError');
+            expect(untouched).toHaveLength(2);
             expect(games).toHaveLength(2);
             expect(tombstone?.mergedIntoPersonId).toBe(fullNameId);
         })

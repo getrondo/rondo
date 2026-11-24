@@ -12,16 +12,28 @@ export interface PollFact {
     readonly format?: string;
     readonly isReserve: boolean;
     readonly isChoice: boolean;
+    readonly isGame: boolean;
+    readonly joinsGame: boolean;
     readonly title: string;
     readonly confidence: number;
 }
 
+interface GuestDescription {
+    readonly host?: string;
+    readonly count: number;
+}
+
 export interface LineupMember {
+    readonly raw: string;
+    readonly userId?: number;
+    readonly handle?: string;
     readonly alias: string;
     readonly aliasNorm: string;
     readonly isGk: boolean;
     readonly isNewcomer: boolean;
     readonly isSelf: boolean;
+    readonly guests: number;
+    readonly guest?: GuestDescription;
 }
 
 export interface LineupTeam {
@@ -32,6 +44,7 @@ export interface LineupTeam {
 
 export interface LineupFact {
     readonly messageId: number;
+    readonly authorId?: number;
     readonly postedAt: Date;
     readonly localDate: string;
     readonly localTime?: string;
@@ -74,6 +87,20 @@ export interface AuthorFact {
     readonly lastSeenAt: Date;
 }
 
+export interface AccountFact {
+    readonly userId: number;
+    readonly displayName: string;
+    readonly firstSeenAt: Date;
+    readonly lastSeenAt: Date;
+}
+
+export interface GuestRequestFact {
+    readonly messageId: number;
+    readonly userId: number;
+    readonly replyTo?: number;
+    readonly guests: number;
+}
+
 export interface ExtractedFacts {
     readonly polls: readonly PollFact[];
     readonly lineups: readonly LineupFact[];
@@ -81,4 +108,6 @@ export interface ExtractedFacts {
     readonly cancellations: readonly CancellationFact[];
     readonly fixtures: readonly FixtureFact[];
     readonly authors: readonly AuthorFact[];
+    readonly accounts: readonly AccountFact[];
+    readonly guestRequests: readonly GuestRequestFact[];
 }

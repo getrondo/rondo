@@ -1,5 +1,6 @@
 import type { CommunityConfig } from '../config/community-config';
 import type { ImportPlan } from '../extract/assemble-plan';
+import type { TelegramSnapshot } from '../model/telegram-snapshot.model';
 import type { Transaction } from './transaction.type';
 
 export interface LoadContext {
@@ -7,6 +8,7 @@ export interface LoadContext {
     readonly communityId: string;
     readonly config: CommunityConfig;
     readonly plan: ImportPlan;
+    readonly snapshot?: TelegramSnapshot;
 }
 
 export interface ReferenceIds {
@@ -18,5 +20,6 @@ export interface ReferenceIds {
 export interface SessionLoadResult {
     readonly sessionIds: readonly string[];
     readonly teams: number;
-    readonly members: number;
+    readonly entries: number;
+    readonly unassignedGuestRequests: number;
 }

@@ -1,6 +1,7 @@
+import { isDefined } from '@rnw-community/shared';
 import * as Option from 'effect/Option';
 
-import { findLocalTime, resolveGameDate } from './game-date';
+import { findLocalTime, resolveGameDate, statedDateConfidence } from './game-date';
 import { compile, matchesAny } from './normalize';
 import { instantToLocalDate } from './zoned-time';
 
@@ -53,6 +54,8 @@ const buildPollFact = (
 ): PollFact => {
     const title = poll.question;
     const { date, confidence } = resolveGameDate(title, instantToLocalDate(sentAt, config.timeZone));
+    const everything = [title, ...poll.answers].join('\n');
+    const isDated = confidence >= statedDateConfidence;
 
     return {
         messageId: message.id,
@@ -66,6 +69,8 @@ const buildPollFact = (
         format: formatOf(title),
         isReserve: /резерв/iu.test(title) || /кто там/iu.test(poll.answers.join(' ')),
         isChoice: poll.answers.length > 2,
+        isGame: isDated && (isDefined(venueOf(everything)) || isDefined(findLocalTime(everything))),
+        joinsGame: isDated && /^[+➕✔✅]/u.test((poll.answers[0] ?? '').trim()),
         title,
         confidence
     };

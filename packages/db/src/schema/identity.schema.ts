@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { bigint, date, index, numeric, pgSchema, text, uniqueIndex, integer, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 import { createdAt, id, instant, ref, updatedAt, requiredRef } from './columns';
@@ -6,7 +7,7 @@ export const identity = pgSchema('identity');
 
 export const localeEnum = identity.enum('locale', ['uk', 'ru', 'en', 'de']);
 export const aliasKindEnum = identity.enum('alias_kind', ['nickname', 'first_name', 'full_name', 'placeholder', 'self']);
-export const aliasResolutionEnum = identity.enum('alias_resolution', ['unresolved', 'suggested', 'confirmed', 'guest', 'ignored']);
+export const aliasResolutionEnum = identity.enum('alias_resolution', ['unresolved', 'suggested', 'confirmed', 'guest', 'ignored', 'vote']);
 export const consentPurposeEnum = identity.enum('consent_purpose', ['processing', 'birthday', 'stats_public', 'dm_notifications']);
 export const recordSourceEnum = identity.enum('record_source', ['bot', 'import', 'manual']);
 
@@ -34,7 +35,12 @@ export const telegramAccount = identity.table(
         firstSeenAt: instant('first_seen_at').notNull().defaultNow(),
         lastSeenAt: instant('last_seen_at').notNull().defaultNow()
     },
-    t => [uniqueIndex('telegram_account_person_uq').on(t.personId)]
+    t => [
+        index('telegram_account_person_idx').on(t.personId),
+        uniqueIndex('telegram_account_username_uq')
+            .on(sql`lower(${t.username})`)
+            .where(sql`${t.username} is not null`)
+    ]
 );
 
 export const telegramAuthor = identity.table(
@@ -58,6 +64,7 @@ export const personAlias = identity.table(
         id: id(),
         communityId: ref('community_id').notNull(),
         personId: ref('person_id').references(() => person.id, { onDelete: 'set null' }),
+        guestPersonId: ref('guest_person_id').references(() => person.id, { onDelete: 'set null' }),
         alias: text('alias').notNull(),
         aliasNorm: text('alias_norm').notNull(),
         kind: aliasKindEnum('kind').notNull().default('nickname'),

@@ -1,5 +1,5 @@
 import { isDefined, isEmptyString, isNotEmptyArray } from '@rnw-community/shared';
-import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
+import { person } from '@rondo/db/schema/identity.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { escapeHtml, mentionHtml } from '@rondo/telegram/format/html';
@@ -8,6 +8,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { cancelReasonText, formatSessionLabel, text } from '../i18n/messages';
+import { primaryAccount } from '../identity/primary-account';
 
 import type { Locale } from '../i18n/locale';
 import type { SessionView } from '../sessions/session.model';
@@ -15,11 +16,12 @@ import type { PromotedPlayer } from '../signups/signup.service';
 
 const mentionsOf = Effect.fn('Core.mentionsOf')(function* (sessionId: string) {
     const db = yield* Db;
+    const account = primaryAccount(db);
     const rows = yield* db
-        .select({ tgUserId: telegramAccount.tgUserId, name: person.displayName })
+        .select({ tgUserId: account.tgUserId, name: person.displayName })
         .from(signup)
         .innerJoin(person, eq(person.id, signup.personId))
-        .innerJoin(telegramAccount, eq(telegramAccount.personId, signup.personId))
+        .innerJoin(account, eq(account.personId, signup.personId))
         .where(and(eq(signup.sessionId, sessionId), inArray(signup.status, ['in', 'waitlisted'])));
 
     return rows.map(row => mentionHtml(row.tgUserId, row.name)).join(', ');

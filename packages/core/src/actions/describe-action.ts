@@ -1,5 +1,5 @@
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
-import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
+import { person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { eq } from 'drizzle-orm';
@@ -22,6 +22,13 @@ const nameOfPerson = Effect.fn('Core.nameOfPerson')(function* (personId: string)
         .where(eq(person.id, personId));
 
     return isDefined(row?.username) ? `${row.name} (@${row.username})` : (row?.name ?? personId);
+});
+
+const nickname = Effect.fn('Core.nickname')(function* (aliasId: string) {
+    const db = yield* Db;
+    const [row] = yield* db.select({ alias: personAlias.alias }).from(personAlias).where(eq(personAlias.id, aliasId));
+
+    return row?.alias ?? aliasId;
 });
 
 const nameOfVenue = Effect.fn('Core.nameOfVenue')(function* (venueId: string | null | undefined) {
@@ -52,6 +59,8 @@ const words = {
         publishPoll: '📣 Опублікувати опитування',
         teams: '👥 Опублікувати склади',
         merge: '🔗 Обʼєднати гравців',
+        link: '🔗 Привʼязати прізвисько',
+        unlink: '✂️ Відвʼязати прізвисько',
         rename: '✏️ Перейменувати',
         admin: '🛡 Зробити адміністратором',
         rating: '⭐ Рівень гравця',
@@ -72,6 +81,8 @@ const words = {
         publishPoll: '📣 Опубликовать опрос',
         teams: '👥 Опубликовать составы',
         merge: '🔗 Объединить игроков',
+        link: '🔗 Привязать прозвище',
+        unlink: '✂️ Отвязать прозвище',
         rename: '✏️ Переименовать',
         admin: '🛡 Сделать администратором',
         rating: '⭐ Уровень игрока',
@@ -133,6 +144,12 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
         }
         case 'merge_people': {
             return `${word.merge}: «${yield* nameOfPerson(action.fromPersonId)}» → «${yield* nameOfPerson(action.intoPersonId)}»`;
+        }
+        case 'link_alias': {
+            return `${word.link}: «${yield* nickname(action.aliasId)}» → «${yield* nameOfPerson(action.personId)}»`;
+        }
+        case 'unlink_alias': {
+            return `${word.unlink}: «${yield* nickname(action.aliasId)}»`;
         }
         case 'rename_person': {
             return `${word.rename}: «${yield* nameOfPerson(action.personId)}» → «${action.displayName}»`;

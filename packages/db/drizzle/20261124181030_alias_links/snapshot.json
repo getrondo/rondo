@@ -1,0 +1,85 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "db716254-2fb1-4068-8a1a-05cdb05d486d",
+    "prevIds": ["c29d5dea-3a0a-40de-b68d-29223e01a56b"],
+    "footprints": [
+        {
+            "statementType": "alter_enum",
+            "statementTarget": ["enum", "identity", "alias_resolution"],
+            "writes": ["s|enum|identity.alias_resolution"],
+            "reads": ["n|sch|identity"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "identity", "person_alias", "guest_person_id"],
+            "writes": [
+                "s|col|identity.person_alias.guest_person_id",
+                "n|col|identity.person_alias.guest_person_id",
+                "e|col|identity.person_alias.guest_person_id"
+            ],
+            "reads": ["n|tbl|identity.person_alias", "n|sch|identity"]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "identity", "person_alias"],
+            "writes": [
+                "s|fk|identity.person_alias.person_alias_guest_person_id_person_id_fkey",
+                "n|fk|identity.person_alias.person_alias_guest_person_id_person_id_fkey",
+                "e|fk|identity.person_alias.person_alias_guest_person_id_person_id_fkey",
+                "n|con|identity.person_alias.person_alias_guest_person_id_person_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|identity.person_alias",
+                "n|sch|identity",
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|col|identity.person_alias.guest_person_id",
+                "n|col|identity.person.id",
+                "e|uniqueness|identity.person.id"
+            ]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "person_alias",
+                "name": "guest_person_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "person_alias",
+                "name": "person_alias_guest_person_id_person_id_fkey",
+                "nameExplicit": false,
+                "columns": ["guest_person_id"],
+                "schemaTo": "identity",
+                "tableTo": "person",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "SET NULL",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "alter",
+            "key": "enums\u0000[\"identity\",\"alias_resolution\"]",
+            "set": {
+                "values": ["unresolved", "suggested", "confirmed", "guest", "ignored", "vote"]
+            }
+        }
+    ]
+}

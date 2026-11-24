@@ -1,7 +1,7 @@
 import { bigint, boolean, index, integer, jsonb, numeric, pgSchema, primaryKey, text, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import { createdAt, id, instant, ref, requiredRef } from './columns';
-import { person } from './identity.schema';
+import { person, telegramAccount } from './identity.schema';
 import { community } from './org.schema';
 import { session } from './scheduling.schema';
 
@@ -68,6 +68,20 @@ export const telegramPoll = comms.table(
         createdAt: createdAt()
     },
     t => [index('telegram_poll_session_idx').on(t.sessionId)]
+);
+
+export const pollVote = comms.table(
+    'poll_vote',
+    {
+        pollId: text('poll_id').notNull(),
+        tgUserId: bigint('tg_user_id', { mode: 'bigint' })
+            .notNull()
+            .references(() => telegramAccount.tgUserId, { onDelete: 'cascade' }),
+        sessionId: ref('session_id').references(() => session.id, { onDelete: 'set null' }),
+        choice: text('choice').notNull(),
+        votedAt: instant('voted_at')
+    },
+    t => [primaryKey({ columns: [t.pollId, t.tgUserId] }), index('poll_vote_session_idx').on(t.sessionId)]
 );
 
 export const processedUpdate = comms.table('processed_update', {

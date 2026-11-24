@@ -1,9 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 import { expect, layer } from '@effect/vitest';
 import { sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 
 import { account, ledgerEntry, ledgerTxn, priceRule } from '../src/schema/finance.schema';
+import { telegramAccount } from '../src/schema/identity.schema';
 import { community } from '../src/schema/org.schema';
 import { booking, field, venue } from '../src/schema/venue.schema';
 import { Db } from '../src/service/db.service';
@@ -134,6 +138,28 @@ layer(testDbLayer, { timeout: 60_000 })('database invariants', it => {
 
             expect(rows.length).toBeGreaterThan(0);
             expect(Exit.isFailure(update)).toBe(true);
+        })
+    );
+
+    it.effect('keeps the newest of several accounts with one username when the unique index is created', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const file = fileURLToPath(new URL('../drizzle/20261124175907_telegram_identity/migration.sql', import.meta.url));
+            const statements = readFileSync(file, 'utf8')
+                .split('--> statement-breakpoint')
+                .filter(statement => statement.includes('"username"'));
+            yield* db.execute(sql`drop index identity.telegram_account_username_uq`);
+            yield* db.insert(telegramAccount).values([
+                { tgUserId: 1n, firstName: 'Old', username: 'Striker', lastSeenAt: new Date('2025-01-01T00:00:00Z') },
+                { tgUserId: 2n, firstName: 'New', username: 'striker', lastSeenAt: new Date('2025-02-01T00:00:00Z') },
+                { tgUserId: 3n, firstName: 'Same', username: 'STRIKER', lastSeenAt: new Date('2025-02-01T00:00:00Z') },
+                { tgUserId: 4n, firstName: 'Other', username: 'keeper' }
+            ]);
+            const outcome = yield* Effect.exit(Effect.all(statements.map(statement => db.execute(sql.raw(statement)))));
+            const rows = yield* db.select().from(telegramAccount).orderBy(telegramAccount.tgUserId);
+
+            expect(Exit.isSuccess(outcome)).toBe(true);
+            expect(rows.map(({ username }) => username)).toEqual([null, null, 'STRIKER', 'keeper']);
         })
     );
 });

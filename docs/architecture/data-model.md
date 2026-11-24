@@ -27,7 +27,7 @@ erDiagram
   COMMUNITY ||--o{ ACTIVITY : runs
   COMMUNITY ||--o{ MEMBERSHIP : has
   PERSON ||--o{ MEMBERSHIP : holds
-  PERSON ||--o| TELEGRAM_ACCOUNT : "linked to"
+  PERSON ||--o{ TELEGRAM_ACCOUNT : "linked to"
   PERSON ||--o{ PERSON_ALIAS : "known as"
   COMMUNITY ||--o{ VENUE : uses
   VENUE ||--o{ FIELD : has
@@ -62,8 +62,8 @@ erDiagram
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `person`           | `id`, `display_name`, `locale` (`uk`/`ru`/…), `birth_date?` (opt-in), `created_at`, `anonymized_at?`                                                                                                                                                                                  | One human. Not tenant-scoped (a person can be in several communities).                                                                    |
 | `telegram_author` | `id`, `community_id`, `display_name`, `tg_user_id?`, `person_id?`, `message_count`, `first_seen_at`, `last_seen_at` | Authors seen in imported history (HTML exports carry display names, not ids); linked to a person during alias resolution. |
-| `telegram_account` | `tg_user_id bigint PK`, `person_id`, `username?`, `first_name`, `last_name?`, `language_code?`, `first_seen_at`, `last_seen_at`                                                                                                                                                       | 0..1 per person. Guests have none.                                                                                                        |
-| `person_alias`     | `id`, `community_id`, `person_id?`, `alias`, `alias_norm` (lower, unaccented, transliterated), `kind` (`nickname`/`first_name`/`full_name`/`placeholder`/`self`), `occurrences`, `first_seen_at`, `last_seen_at`, `resolution` (`unresolved`/`suggested`/`confirmed`/`guest`/`ignored`), `confidence numeric(3,2)` | How players appear in line-ups (for example "Player 2", "Ivan Sample"). Unique `(community_id, alias_norm)`; re-imports refresh counts and seen dates but never touch `person_id`, `resolution` or `confidence`. Drives E15 alias resolution. |
+| `telegram_account` | `tg_user_id bigint PK`, `person_id`, `username?`, `first_name`, `last_name?`, `language_code?`, `first_seen_at`, `last_seen_at`                                                                                                                                                       | Any number per person. Guests have none. Username is unique and current.                                                                                                        |
+| `person_alias`     | `id`, `community_id`, `person_id?`, `guest_person_id?`, `alias`, `alias_norm` (lower, unaccented, transliterated), `kind` (`nickname`/`first_name`/`full_name`/`placeholder`/`self`), `occurrences`, `first_seen_at`, `last_seen_at`, `resolution` (`unresolved`/`suggested`/`confirmed`/`guest`/`ignored`/`vote`), `confidence numeric(3,2)` | How players appear in line-ups (for example "Player 2", "Ivan Sample"). Unique `(community_id, alias_norm)`; re-imports keep confirmed links and refresh the rest; `occurrences` is counted from entries. `placeholder` marks a nickname shared by several players; it has no person. See ADR-0003. |
 | `consent`          | `person_id`, `purpose` (`processing`/`birthday`/`stats_public`/`dm_notifications`), `policy_version`, `granted_at`, `revoked_at?`                                                                                                                                                     | GDPR lawful basis per purpose.                                                                                                            |
 
 ### `org`: tenancy, groups and roles
@@ -112,6 +112,7 @@ erDiagram
 | `team_color`                             | `id`, `community_id`, `name`, `emoji`, `hex`                                                                                                              | 💷 orange, 💵 green, 💶 blue, 💴 purple… (bib sets). |
 | `team`                                   | `id`, `session_id`, `color_id`, `label?`, `predicted_strength numeric?`, `published_at?`                                                                  | 2–6 per session.                                     |
 | `team_member`                            | `team_id`, `person_id`, `is_gk`, `is_captain`, `assigned_by` (`organizer`/`balancer`/`captain_pick`/`import`)                                             |                                                      |
+| `lineup_entry` | `id`, `session_id`, `message_id`, `team_ordinal` (0 = guest from chat), `position`, `raw?`, `alias_id?`, `tg_user_id?`, `person_id?`, `guest_of_person_id?`, `resolved_by`, `is_gk`, `is_newcomer`, `is_guest` | Every line-up token verbatim and how it was resolved. A player without a person is unidentified. `team_member` and `attendance` are derived from it. |
 | `format_rule`                            | `id`, `community_id`, `name`, `rules jsonb` (duration, goal cap, rotation: `winner_stays_max:2`, `draw_policy:'longer_on_leaves'`)                        | Templates for E09.                                   |
 | `match`                                  | `id`, `session_id`, `field_id?`, `seq`, `team_a_id`, `team_b_id`, `score_a`, `score_b`, `started_at?`, `ended_at?`, `stage` (`rotation`/`group`/`final`…) | Mini-games.                                          |
 | `match_event`                            | `id`, `match_id`, `kind` (`goal`/`own_goal`/`assist`/`yellow`/`timeout_2min`/`injury`), `person_id?`, `team_id`, `at?`, `confirmed_by?`                   | Optional granularity.                                |
@@ -159,6 +160,7 @@ erDiagram
 ### `comms`: Telegram I/O
 
 `message_ref(chat_id, message_id, purpose (game_card/lineup/announcement), entity_type, entity_id)`: which Telegram message renders which entity (edited in place);
+`poll_vote(poll_id, tg_user_id, session_id?, choice (yes/no/other), voted_at?)`: votes of imported polls, signed up but not attended; primary key `(poll_id, tg_user_id)`, forwards share one poll;
 `notification_pref(person_id, channel (dm/group), kind, enabled)`;
 `outbox(id, aggregate_type, aggregate_id, event_type, payload jsonb, created_at, dispatched_at?, attempts)`.
 

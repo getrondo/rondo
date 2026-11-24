@@ -1,0 +1,880 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "c29d5dea-3a0a-40de-b68d-29223e01a56b",
+    "prevIds": ["8cda4e4a-0b59-4a16-ba47-8ecdea5fd947"],
+    "footprints": [
+        {
+            "statementType": "create_enum",
+            "statementTarget": ["enum", "play", "entry_resolution"],
+            "writes": [
+                "s|enum|play.entry_resolution",
+                "n|enum|play.entry_resolution",
+                "e|enum|play.entry_resolution",
+                "n|type|play.entry_resolution"
+            ],
+            "reads": ["n|sch|play"]
+        },
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "comms", "poll_vote"],
+            "writes": [
+                "s|tbl|comms.poll_vote",
+                "n|tbl|comms.poll_vote",
+                "e|tbl|comms.poll_vote",
+                "n|rel|comms.poll_vote",
+                "n|type|comms.poll_vote",
+                "n|rel|comms.poll_vote_pkey"
+            ],
+            "reads": ["n|sch|comms"]
+        },
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "play", "lineup_entry"],
+            "writes": [
+                "s|tbl|play.lineup_entry",
+                "n|tbl|play.lineup_entry",
+                "e|tbl|play.lineup_entry",
+                "n|rel|play.lineup_entry",
+                "n|type|play.lineup_entry",
+                "n|rel|play.lineup_entry_pkey"
+            ],
+            "reads": ["n|sch|play", "n|enum|play.entry_resolution"]
+        },
+        {
+            "statementType": "drop_index",
+            "statementTarget": ["index", "identity", "telegram_account", "telegram_account_person_uq"],
+            "writes": [
+                "s|idx|identity.telegram_account_person_uq",
+                "n|idx|identity.telegram_account_person_uq",
+                "e|idx|identity.telegram_account_person_uq",
+                "n|rel|identity.telegram_account_person_uq"
+            ],
+            "reads": ["n|tbl|identity.telegram_account", "n|sch|identity", "e|col|identity.telegram_account.person_id"],
+            "sharedWrites": ["e|uniqueness|identity.telegram_account.person_id"]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": ["index", "identity", "telegram_account", "telegram_account_person_idx"],
+            "writes": [
+                "s|idx|identity.telegram_account_person_idx",
+                "n|idx|identity.telegram_account_person_idx",
+                "e|idx|identity.telegram_account_person_idx",
+                "n|rel|identity.telegram_account_person_idx"
+            ],
+            "reads": ["n|tbl|identity.telegram_account", "n|sch|identity", "n|col|identity.telegram_account.person_id"]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": ["index", "identity", "telegram_account", "telegram_account_username_uq"],
+            "writes": [
+                "s|idx|identity.telegram_account_username_uq",
+                "n|idx|identity.telegram_account_username_uq",
+                "e|idx|identity.telegram_account_username_uq",
+                "n|rel|identity.telegram_account_username_uq"
+            ],
+            "reads": ["n|tbl|identity.telegram_account", "n|sch|identity"]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": ["index", "comms", "poll_vote", "poll_vote_session_idx"],
+            "writes": [
+                "s|idx|comms.poll_vote_session_idx",
+                "n|idx|comms.poll_vote_session_idx",
+                "e|idx|comms.poll_vote_session_idx",
+                "n|rel|comms.poll_vote_session_idx"
+            ],
+            "reads": ["n|tbl|comms.poll_vote", "n|sch|comms", "n|col|comms.poll_vote.session_id"]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": ["index", "play", "lineup_entry", "lineup_entry_position_uq"],
+            "writes": [
+                "s|idx|play.lineup_entry_position_uq",
+                "n|idx|play.lineup_entry_position_uq",
+                "e|idx|play.lineup_entry_position_uq",
+                "n|rel|play.lineup_entry_position_uq"
+            ],
+            "reads": [
+                "n|tbl|play.lineup_entry",
+                "n|sch|play",
+                "n|col|play.lineup_entry.session_id",
+                "n|col|play.lineup_entry.team_ordinal",
+                "n|col|play.lineup_entry.position"
+            ]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": ["index", "play", "lineup_entry", "lineup_entry_alias_idx"],
+            "writes": [
+                "s|idx|play.lineup_entry_alias_idx",
+                "n|idx|play.lineup_entry_alias_idx",
+                "e|idx|play.lineup_entry_alias_idx",
+                "n|rel|play.lineup_entry_alias_idx"
+            ],
+            "reads": ["n|tbl|play.lineup_entry", "n|sch|play", "n|col|play.lineup_entry.alias_id"]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": ["index", "play", "lineup_entry", "lineup_entry_person_idx"],
+            "writes": [
+                "s|idx|play.lineup_entry_person_idx",
+                "n|idx|play.lineup_entry_person_idx",
+                "e|idx|play.lineup_entry_person_idx",
+                "n|rel|play.lineup_entry_person_idx"
+            ],
+            "reads": ["n|tbl|play.lineup_entry", "n|sch|play", "n|col|play.lineup_entry.person_id"]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "comms", "poll_vote"],
+            "writes": [
+                "s|fk|comms.poll_vote.poll_vote_tg_user_id_telegram_account_tg_user_id_fkey",
+                "n|fk|comms.poll_vote.poll_vote_tg_user_id_telegram_account_tg_user_id_fkey",
+                "e|fk|comms.poll_vote.poll_vote_tg_user_id_telegram_account_tg_user_id_fkey",
+                "n|con|comms.poll_vote.poll_vote_tg_user_id_telegram_account_tg_user_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|comms.poll_vote",
+                "n|sch|comms",
+                "n|tbl|identity.telegram_account",
+                "n|sch|identity",
+                "n|col|comms.poll_vote.tg_user_id",
+                "n|col|identity.telegram_account.tg_user_id",
+                "e|uniqueness|identity.telegram_account.tg_user_id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "comms", "poll_vote"],
+            "writes": [
+                "s|fk|comms.poll_vote.poll_vote_session_id_session_id_fkey",
+                "n|fk|comms.poll_vote.poll_vote_session_id_session_id_fkey",
+                "e|fk|comms.poll_vote.poll_vote_session_id_session_id_fkey",
+                "n|con|comms.poll_vote.poll_vote_session_id_session_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|comms.poll_vote",
+                "n|sch|comms",
+                "n|tbl|scheduling.session",
+                "n|sch|scheduling",
+                "n|col|comms.poll_vote.session_id",
+                "n|col|scheduling.session.id",
+                "e|uniqueness|scheduling.session.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play", "lineup_entry"],
+            "writes": [
+                "s|fk|play.lineup_entry.lineup_entry_session_id_session_id_fkey",
+                "n|fk|play.lineup_entry.lineup_entry_session_id_session_id_fkey",
+                "e|fk|play.lineup_entry.lineup_entry_session_id_session_id_fkey",
+                "n|con|play.lineup_entry.lineup_entry_session_id_session_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play.lineup_entry",
+                "n|sch|play",
+                "n|tbl|scheduling.session",
+                "n|sch|scheduling",
+                "n|col|play.lineup_entry.session_id",
+                "n|col|scheduling.session.id",
+                "e|uniqueness|scheduling.session.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play", "lineup_entry"],
+            "writes": [
+                "s|fk|play.lineup_entry.lineup_entry_alias_id_person_alias_id_fkey",
+                "n|fk|play.lineup_entry.lineup_entry_alias_id_person_alias_id_fkey",
+                "e|fk|play.lineup_entry.lineup_entry_alias_id_person_alias_id_fkey",
+                "n|con|play.lineup_entry.lineup_entry_alias_id_person_alias_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play.lineup_entry",
+                "n|sch|play",
+                "n|tbl|identity.person_alias",
+                "n|sch|identity",
+                "n|col|play.lineup_entry.alias_id",
+                "n|col|identity.person_alias.id",
+                "e|uniqueness|identity.person_alias.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play", "lineup_entry"],
+            "writes": [
+                "s|fk|play.lineup_entry.lineup_entry_tg_user_id_telegram_account_tg_user_id_fkey",
+                "n|fk|play.lineup_entry.lineup_entry_tg_user_id_telegram_account_tg_user_id_fkey",
+                "e|fk|play.lineup_entry.lineup_entry_tg_user_id_telegram_account_tg_user_id_fkey",
+                "n|con|play.lineup_entry.lineup_entry_tg_user_id_telegram_account_tg_user_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play.lineup_entry",
+                "n|sch|play",
+                "n|tbl|identity.telegram_account",
+                "n|sch|identity",
+                "n|col|play.lineup_entry.tg_user_id",
+                "n|col|identity.telegram_account.tg_user_id",
+                "e|uniqueness|identity.telegram_account.tg_user_id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play", "lineup_entry"],
+            "writes": [
+                "s|fk|play.lineup_entry.lineup_entry_person_id_person_id_fkey",
+                "n|fk|play.lineup_entry.lineup_entry_person_id_person_id_fkey",
+                "e|fk|play.lineup_entry.lineup_entry_person_id_person_id_fkey",
+                "n|con|play.lineup_entry.lineup_entry_person_id_person_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play.lineup_entry",
+                "n|sch|play",
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|col|play.lineup_entry.person_id",
+                "n|col|identity.person.id",
+                "e|uniqueness|identity.person.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play", "lineup_entry"],
+            "writes": [
+                "s|fk|play.lineup_entry.lineup_entry_guest_of_person_id_person_id_fkey",
+                "n|fk|play.lineup_entry.lineup_entry_guest_of_person_id_person_id_fkey",
+                "e|fk|play.lineup_entry.lineup_entry_guest_of_person_id_person_id_fkey",
+                "n|con|play.lineup_entry.lineup_entry_guest_of_person_id_person_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play.lineup_entry",
+                "n|sch|play",
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|col|play.lineup_entry.guest_of_person_id",
+                "n|col|identity.person.id",
+                "e|uniqueness|identity.person.id"
+            ]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "name": "poll_vote",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "name": "lineup_entry",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "name": "entry_resolution",
+                "values": ["account", "handle", "alias", "vote", "manual", "guest"],
+                "entityType": "enums"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_vote",
+                "name": "poll_id",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_vote",
+                "name": "tg_user_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_vote",
+                "name": "session_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_vote",
+                "name": "choice",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_vote",
+                "name": "voted_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "session_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "message_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "team_ordinal",
+                "type": "smallint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "position",
+                "type": "smallint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "raw",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "alias_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "tg_user_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "person_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "guest_of_person_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "resolved_by",
+                "type": "entry_resolution",
+                "typeSchema": "play",
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "is_gk",
+                "type": "boolean",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "false",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "is_newcomer",
+                "type": "boolean",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "false",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "telegram_account",
+                "name": "telegram_account_person_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "person_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "telegram_account",
+                "name": "telegram_account_username_uq",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "lower(\"username\")",
+                        "isExpression": true,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": true,
+                "where": "\"username\" is not null",
+                "with": "",
+                "method": "btree",
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_vote",
+                "name": "poll_vote_session_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "session_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "lineup_entry_position_uq",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "session_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    },
+                    {
+                        "value": "team_ordinal",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    },
+                    {
+                        "value": "position",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": true,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "lineup_entry_alias_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "alias_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "lineup_entry_person_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "person_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_vote",
+                "name": "poll_vote_tg_user_id_telegram_account_tg_user_id_fkey",
+                "nameExplicit": false,
+                "columns": ["tg_user_id"],
+                "schemaTo": "identity",
+                "tableTo": "telegram_account",
+                "columnsTo": ["tg_user_id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_vote",
+                "name": "poll_vote_session_id_session_id_fkey",
+                "nameExplicit": false,
+                "columns": ["session_id"],
+                "schemaTo": "scheduling",
+                "tableTo": "session",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "SET NULL",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "lineup_entry_session_id_session_id_fkey",
+                "nameExplicit": false,
+                "columns": ["session_id"],
+                "schemaTo": "scheduling",
+                "tableTo": "session",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "lineup_entry_alias_id_person_alias_id_fkey",
+                "nameExplicit": false,
+                "columns": ["alias_id"],
+                "schemaTo": "identity",
+                "tableTo": "person_alias",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "SET NULL",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "lineup_entry_tg_user_id_telegram_account_tg_user_id_fkey",
+                "nameExplicit": false,
+                "columns": ["tg_user_id"],
+                "schemaTo": "identity",
+                "tableTo": "telegram_account",
+                "columnsTo": ["tg_user_id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "SET NULL",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "lineup_entry_person_id_person_id_fkey",
+                "nameExplicit": false,
+                "columns": ["person_id"],
+                "schemaTo": "identity",
+                "tableTo": "person",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "RESTRICT",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "lineup_entry_guest_of_person_id_person_id_fkey",
+                "nameExplicit": false,
+                "columns": ["guest_of_person_id"],
+                "schemaTo": "identity",
+                "tableTo": "person",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "RESTRICT",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_vote",
+                "name": "poll_vote_pkey",
+                "columns": ["poll_id", "tg_user_id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "lineup_entry_pkey",
+                "columns": ["id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "lineup_entry_player_ck",
+                "value": "num_nonnulls(\"person_id\", \"guest_of_person_id\") = 1",
+                "entityType": "checks"
+            }
+        },
+        {
+            "op": "drop",
+            "key": "indexes\u0000[\"identity\",\"telegram_account_person_uq\"]"
+        }
+    ]
+}

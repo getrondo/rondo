@@ -1,5 +1,5 @@
 import { isDefined } from '@rnw-community/shared';
-import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
+import { person } from '@rondo/db/schema/identity.schema';
 import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -11,6 +11,7 @@ import * as Exit from 'effect/Exit';
 import * as Option from 'effect/Option';
 
 import { formatSessionLabel, text } from '../i18n/messages';
+import { primaryAccount } from '../identity/primary-account';
 import { syncMember, type TelegramUser } from '../identity/telegram-user';
 
 import type { Locale } from '../i18n/locale';
@@ -108,11 +109,12 @@ const promoteWaitlisted = Effect.fn('Core.promoteWaitlisted')(function* (session
         return [];
     }
 
+    const account = primaryAccount(db);
     const waiting = yield* db
-        .select({ id: signup.id, personId: signup.personId, displayName: person.displayName, tgUserId: telegramAccount.tgUserId })
+        .select({ id: signup.id, personId: signup.personId, displayName: person.displayName, tgUserId: account.tgUserId })
         .from(signup)
         .innerJoin(person, eq(person.id, signup.personId))
-        .leftJoin(telegramAccount, eq(telegramAccount.personId, signup.personId))
+        .leftJoin(account, eq(account.personId, signup.personId))
         .where(and(eq(signup.sessionId, sessionId), eq(signup.status, 'waitlisted')))
         .orderBy(asc(signup.updatedAt))
         .limit(freeSeats);
