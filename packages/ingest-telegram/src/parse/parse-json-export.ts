@@ -17,7 +17,7 @@ const ExportMessageSchema = Schema.Struct({
     from_id: Schema.optional(Schema.NullOr(Schema.String)),
     forwarded_from: Schema.optional(Schema.NullOr(Schema.String)),
     reply_to_message_id: Schema.optional(Schema.Int),
-    text: TextSchema,
+    text: Schema.optional(TextSchema),
     poll: Schema.optional(
         Schema.Struct({ question: TextSchema, answers: Schema.Array(Schema.Struct({ text: TextSchema, voters: Schema.Int })) })
     ),
@@ -59,8 +59,8 @@ const toMessage = (raw: typeof ExportMessageSchema.Type): TelegramMessage => {
         id: raw.id,
         kind: raw.type,
         sentAt: DateTime.toDate(DateTime.makeUnsafe(Number(raw.date_unixtime) * 1000)),
-        text: plainText(raw.text),
-        mentions: mentionsOf(raw.text),
+        text: plainText(raw.text ?? ''),
+        mentions: mentionsOf(raw.text ?? ''),
         media: [],
         ...(isNotEmptyString(raw.from) ? { author: raw.from } : {}),
         ...(isDefined(authorId) ? { authorId } : {}),

@@ -29,14 +29,15 @@ const json = JSON.stringify({
             text: '',
             poll: { question: ['Игра ', { type: 'bold', text: 'завтра' }], answers: [{ text: '+', voters: 12, chosen: false }] }
         },
-        { id: 4, type: 'service', date_unixtime: '1685644000', actor: 'New', actor_id: 'user5', action: 'join_group_by_link', text: '' }
+        { id: 4, type: 'service', date_unixtime: '1685644000', actor: 'New', actor_id: 'user5', action: 'join_group_by_link', text: '' },
+        { id: 5, type: 'message', date_unixtime: '1685644100', from: 'Org', from_id: 'user42', rich_message: { blocks: [] } }
     ]
 });
 
 describe('Telegram JSON export parsing', () => {
     it.effect('keeps author ids, mentions with positions, polls and service messages', () =>
         Effect.gen(function* () {
-            const [first, second, poll, service] = yield* parseJsonExport(json);
+            const [first, second, poll, service, rich] = yield* parseJsonExport(json);
 
             expect(first).toMatchObject({ author: 'Org', authorId: 42, text: 'Привет' });
             expect(first?.sentAt?.toISOString()).toBe('2023-06-01T18:23:12.000Z');
@@ -49,6 +50,7 @@ describe('Telegram JSON export parsing', () => {
                 ]
             });
             expect(poll).toMatchObject({ forwardedFrom: 'Org', poll: { question: 'Игра завтра', answers: ['+'], voters: [12] } });
+            expect(rich?.text).toBe('');
             expect(service?.kind).toBe('service');
         })
     );
