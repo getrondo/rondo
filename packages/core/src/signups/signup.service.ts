@@ -1,51 +1,22 @@
 import { isDefined } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
-import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
-import { and, asc, count, eq, ne } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, ne } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
-import * as Exit from 'effect/Exit';
 import * as Option from 'effect/Option';
 
-import { formatSessionLabel, text } from '../i18n/messages';
 import { primaryAccount } from '../identity/primary-account';
 import { syncMember, type TelegramUser } from '../identity/telegram-user';
 
-import type { Locale } from '../i18n/locale';
-import type { SessionView } from '../sessions/session.model';
+import type { SessionStatus } from '../sessions/session.model';
 
 type PollChoice = 'in' | 'gk' | 'out';
 
 const pollChoices: readonly PollChoice[] = ['in', 'gk', 'out'];
-
-const pollQuestion = (locale: Locale, target: SessionView): string => {
-    const label = formatSessionLabel(locale, target);
-    const capacity = isDefined(target.capacityMax) ? ` — ${target.capacityMax} ${text(locale, 'places')}` : '';
-
-    return `⚽ ${label}${capacity}`;
-};
-
-export const announceSession = Effect.fn('Core.announceSession')(function* (target: SessionView, chatId: bigint, locale: Locale) {
-    const db = yield* Db;
-    const telegram = yield* Telegram;
-    const options = [text(locale, 'pollIn'), text(locale, 'pollGk'), text(locale, 'pollOut')].map(option => ({ text: option }));
-    const sent = yield* telegram.call('sendPoll', api =>
-        api.sendPoll(Number(chatId), pollQuestion(locale, target), options, { is_anonymous: false, allows_multiple_answers: false })
-    );
-
-    yield* db
-        .insert(telegramPoll)
-        .values({ pollId: sent.poll.id, chatId, messageId: sent.message_id, sessionId: target.id, options: pollChoices });
-    yield* db
-        .insert(messageRef)
-        .values({ chatId, messageId: sent.message_id, purpose: 'poll', entityType: 'session', entityId: target.id })
-        .onConflictDoNothing();
-
-    return sent.message_id;
-});
 
 export interface PromotedPlayer {
     readonly personId: string;
@@ -146,9 +117,9 @@ const refreshFullness = Effect.fn('Core.refreshFullness')(function* (sessionId: 
     }
 });
 
-const closedStatuses = new Set<string>(['played', 'cancelled', 'moved']);
+const closedStatuses: SessionStatus[] = ['played', 'cancelled', 'moved'];
 
-const lockSession = Effect.fn('Core.lockSession')(function* (sessionId: string) {
+export const lockSession = Effect.fn('Core.lockSession')(function* (sessionId: string) {
     const db = yield* Db;
     const [row] = yield* db
         .select({ status: session.status, capacityMax: session.capacityMax })
@@ -156,10 +127,11 @@ const lockSession = Effect.fn('Core.lockSession')(function* (sessionId: string) 
         .where(eq(session.id, sessionId))
         .for('update');
 
-    return Option.fromNullishOr(row).pipe(Option.filter(({ status }) => !closedStatuses.has(status)));
+    return Option.fromNullishOr(row).pipe(Option.filter(({ status }) => !closedStatuses.includes(status)));
 });
 
-const setSignup = Effect.fn('Core.setSignup')(function* (sessionId: string, personId: string, choice: PollChoice) {
+const setSignup = Effect.fn('Core.setSignup')(function* (sessionId: string, personId: string, choice: PollChoice, asksGoalkeeper: boolean) {
+    const db = yield* Db;
     const locked = yield* lockSession(sessionId);
 
     if (Option.isNone(locked)) {
@@ -167,7 +139,12 @@ const setSignup = Effect.fn('Core.setSignup')(function* (sessionId: string, pers
     }
 
     const { capacityMax } = locked.value;
-    const role = choice === 'gk' ? 'gk' : 'field';
+    const [previous] = yield* db
+        .select({ role: signup.role })
+        .from(signup)
+        .where(and(eq(signup.sessionId, sessionId), eq(signup.personId, personId)));
+    const keptRole = previous?.role === 'gk' && !(asksGoalkeeper && choice === 'in') ? 'gk' : 'field';
+    const role = choice === 'gk' ? 'gk' : keptRole;
     const othersIn = yield* fieldPlayersIn(sessionId, personId);
     const hasSeat = role === 'gk' || !isDefined(capacityMax) || othersIn < capacityMax;
     const seatedStatus = hasSeat ? 'in' : 'waitlisted';
@@ -201,7 +178,7 @@ export const applyPollAnswer = Effect.fn('Core.applyPollAnswer')(function* (inpu
     const chosen = poll.options[input.optionIds[0] ?? -1];
     const choice = pollChoices.find(candidate => candidate === chosen) ?? 'out';
 
-    return yield* db.transaction(() => setSignup(poll.sessionId, personId, choice));
+    return yield* db.transaction(() => setSignup(poll.sessionId, personId, choice, poll.options.includes('gk')));
 });
 
 export const rosterOf = Effect.fn('Core.rosterOf')(function* (sessionId: string) {
@@ -215,20 +192,40 @@ export const rosterOf = Effect.fn('Core.rosterOf')(function* (sessionId: string)
         .orderBy(asc(signup.createdAt));
 });
 
+const settledPoll = /poll has already been closed|to stop not found/iu;
+
 export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId: string) {
     const db = yield* Db;
     const telegram = yield* Telegram;
     const open = yield* db
         .select()
         .from(telegramPoll)
-        .where(and(eq(telegramPoll.sessionId, sessionId)));
+        .where(and(eq(telegramPoll.sessionId, sessionId), isNull(telegramPoll.closedAt)));
 
-    for (const poll of open.filter(entry => !isDefined(entry.closedAt))) {
-        const stopped = yield* Effect.exit(telegram.call('stopPoll', api => api.stopPoll(Number(poll.chatId), poll.messageId)));
+    for (const poll of open) {
+        const isSettled = yield* telegram
+            .call('stopPoll', api => api.stopPoll(Number(poll.chatId), poll.messageId))
+            .pipe(
+                Effect.as(true),
+                Effect.catch(error => Effect.logWarning('[poll] not closed', error).pipe(Effect.as(settledPoll.test(error.description))))
+            );
 
-        if (Exit.isSuccess(stopped)) {
+        if (isSettled) {
             const closedAt = yield* DateTime.nowAsDate;
             yield* db.update(telegramPoll).set({ closedAt }).where(eq(telegramPoll.pollId, poll.pollId));
         }
+    }
+});
+
+export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function* () {
+    const db = yield* Db;
+    const games = yield* db
+        .selectDistinct({ sessionId: telegramPoll.sessionId })
+        .from(telegramPoll)
+        .innerJoin(session, eq(session.id, telegramPoll.sessionId))
+        .where(and(isNull(telegramPoll.closedAt), inArray(session.status, closedStatuses)));
+
+    for (const { sessionId } of games) {
+        yield* closePollsOf(sessionId);
     }
 });

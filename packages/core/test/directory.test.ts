@@ -75,7 +75,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('players and venues learned 
                     senderPersonId: actorPersonId,
                     senderTgUserId: 502n,
                     senderName: 'Org',
-                    senderIsAdmin: true,
+                    isTrusted: true,
                     poll: { question, answers: ['+', '-'] }
                 });
             yield* poll(1, 'Понедельник, 4 мая, 19.00 Donau Platz. 18 чел');

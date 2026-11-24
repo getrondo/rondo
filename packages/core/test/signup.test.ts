@@ -6,8 +6,9 @@ import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
-import { createSession, getSession } from '../src/sessions/session.service';
-import { announceSession, applyPollAnswer } from '../src/signups/signup.service';
+import { createSession } from '../src/sessions/session.service';
+import { publishPoll } from '../src/signups/publish-poll';
+import { applyPollAnswer } from '../src/signups/signup.service';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -28,8 +29,14 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
                 title: null,
                 actorPersonId: null
             });
-            const target = Option.getOrThrow(yield* getSession(sessionId));
-            yield* announceSession(target, -100_123n, 'uk');
+            yield* publishPoll({
+                communityId,
+                group: { chatId: -100_123n, topicId: null },
+                note: null,
+                approvedSummary: null,
+                prepare: Effect.succeed(sessionId),
+                settle: () => Effect.void
+            });
             const [poll] = yield* db
                 .select({ pollId: telegramPoll.pollId })
                 .from(telegramPoll)
@@ -39,10 +46,15 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
 
             const first = yield* answer(1, 0);
             yield* answer(2, 0);
-            const keeper = yield* answer(4, 1);
+            yield* db
+                .insert(telegramPoll)
+                .values({ pollId: 'older', chatId: -100_123n, messageId: 1, sessionId, options: ['in', 'gk', 'out'] });
+            const keeper = yield* applyPollAnswer({ pollId: 'older', user: user(4), optionIds: [1] });
+            const kept = yield* answer(4, 0);
+            const refused = yield* applyPollAnswer({ pollId: 'older', user: user(5), optionIds: [2] });
             const third = yield* answer(3, 0);
             const [full] = yield* db.select({ status: session.status }).from(session).where(eq(session.id, sessionId));
-            const leaving = yield* answer(1, 2);
+            const leaving = yield* answer(1, 1);
             const statuses = yield* db
                 .select({ status: signup.status, role: signup.role })
                 .from(signup)
@@ -54,6 +66,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
             });
             expect(first.pipe(Option.map(value => value.status))).toEqual(Option.some('in'));
             expect(keeper.pipe(Option.map(value => value.status))).toEqual(Option.some('in'));
+            expect(kept.pipe(Option.map(value => value.status))).toEqual(Option.some('in'));
+            expect(statuses.filter(row => row.role === 'gk')).toHaveLength(1);
+            expect(refused.pipe(Option.map(value => value.status))).toEqual(Option.some('out'));
             expect(third.pipe(Option.map(value => value.status))).toEqual(Option.some('waitlisted'));
             expect(full?.status).toBe('full');
             expect(leaving.pipe(Option.map(value => value.promoted.map(player => player.displayName)))).toEqual(Option.some(['Player3']));

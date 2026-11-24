@@ -2,6 +2,7 @@ import * as Schema from 'effect/Schema';
 
 const LocalDate = Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/u));
 const LocalTime = Schema.String.check(Schema.isPattern(/^\d{2}:\d{2}$/u));
+const FieldCount = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 9 }));
 const CancelReason = Schema.Literals(['weather', 'low_turnout', 'venue', 'holiday', 'organizer', 'other']);
 
 const TeamPlayer = Schema.Struct({ personId: Schema.String, displayName: Schema.String, strength: Schema.Finite, isGk: Schema.Boolean });
@@ -12,7 +13,9 @@ const CreateSessionAction = Schema.TaggedStruct('create_session', {
     localTime: LocalTime,
     venueId: Schema.NullOr(Schema.String),
     capacityMax: Schema.NullOr(Schema.Int),
+    fieldsPlanned: Schema.optional(Schema.NullOr(FieldCount)),
     title: Schema.NullOr(Schema.String),
+    note: Schema.optional(Schema.NullOr(Schema.String)),
     announce: Schema.Boolean
 });
 
@@ -22,6 +25,7 @@ const UpdateSessionAction = Schema.TaggedStruct('update_session', {
     localTime: Schema.optional(LocalTime),
     venueId: Schema.optional(Schema.NullOr(Schema.String)),
     capacityMax: Schema.optional(Schema.NullOr(Schema.Int)),
+    fieldsPlanned: Schema.optional(Schema.NullOr(FieldCount)),
     notify: Schema.Boolean
 });
 
@@ -31,7 +35,10 @@ const CancelSessionAction = Schema.TaggedStruct('cancel_session', {
     notify: Schema.Boolean
 });
 
-const AnnounceSessionAction = Schema.TaggedStruct('announce_session', { sessionId: Schema.String });
+const AnnounceSessionAction = Schema.TaggedStruct('announce_session', {
+    sessionId: Schema.String,
+    note: Schema.optional(Schema.NullOr(Schema.String))
+});
 
 const PublishTeamsAction = Schema.TaggedStruct('publish_teams', { sessionId: Schema.String, teams: Schema.Array(Team) });
 
@@ -53,6 +60,8 @@ const SetRatingAction = Schema.TaggedStruct('set_rating', {
 const CreatePersonAction = Schema.TaggedStruct('create_person', { displayName: Schema.NonEmptyString });
 
 const venueDetails = {
+    shortName: Schema.optional(Schema.NonEmptyString),
+    station: Schema.optional(Schema.NonEmptyString),
     address: Schema.optional(Schema.String),
     district: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 23 }))),
     indoor: Schema.optional(Schema.Boolean)

@@ -3,6 +3,7 @@ import { handleUpdate } from '@rondo/bot/handle-update';
 import { verifyWebhookSecret, webhookSecretHeader } from '@rondo/telegram/webhook/verify-webhook-secret';
 import * as Config from 'effect/Config';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 import { after } from 'next/server';
 
 import type { Update } from 'grammy/types';
@@ -14,13 +15,19 @@ const accept = (request: Request) =>
         const secret = yield* Config.Redacted('TELEGRAM_WEBHOOK_SECRET');
         yield* verifyWebhookSecret(request.headers.get(webhookSecretHeader), secret);
         const update = yield* Effect.tryPromise(async () => (await request.json()) as Update);
-        // The assistant is slow, so admin chats run after the reply. Everything else runs first: a failure answers 500 and Telegram retries in order.
+        // The model is slow, so admin chats and venue proposals run after the reply. Everything else runs first: a failure answers 500 and Telegram retries in order.
         if (update.message?.chat.type === 'private') {
             after(async () => {
                 await serverRuntime.runPromise(handleUpdate(update));
             });
         } else {
-            yield* handleUpdate(update);
+            const followUp = yield* handleUpdate(update);
+
+            if (Option.isSome(followUp)) {
+                after(async () => {
+                    await serverRuntime.runPromise(followUp.value);
+                });
+            }
         }
 
         return new Response(null, { status: 200 });

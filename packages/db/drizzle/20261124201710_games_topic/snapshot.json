@@ -1,0 +1,33 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "862b030f-89e8-4fcd-a16c-5f6288867691",
+    "prevIds": ["d846c484-d7cf-489f-9067-1da29e78adf9"],
+    "footprints": [
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "org", "telegram_chat", "topic_id"],
+            "writes": ["s|col|org.telegram_chat.topic_id", "n|col|org.telegram_chat.topic_id", "e|col|org.telegram_chat.topic_id"],
+            "reads": ["n|tbl|org.telegram_chat", "n|sch|org"]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "org",
+                "table": "telegram_chat",
+                "name": "topic_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        }
+    ]
+}

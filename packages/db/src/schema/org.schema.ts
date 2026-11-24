@@ -59,6 +59,7 @@ export const telegramChat = org.table(
         kind: chatKindEnum('kind').notNull(),
         purpose: chatPurposeEnum('purpose').notNull().default('main'),
         title: text('title').notNull(),
+        topicId: bigint('topic_id', { mode: 'number' }),
         botRights: jsonb('bot_rights').notNull().default({}),
         createdAt: createdAt()
     },

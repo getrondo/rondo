@@ -21,7 +21,7 @@ const contextFor = (chatId: bigint | null) => (communityId: string) =>
     Effect.succeed({
         communityId,
         timezone: 'Europe/Vienna',
-        mainChatId: Option.fromNullishOr(chatId),
+        group: Option.fromNullishOr(chatId).pipe(Option.map(id => ({ chatId: id, topicId: null }))),
         groupLocale: 'uk' as const,
         actorPersonId: null
     });
@@ -37,10 +37,11 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
                 localTime: '10:00',
                 venueId: venueIdByName.get('Park Field') ?? null,
                 capacityMax: 16,
+                fieldsPlanned: 2,
                 title: null,
                 announce: true
             };
-            const summary = yield* describeAction(action, 'uk');
+            const summary = yield* describeAction(action, 'uk', communityId);
             const actionId = yield* proposeAction({ communityId, tgUserId: admin, action, summary });
             const before = yield* db.select().from(session).where(eq(session.communityId, communityId));
             const stranger = yield* decideAction({ actionId, tgUserId: 7n, confirm: true, context: contextFor(-100n) });
@@ -48,12 +49,18 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
             const again = yield* decideAction({ actionId, tgUserId: admin, confirm: true, context: contextFor(-100n) });
             const after = yield* db.select().from(session).where(eq(session.communityId, communityId));
 
-            expect(summary).toBe('➕ Нова гра: Сб 05.12 10:00 · Park Field, 16 місць і опублікувати опитування в групі');
+            const sent = recorder.calls.find(call => call.method === 'sendPoll')?.payload;
+
+            expect(summary).toBe(
+                `➕ Нова гра: Сб 05.12 10:00 · Park Field, 2 поля, 16 місць і опублікувати опитування в групі:\n\n${String(sent?.question)}\n\n▫️ ✅ Граю\n▫️ ❌ Не граю`
+            );
+            expect(recorder.calls.at(-1)).toMatchObject({ method: 'pinChatMessage', payload: { chat_id: -100 } });
+            expect(sent).toMatchObject({ options: [{ text: '✅ Граю' }, { text: '❌ Не граю' }] });
             expect(before).toHaveLength(0);
             expect(stranger._tag).toBe('missing');
             expect(confirmed._tag).toBe('done');
             expect(again._tag).toBe('missing');
-            expect(after).toHaveLength(1);
+            expect(after).toMatchObject([{ fieldsPlanned: 2 }]);
             expect(recorder.calls.filter(call => call.method === 'sendPoll')).toHaveLength(1);
         })
     );
@@ -93,12 +100,13 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
                 context: contextFor(null),
                 now: new Date('2026-06-01T00:00:00Z')
             });
+            const lateTap = yield* decideAction({ actionId: stale, tgUserId: admin, confirm: true, context: contextFor(null) });
             const declined = yield* decideAction({ actionId: rejected, tgUserId: admin, confirm: false, context: contextFor(null) });
 
             expect(notCreated).toMatchObject({ _tag: 'failed', reason: 'no group is linked to this community yet' });
             expect(sessions).toEqual([]);
             expect(failed).toMatchObject({ _tag: 'failed' });
-            expect(expired._tag).toBe('expired');
+            expect([expired._tag, lateTap._tag]).toEqual(['expired', 'expired']);
             expect(declined._tag).toBe('rejected');
         })
     );

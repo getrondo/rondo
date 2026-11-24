@@ -1,4 +1,4 @@
-import { findCommunityByChat } from '@rondo/core/community/community.repository';
+import { findLinkedChat } from '@rondo/core/community/community.repository';
 import { syncMember } from '@rondo/core/identity/telegram-user';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -26,10 +26,10 @@ export const syncGroupUsers = Effect.fn('Bot.syncGroupUsers')(function* (
 });
 
 export const handleChatMember = Effect.fn('Bot.handleChatMember')(function* (update: ChatMemberUpdated) {
-    const communityId = yield* findCommunityByChat(BigInt(update.chat.id));
+    const chat = yield* findLinkedChat(BigInt(update.chat.id));
     const member = update.new_chat_member;
 
-    if (Option.isSome(communityId) && !member.user.is_bot) {
-        yield* syncMember(communityId.value, toTelegramUser(member.user), presenceOf(member));
+    if (Option.isSome(chat) && !member.user.is_bot) {
+        yield* syncMember(chat.value.communityId, toTelegramUser(member.user), presenceOf(member));
     }
 });

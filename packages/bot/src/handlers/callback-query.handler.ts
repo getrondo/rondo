@@ -54,7 +54,8 @@ export const handleCallbackQuery = Effect.fn('Bot.handleCallbackQuery')(function
     });
     const { message } = query;
 
-    if (isDefined(message)) {
+    // A second tap leaves the message to the first one
+    if (isDefined(message) && outcome._tag !== 'missing') {
         yield* telegram
             .call('editMessageText', api => api.editMessageText(message.chat.id, message.message_id, outcomeText(locale, outcome)))
             .pipe(Effect.ignore);

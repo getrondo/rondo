@@ -27,6 +27,9 @@ const selection = {
     status: session.status,
     venueId: session.venueId,
     venueName: venue.name,
+    venueShortName: venue.shortName,
+    venueStation: venue.station,
+    fieldsPlanned: session.fieldsPlanned,
     capacityMax: session.capacityMax,
     gkSlots: session.gkSlots,
     title: session.title,
@@ -90,6 +93,7 @@ export interface CreateSessionInput {
     readonly localTime: string;
     readonly venueId: string | null;
     readonly capacityMax: number | null;
+    readonly fieldsPlanned?: number | null;
     readonly title: string | null;
     readonly actorPersonId: string | null;
 }
@@ -109,6 +113,7 @@ export const createSession = Effect.fn('Core.createSession')(function* (input: C
             endsAt: addMillis(startsAt, sessionMinutes * 60_000),
             status: 'open',
             capacityMax: input.capacityMax,
+            fieldsPlanned: input.fieldsPlanned,
             title: input.title,
             source: 'bot'
         })
@@ -144,7 +149,8 @@ export const updateSession = Effect.fn('Core.updateSession')(function* (
             startsAt,
             endsAt: addMillis(startsAt, sessionMinutes * 60_000),
             ...(Predicate.isNotUndefined(patch.venueId) ? { venueId: patch.venueId } : {}),
-            ...(Predicate.isNotUndefined(patch.capacityMax) ? { capacityMax: patch.capacityMax } : {})
+            ...(Predicate.isNotUndefined(patch.capacityMax) ? { capacityMax: patch.capacityMax } : {}),
+            ...(Predicate.isNotUndefined(patch.fieldsPlanned) ? { fieldsPlanned: patch.fieldsPlanned } : {})
         })
         .where(eq(session.id, before.id));
     yield* db.insert(sessionChange).values({ sessionId: before.id, actorPersonId, diff: { before, patch } });
@@ -196,7 +202,15 @@ export const listVenues = Effect.fn('Core.listVenues')(function* (communityId: s
     const db = yield* Db;
 
     return yield* db
-        .select({ id: venue.id, name: venue.name, kind: venue.kind, district: venue.district, indoor: venue.indoor })
+        .select({
+            id: venue.id,
+            name: venue.name,
+            shortName: venue.shortName,
+            station: venue.station,
+            kind: venue.kind,
+            district: venue.district,
+            indoor: venue.indoor
+        })
         .from(venue)
         .where(and(eq(venue.communityId, communityId), eq(venue.status, 'active')))
         .orderBy(asc(venue.name));

@@ -10,16 +10,19 @@ import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
+import * as Ref from 'effect/Ref';
 
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 import { formatSessionLabel, text } from '../i18n/messages';
 import { arePeopleOf } from '../people/people.service';
 import { footballActivity, requireSession } from '../sessions/session.service';
+import { topicOptions } from '../utils/topic-options.util';
 
 import { balanceTeams, type BalancedTeam, type BalancePlayer } from './balance-teams';
 
 import type { Locale } from '../i18n/locale';
+import type { GroupTarget } from '../interface/group-target.interface';
 import type { SessionView } from '../sessions/session.model';
 
 const defaultStrength = 5;
@@ -102,7 +105,7 @@ const lineupText = (locale: Locale, target: SessionView, teams: readonly Balance
 interface PublishInput {
     readonly target: SessionView;
     readonly teams: readonly BalancedTeam[];
-    readonly chatId: bigint;
+    readonly group: GroupTarget;
     readonly locale: Locale;
     readonly actorPersonId: string | null;
 }
@@ -151,35 +154,56 @@ const storeTeams = Effect.fn('Core.storeTeams')(function* ({ target, teams }: Pu
     return target.id;
 });
 
+// Stored and sent in one transaction, so a refused post keeps the teams that are in the group
 export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: PublishInput) {
     const db = yield* Db;
     const telegram = yield* Telegram;
     const { communityId } = input.target;
-    const colors = yield* withCommunityLock(
-        { id: communityId },
-        Effect.gen(function* () {
-            const stored = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId)).orderBy(asc(teamColor.name));
-            yield* storeTeams(
-                input,
-                stored.map(color => color.id)
-            );
-
-            return stored;
-        })
-    );
-    const emojis = colors.map(color => color.emoji ?? '');
-    const sent = yield* telegram.call('sendMessage', api =>
-        api.sendMessage(Number(input.chatId), lineupText(input.locale, input.target, input.teams, emojis), { parse_mode: 'HTML' })
-    );
-    yield* db
-        .insert(messageRef)
-        .values({ chatId: input.chatId, messageId: sent.message_id, purpose: 'lineup', entityType: 'session', entityId: input.target.id })
-        .onConflictDoNothing();
-    yield* recordAudit({
-        communityId,
-        actorPersonId: input.actorPersonId,
-        action: 'teams.publish',
-        entityType: 'session',
-        entityId: input.target.id
+    const isSent = yield* Ref.make(false);
+    const publish = Effect.gen(function* () {
+        const colors = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId)).orderBy(asc(teamColor.name));
+        yield* storeTeams(
+            input,
+            colors.map(color => color.id)
+        );
+        yield* recordAudit({
+            communityId,
+            actorPersonId: input.actorPersonId,
+            action: 'teams.publish',
+            entityType: 'session',
+            entityId: input.target.id
+        });
+        const emojis = colors.map(color => color.emoji ?? '');
+        const sent = yield* telegram.call('sendMessage', api =>
+            api.sendMessage(Number(input.group.chatId), lineupText(input.locale, input.target, input.teams, emojis), {
+                parse_mode: 'HTML',
+                ...topicOptions(input.group)
+            })
+        );
+        yield* Ref.set(isSent, true);
+        yield* db
+            .insert(messageRef)
+            .values({
+                chatId: input.group.chatId,
+                messageId: sent.message_id,
+                purpose: 'lineup',
+                entityType: 'session',
+                entityId: input.target.id
+            })
+            .onConflictDoNothing();
     });
+
+    yield* withCommunityLock({ id: communityId }, publish).pipe(
+        Effect.catchCause(cause =>
+            Effect.gen(function* () {
+                if (!(yield* Ref.get(isSent))) {
+                    return yield* Effect.failCause(cause);
+                }
+
+                yield* Effect.logError('[teams] sent but not saved', cause);
+
+                return yield* ActionFailedError.make({ reason: 'the teams were sent but may not be saved, check the group' });
+            })
+        )
+    );
 });

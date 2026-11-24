@@ -9,8 +9,10 @@ import * as Effect from 'effect/Effect';
 
 import { cancelReasonText, formatSessionLabel, text } from '../i18n/messages';
 import { primaryAccount } from '../identity/primary-account';
+import { topicOptions } from '../utils/topic-options.util';
 
 import type { Locale } from '../i18n/locale';
+import type { GroupTarget } from '../interface/group-target.interface';
 import type { SessionView } from '../sessions/session.model';
 import type { PromotedPlayer } from '../signups/signup.service';
 
@@ -27,16 +29,16 @@ const mentionsOf = Effect.fn('Core.mentionsOf')(function* (sessionId: string) {
     return rows.map(row => mentionHtml(row.tgUserId, row.name)).join(', ');
 });
 
-const post = Effect.fn('Core.post')(function* (chatId: bigint, html: string) {
+const post = Effect.fn('Core.post')(function* (group: GroupTarget, html: string) {
     const telegram = yield* Telegram;
 
-    yield* telegram.call('sendMessage', api => api.sendMessage(Number(chatId), html, { parse_mode: 'HTML' }));
+    yield* telegram.call('sendMessage', api => api.sendMessage(Number(group.chatId), html, { parse_mode: 'HTML', ...topicOptions(group) }));
 });
 
 export const notifySessionChanged = Effect.fn('Core.notifySessionChanged')(function* (input: {
     readonly before: SessionView;
     readonly after: SessionView;
-    readonly chatId: bigint;
+    readonly group: GroupTarget;
     readonly locale: Locale;
 }) {
     const mentions = yield* mentionsOf(input.after.id);
@@ -47,13 +49,13 @@ export const notifySessionChanged = Effect.fn('Core.notifySessionChanged')(funct
         ...(isEmptyString(mentions) ? [] : [mentions])
     ];
 
-    yield* post(input.chatId, lines.join('\n'));
+    yield* post(input.group, lines.join('\n'));
 });
 
 export const notifySessionCancelled = Effect.fn('Core.notifySessionCancelled')(function* (input: {
     readonly target: SessionView;
     readonly reason: string;
-    readonly chatId: bigint;
+    readonly group: GroupTarget;
     readonly locale: Locale;
 }) {
     const mentions = yield* mentionsOf(input.target.id);
@@ -63,13 +65,13 @@ export const notifySessionCancelled = Effect.fn('Core.notifySessionCancelled')(f
         ...(isEmptyString(mentions) ? [] : [mentions])
     ];
 
-    yield* post(input.chatId, lines.join('\n'));
+    yield* post(input.group, lines.join('\n'));
 });
 
 export const notifyPromoted = Effect.fn('Core.notifyPromoted')(function* (input: {
     readonly target: SessionView;
     readonly promoted: readonly PromotedPlayer[];
-    readonly chatId: bigint;
+    readonly group: GroupTarget;
     readonly locale: Locale;
 }) {
     if (!isNotEmptyArray(input.promoted)) {
@@ -81,7 +83,7 @@ export const notifyPromoted = Effect.fn('Core.notifyPromoted')(function* (input:
         .join(', ');
 
     yield* post(
-        input.chatId,
+        input.group,
         `🎉 ${names}, ${text(input.locale, 'promoted')} ${escapeHtml(formatSessionLabel(input.locale, input.target))}`
     );
 });

@@ -26,12 +26,15 @@ const cancelReasons: Readonly<Record<Locale, Readonly<Record<string, string>>>> 
     }
 };
 
+const countedNouns: Readonly<Record<Locale, Record<'field' | 'place', Readonly<Record<string, string>>>>> = {
+    uk: { field: { one: 'поле', few: 'поля', many: 'полів' }, place: { one: 'місце', few: 'місця', many: 'місць' } },
+    ru: { field: { one: 'поле', few: 'поля', many: 'полей' }, place: { one: 'место', few: 'места', many: 'мест' } }
+};
+
 const catalogue = {
     uk: {
         pollIn: '✅ Граю',
-        pollGk: '🧤 Граю на воротах',
         pollOut: '❌ Не граю',
-        places: 'місць',
         changed: '📢 Зміни',
         cancelled: '❌ Скасовано',
         reason: 'Причина',
@@ -53,9 +56,7 @@ const catalogue = {
     },
     ru: {
         pollIn: '✅ Играю',
-        pollGk: '🧤 Играю на воротах',
         pollOut: '❌ Не играю',
-        places: 'мест',
         changed: '📢 Изменения',
         cancelled: '❌ Отменено',
         reason: 'Причина',
@@ -82,6 +83,9 @@ export type MessageKey = keyof (typeof catalogue)['uk'];
 export const text = (locale: Locale, key: MessageKey): string => catalogue[locale][key];
 
 export const cancelReasonText = (locale: Locale, reason: string): string => cancelReasons[locale][reason] ?? reason;
+
+export const countOf = (locale: Locale, noun: 'field' | 'place', count: number): string =>
+    `${count} ${countedNouns[locale][noun][new Intl.PluralRules(locale).select(count)] ?? ''}`;
 
 export const formatSessionLabel = (
     locale: Locale,

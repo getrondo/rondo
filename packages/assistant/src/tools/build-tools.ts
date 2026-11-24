@@ -43,13 +43,19 @@ export type ToolRunner = <Value, Failure>(
 const Range = Schema.Struct({ from: IsoDate, to: IsoDate });
 const Limit = optionalNullable(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 50 })));
 const SessionRef = Schema.Struct({ sessionId: Schema.String.annotate({ description: 'session id from list_sessions' }) });
+const FieldCount = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 9 }));
+const PollNote = Schema.String.annotate({ description: 'extra last line of the poll, only in the words of the admin' });
 const CancelReason = Schema.Literals(['weather', 'low_turnout', 'venue', 'holiday', 'organizer', 'other']);
 
 const knownDetails = (details: {
+    readonly shortName?: string | null;
+    readonly station?: string | null;
     readonly address?: string | null;
     readonly district?: number | null;
     readonly indoor?: boolean | null;
 }) => ({
+    ...(isNotEmptyString(details.shortName) ? { shortName: details.shortName } : {}),
+    ...(isNotEmptyString(details.station) ? { station: details.station } : {}),
     ...(isNotEmptyString(details.address) ? { address: details.address } : {}),
     ...(isDefined(details.district) ? { district: details.district } : {}),
     ...(isDefined(details.indoor) ? { indoor: details.indoor } : {})
@@ -62,6 +68,8 @@ const withCoverage = <Value, Failure, Requirements>(
 ) => Effect.all({ result: query, coverage: attendanceCoverage(scope.communityId, range) });
 
 const venueFields = {
+    shortName: optionalNullable(Schema.String.annotate({ description: 'name shown in polls' })),
+    station: optionalNullable(Schema.String.annotate({ description: 'nearest station as shown in polls' })),
     address: optionalNullable(Schema.String),
     district: optionalNullable(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 23 }))),
     indoor: optionalNullable(Schema.Boolean)
@@ -70,7 +78,7 @@ const venueFields = {
 const propose = (scope: ToolScope, action: Action) =>
     Effect.gen(function* () {
         yield* requireActionScope(action, scope.communityId);
-        const summary = yield* describeAction(action, scope.locale);
+        const summary = yield* describeAction(action, scope.locale, scope.communityId);
         const actionId = yield* proposeAction({ communityId: scope.communityId, tgUserId: scope.tgUserId, action, summary });
         scope.proposals.push({ actionId, summary });
 
@@ -152,7 +160,9 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
                 localTime: LocalTime,
                 venueId: optionalNullable(Schema.String),
                 capacityMax: optionalNullable(Schema.Int),
+                fieldsPlanned: optionalNullable(FieldCount),
                 title: optionalNullable(Schema.String),
+                note: optionalNullable(PollNote),
                 announce: Schema.Boolean
             })
         ),
@@ -163,13 +173,14 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
                     ...input,
                     venueId: input.venueId ?? null,
                     capacityMax: input.capacityMax ?? null,
+                    fieldsPlanned: input.fieldsPlanned ?? null,
                     title: input.title ?? null
                 })
             )
     }),
     propose_update_session: tool({
         description:
-            'Propose rescheduling or moving a game (date, time, venue, capacity). notify=true posts the change in the group and mentions signed-up players.',
+            'Propose rescheduling or moving a game (date, time, venue, capacity, number of fields). notify=true posts the change in the group and mentions signed-up players.',
         inputSchema: toolSchema(
             Schema.Struct({
                 sessionId: Schema.String,
@@ -177,6 +188,7 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
                 localTime: optionalNullable(LocalTime),
                 venueId: optionalNullable(Schema.String),
                 capacityMax: optionalNullable(Schema.Int),
+                fieldsPlanned: optionalNullable(FieldCount),
                 notify: Schema.Boolean
             })
         ),
@@ -189,7 +201,8 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
                     ...(isDefined(input.localDate) ? { localDate: input.localDate } : {}),
                     ...(isDefined(input.localTime) ? { localTime: input.localTime } : {}),
                     ...(Predicate.isNotUndefined(input.venueId) ? { venueId: input.venueId } : {}),
-                    ...(Predicate.isNotUndefined(input.capacityMax) ? { capacityMax: input.capacityMax } : {})
+                    ...(Predicate.isNotUndefined(input.capacityMax) ? { capacityMax: input.capacityMax } : {}),
+                    ...(Predicate.isNotUndefined(input.fieldsPlanned) ? { fieldsPlanned: input.fieldsPlanned } : {})
                 })
             )
     }),
@@ -200,7 +213,7 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
     }),
     propose_announce_session: tool({
         description: 'Propose posting the sign-up poll for an existing game in the group.',
-        inputSchema: toolSchema(SessionRef),
+        inputSchema: toolSchema(Schema.Struct({ ...SessionRef.fields, note: optionalNullable(PollNote) })),
         execute: async input => await run(propose(scope, { _tag: 'announce_session', ...input }))
     }),
     propose_publish_teams: tool({
@@ -252,7 +265,7 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
     }),
     propose_update_venue: tool({
         description:
-            'Propose changing a venue: name, alias used in chat, address, Vienna district, indoor, or active=false to stop using it.',
+            'Propose changing a venue: name, short name and station shown in polls, alias used in chat, address, Vienna district, indoor, or active=false to stop using it.',
         inputSchema: toolSchema(
             Schema.Struct({
                 venueId: Schema.String,

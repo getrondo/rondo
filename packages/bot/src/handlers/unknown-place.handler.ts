@@ -31,4 +31,8 @@ export const proposeUnknownPlace = (
     communityId: string,
     admin: TelegramUser,
     place: { readonly sessionId: string; readonly text: string }
-) => propose(communityId, admin, place).pipe(Effect.tapCause(Effect.logWarning), Effect.ignore);
+) =>
+    propose(communityId, admin, place).pipe(
+        Effect.tapCause(cause => Effect.logError('[group] venue not proposed', cause)),
+        Effect.ignore
+    );

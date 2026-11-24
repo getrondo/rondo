@@ -31,6 +31,8 @@ export const venue = venueSchema.table(
         id: id(),
         communityId: requiredRef('community_id', () => community.id),
         name: text('name').notNull(),
+        shortName: text('short_name'),
+        station: text('station'),
         kind: venueKindEnum('kind').notNull().default('training'),
         address: text('address'),
         district: smallint('district'),
