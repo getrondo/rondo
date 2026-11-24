@@ -6,6 +6,8 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 
+import { resolveLocale, type Locale } from '../i18n/locale';
+
 import type { GroupTarget } from '../interface/group-target.interface';
 
 export interface CommunityProfile {
@@ -13,6 +15,7 @@ export interface CommunityProfile {
     readonly slug: string;
     readonly name: string;
     readonly timezone: string;
+    readonly locale: Locale;
     readonly config: Option.Option<CommunityConfig>;
 }
 
@@ -29,10 +32,14 @@ export const communityProfile = Effect.fn('Core.communityProfile')(function* (co
             slug: found.slug,
             name: found.name,
             timezone: found.timezone,
+            locale: resolveLocale(found.defaultLocale),
             config: decodeSettings(found.settings).pipe(Option.flatMap(settings => Option.fromNullishOr(settings.ingest)))
         }))
     );
 });
+
+export const groupLocaleOf = (communityId: string) =>
+    communityProfile(communityId).pipe(Effect.map(Option.match({ onNone: () => resolveLocale(null), onSome: ({ locale }) => locale })));
 
 export const findCommunityBySlug = Effect.fn('Core.findCommunityBySlug')(function* (slug: string) {
     const db = yield* Db;

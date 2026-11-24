@@ -1,6 +1,7 @@
 import { isDefined } from '@rnw-community/shared';
 import { adminCommunityIds, isAdminOf } from '@rondo/core/access/admin-access';
-import { bindChat, communityProfile, findLinkedChat, findCommunityBySlug } from '@rondo/core/community/community.repository';
+import { bindChat, communityProfile, findCommunityBySlug, findLinkedChat, groupLocaleOf } from '@rondo/core/community/community.repository';
+import { resolveLocale } from '@rondo/core/i18n/locale';
 import { text } from '@rondo/core/i18n/messages';
 import { displayNameOf, syncMember } from '@rondo/core/identity/telegram-user';
 import { ingestGroupMessage } from '@rondo/core/live/live-ingest';
@@ -35,7 +36,9 @@ const handleLink = Effect.fn('Bot.handleLink')(function* (message: Message, slug
     const communityId = yield* findCommunityBySlug(slug);
 
     if (!isDefined(sender) || Option.isNone(communityId) || !(yield* adminCommunityIds(BigInt(sender.id))).includes(communityId.value)) {
-        yield* reply(text('uk', 'unknownCommunity'));
+        const linked = yield* findLinkedChat(BigInt(message.chat.id));
+        const locale = Option.isSome(linked) ? yield* groupLocaleOf(linked.value.communityId) : resolveLocale(sender?.language_code);
+        yield* reply(text(locale, 'unknownCommunity'));
 
         return;
     }
@@ -51,7 +54,8 @@ const handleLink = Effect.fn('Bot.handleLink')(function* (message: Message, slug
         kind: message.chat.type,
         title: message.chat.title
     });
-    yield* reply(`${text('uk', 'linked')}: ${slug}`);
+    const locale = yield* groupLocaleOf(communityId.value);
+    yield* reply(`${text(locale, 'linked')}: ${slug}`);
 });
 
 export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* (message: Message) {

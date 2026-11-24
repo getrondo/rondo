@@ -6,7 +6,7 @@ import { proposeAction } from '@rondo/core/actions/pending-action.service';
 import { createSession } from '@rondo/core/sessions/session.service';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
 import { telegramAccount } from '@rondo/db/schema/identity.schema';
-import { membership, telegramChat } from '@rondo/db/schema/org.schema';
+import { community, membership, telegramChat } from '@rondo/db/schema/org.schema';
 import { processedUpdate, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
@@ -104,6 +104,27 @@ const organizerPoll = (question: string) => ({
 });
 const inTopic = (topicId: number) => ({ message_thread_id: topicId, is_topic_message: true });
 const replyThread = { message_thread_id: 55 };
+const pollIn = Effect.fn('test.pollIn')(function* (chatId: number) {
+    const db = yield* Db;
+    const [row] = yield* db
+        .select()
+        .from(telegramPoll)
+        .where(eq(telegramPoll.chatId, BigInt(chatId)));
+
+    return { pollId: row?.pollId ?? '', sessionId: row?.sessionId ?? '' };
+});
+const vote = (pollId: string, user: typeof owner, optionIds: number[]) =>
+    handleUpdate(nextUpdate({ poll_answer: { poll_id: pollId, user, option_ids: optionIds, option_persistent_ids: [] } }));
+const promoteIn = Effect.fn('test.promoteIn')(function* (chatId: number, communityId: string, venueId: string | null) {
+    const game = { localDate: '2026-12-04', localTime: '19:30', venueId, capacityMax: 1, title: null, announce: true };
+    yield* confirmAction(communityId, { _tag: 'create_session', ...game });
+    const { pollId, sessionId } = yield* pollIn(chatId);
+    yield* vote(pollId, owner, [0]);
+    yield* vote(pollId, player, [0]);
+    yield* vote(pollId, owner, []);
+
+    return sessionId;
+});
 const chatRow = Effect.fn('test.chatRow')(function* (chatId: number) {
     const db = yield* Db;
     const [row] = yield* db
@@ -352,21 +373,7 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
             const members = yield* db.select().from(membership).where(eq(membership.communityId, communityId));
             const venues = yield* db.select().from(venue).where(eq(venue.communityId, communityId));
 
-            const venueId = venueIdByName.get('Park Field') ?? null;
-            const game = { localDate: '2026-12-04', localTime: '19:30', venueId, capacityMax: 1, title: null, announce: true };
-            yield* confirmAction(communityId, { _tag: 'create_session', ...game });
-            const [poll] = yield* db
-                .select()
-                .from(telegramPoll)
-                .where(eq(telegramPoll.chatId, BigInt(chatId)));
-            const vote = (user: typeof owner, optionIds: number[]) =>
-                handleUpdate(
-                    nextUpdate({ poll_answer: { poll_id: poll?.pollId ?? '', user, option_ids: optionIds, option_persistent_ids: [] } })
-                );
-            yield* vote(owner, [0]);
-            yield* vote(player, [0]);
-            yield* vote(owner, []);
-            const sessionId = poll?.sessionId ?? '';
+            const sessionId = yield* promoteIn(chatId, communityId, venueIdByName.get('Park Field') ?? null);
             yield* confirmAction(communityId, { _tag: 'update_session', sessionId, localTime: '20:00', notify: true });
             yield* confirmAction(communityId, { _tag: 'publish_teams', sessionId, teams: [] });
             yield* confirmAction(communityId, { _tag: 'cancel_session', sessionId, reason: 'weather', notify: true });
@@ -401,6 +408,31 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
             expect(read.map(row => row.localDate)).toEqual(['2026-05-05', '2026-05-06']);
             expect(posts.map(call => call.method)).toContain('sendPoll');
             expect(posts.some(call => 'message_thread_id' in call.payload)).toBe(false);
+        })
+    );
+
+    it.effect('writes to the group in the community language and to a user in theirs', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const chatId = -100_903;
+            const { communityId } = yield* seedCommunity(seedConfig('language-fc'));
+            yield* db.update(community).set({ defaultLocale: 'ru' }).where(eq(community.id, communityId));
+            yield* handleUpdate(groupUpdate(owner, chatId, { text: '/link language-fc' }));
+            yield* handleUpdate(groupUpdate(owner, chatId, { text: '/link unknown-fc' }));
+            yield* handleUpdate(groupUpdate(owner, -100_904, { text: '/link unknown-fc' }));
+            const sessionId = yield* promoteIn(chatId, communityId, null);
+            yield* confirmAction(communityId, { _tag: 'cancel_session', sessionId, reason: 'weather', notify: true });
+            const texts = callsTo(chatId).map(call => String(call.payload.text ?? call.payload.question));
+            const [elsewhere] = callsTo(-100_904);
+
+            expect(texts[0]).toContain('Группа подключена');
+            expect(texts[1]).toContain('Сообщество не найдено');
+            expect(JSON.stringify(callsTo(chatId)[2]?.payload)).toContain('Играю');
+            expect(texts.some(entry => entry.includes('освободилось место'))).toBe(true);
+            expect(texts.at(-1)).toContain('Отменено: Пт 04.12 19:30');
+            expect(texts.at(-1)).toContain('погода');
+            expect(String(elsewhere?.payload.text)).toContain('Спільноту не знайдено');
+            expect(String(callsTo(owner.id).at(-1)?.payload.text)).toContain('Виконано');
         })
     );
 });
