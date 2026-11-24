@@ -1139,7 +1139,11 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
                 method: 'owner_list' as const,
                 status: 'approved' as const
             };
-            yield* db.insert(aliasLink).values({ ...row, personId: other, during: '(,)' });
+            const left = yield* accountPerson(ids.left);
+            yield* db.insert(aliasLink).values([
+                { ...row, personId: other, during: '(,)' },
+                { ...row, aliasId: first.alias('гонзо')?.id ?? '', personId: left, during: '(,)' }
+            ]);
             yield* applyApproved(first.communityId);
             const wide = yield* namedOn(first.communityId, '2025-05-02', [other]);
             yield* db.insert(aliasLink).values({ ...row, personId: striker, during: '[2025-05-02,2025-05-03)' });
@@ -1148,6 +1152,36 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
 
             expect(wide).toHaveLength(1);
             expect(listed).toEqual([{ raw: '@Striker', personId: striker, resolvedBy: 'handle' }]);
+        })
+    );
+
+    it.effect('gives the second slot of a nickname to its other approved player', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const mentioned = messages.map(item => (item.id === 12 ? { ...item, text: `${item.text}, @Striker` } : item));
+            const first = yield* load('two-slots-fc', mentioned);
+            const striker = yield* accountPerson(ids.striker);
+            const other = yield* accountPerson(ids.other);
+            const row = {
+                communityId: first.communityId,
+                aliasId: first.alias('зорро')?.id ?? '',
+                method: 'owner_list' as const,
+                status: 'approved' as const
+            };
+            yield* db.insert(aliasLink).values([
+                { ...row, personId: striker, during: '[2025-05-02,2025-05-03)' },
+                { ...row, personId: other, during: '(,)' }
+            ]);
+            yield* applyApproved(first.communityId);
+            const listed = yield* namedOn(first.communityId, '2025-05-02', [striker, other]);
+
+            expect(new Map(listed.map(({ raw, personId }) => [raw, personId]))).toEqual(
+                new Map([
+                    ['@Striker', striker],
+                    ['Зорро', other]
+                ])
+            );
+            expect(listed).toHaveLength(2);
         })
     );
 
@@ -1185,6 +1219,34 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
             ]);
             expect(loaded).toMatchObject({ stored: 2, overlapDates: ['2025-05-02'] });
             expect(again).toMatchObject({ stored: 0, overlapDates: ['2025-05-02'] });
+        })
+    );
+
+    it.effect('refuses to lose many stored votes without a flag', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'lost-votes-fc';
+            const first = yield* load(slug, messages);
+            const content = yield* snapshotOf(slug);
+            const run = (allowRemoval: boolean) =>
+                importMessages({
+                    config: { ...testConfig, slug },
+                    messages,
+                    fileSha256: 'sha',
+                    snapshot: Option.some({ ...content, votes: content.votes.filter(({ userId }) => userId === ids.striker) }),
+                    allowRemoval
+                });
+            const refused = yield* Effect.flip(run(false));
+            const votes = yield* db
+                .select()
+                .from(pollVote)
+                .innerJoin(session, eq(session.id, pollVote.sessionId))
+                .where(eq(session.communityId, first.communityId));
+            const allowed = yield* run(true);
+
+            expect(refused).toMatchObject({ _tag: 'TooManyRemovedGamesError' });
+            expect(votes.length).toBeGreaterThan(games);
+            expect(allowed.votes).toBe(games);
         })
     );
 

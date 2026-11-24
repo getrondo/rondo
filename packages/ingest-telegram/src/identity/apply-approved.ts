@@ -71,7 +71,7 @@ export const applyApproved = Effect.fn('IngestTelegram.applyApproved')(function*
             playing.add(player);
             pinned.set(row.id, row);
         } else if (isOnlySlot(row.id)) {
-            // A wider approval of another player must not take the slot
+            // A wider approval must not take the slot, votes still may
             blocked.add(row.id);
         }
     }

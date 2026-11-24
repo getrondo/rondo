@@ -8,7 +8,7 @@ import { TooManyRemovedGamesError } from '../error/too-many-removed-games.error'
 
 import type { LoadContext } from '../interface/load-context.interface';
 
-const maxRemovedShare = 0.05;
+export const maxRemovedShare = 0.05;
 
 const isManualIn = (sessionId: typeof session.id) => and(eq(lineupEntry.sessionId, sessionId), eq(lineupEntry.resolvedBy, 'manual'));
 

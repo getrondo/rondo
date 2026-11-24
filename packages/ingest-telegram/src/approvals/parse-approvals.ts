@@ -8,7 +8,7 @@ import type { CommunityConfig } from '../config/community-config';
 
 const RowSchema = Schema.Struct({
     raw: Schema.NonEmptyString,
-    tgUserId: Schema.BigIntFromString,
+    tgUserId: Schema.BigIntFromString.check(Schema.isGreaterThanBigInt(0n)),
     messageId: Schema.FiniteFromString,
     date: Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/u))
 });

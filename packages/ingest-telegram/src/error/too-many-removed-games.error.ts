@@ -8,6 +8,6 @@ export class TooManyRemovedGamesError extends Schema.TaggedError<TooManyRemovedG
     }
 ) {
     override get message(): string {
-        return `the import would remove too many games or squads: ${this.dates.join(', ')}`;
+        return `the import would remove too many games, squads or votes: ${this.dates.join(', ')}`;
     }
 }

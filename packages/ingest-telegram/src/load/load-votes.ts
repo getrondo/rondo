@@ -5,7 +5,10 @@ import { and, eq, inArray, ne } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { ForeignPollError } from '../error/foreign-poll.error';
+import { TooManyRemovedGamesError } from '../error/too-many-removed-games.error';
 import { insertMany } from '../utils/insert-many.util';
+
+import { maxRemovedShare } from './delete-stale-sessions';
 
 import type { PollPostFact } from '../extract/fact.model';
 import type { Directory } from '../interface/directory.interface';
@@ -26,7 +29,7 @@ const firstPosts = (posts: readonly PollPostFact[], pollIdByMessage: ReadonlyMap
 };
 
 export const insertVotes = Effect.fn('IngestTelegram.insertVotes')(function* (
-    { transaction, communityId, plan, snapshot }: LoadContext,
+    { transaction, communityId, plan, snapshot, allowRemoval }: LoadContext,
     directory: Directory,
     sessionIds: readonly string[]
 ) {
@@ -89,6 +92,12 @@ export const insertVotes = Effect.fn('IngestTelegram.insertVotes')(function* (
 
     if (isNotEmptyArray(foreign)) {
         return yield* ForeignPollError.make({ pollIds: foreign.map(({ pollId }) => pollId).toSorted() });
+    }
+
+    const stored = yield* transaction.$count(pollVote, inArray(pollVote.pollId, [...known]));
+
+    if (allowRemoval !== true && rows.length < stored * (1 - maxRemovedShare)) {
+        return yield* TooManyRemovedGamesError.make({ dates: [], imported: stored });
     }
 
     yield* insertMany([...known], batch => transaction.delete(pollVote).where(inArray(pollVote.pollId, batch)));
