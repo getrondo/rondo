@@ -1,0 +1,156 @@
+name: Pull Request
+
+concurrency:
+    group: pr-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+on:
+    pull_request:
+        types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+    contents: read
+
+env:
+    CI: true
+    FORCE_COLOR: '1'
+
+jobs:
+    quality:
+        name: Quality Checks
+        runs-on: [self-hosted, linux-portable-4x8]
+        timeout-minutes: 30
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+                  filter: blob:none
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+            - name: Setup Node
+              uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+              with:
+                  node-version-file: .nvmrc
+                  cache: pnpm
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Format
+              id: format
+              continue-on-error: true
+              run: pnpm fmt:check
+
+            - name: Typecheck
+              id: typecheck
+              continue-on-error: true
+              run: pnpm ts
+
+            - name: Lint
+              id: lint
+              continue-on-error: true
+              run: pnpm lint:check
+
+            - name: Deadcode
+              id: deadcode
+              continue-on-error: true
+              run: pnpm deadcode
+
+            - name: Copy/Paste detection
+              id: cpd
+              continue-on-error: true
+              run: pnpm cpd
+
+            - name: Tests
+              id: test
+              continue-on-error: true
+              run: pnpm test
+
+            - name: Migrations
+              id: db-migrations
+              continue-on-error: true
+              run: pnpm db:check
+
+            - name: Generated files are committed
+              id: diff
+              continue-on-error: true
+              run: git diff --exit-code
+
+            - name: Summarize quality checks
+              if: always()
+              env:
+                  FORMAT_RESULT: ${{ steps.format.outcome }}
+                  TYPECHECK_RESULT: ${{ steps.typecheck.outcome }}
+                  LINT_RESULT: ${{ steps.lint.outcome }}
+                  DEADCODE_RESULT: ${{ steps.deadcode.outcome }}
+                  CPD_RESULT: ${{ steps.cpd.outcome }}
+                  TEST_RESULT: ${{ steps.test.outcome }}
+                  MIGRATIONS_RESULT: ${{ steps.db-migrations.outcome }}
+                  DIFF_RESULT: ${{ steps.diff.outcome }}
+              run: |
+                  {
+                    echo "| Check | Outcome |"
+                    echo "| --- | --- |"
+                    echo "| Format | $FORMAT_RESULT |"
+                    echo "| Typecheck | $TYPECHECK_RESULT |"
+                    echo "| Lint | $LINT_RESULT |"
+                    echo "| Deadcode | $DEADCODE_RESULT |"
+                    echo "| Copy/Paste | $CPD_RESULT |"
+                    echo "| Tests | $TEST_RESULT |"
+                    echo "| Migrations | $MIGRATIONS_RESULT |"
+                    echo "| Clean worktree | $DIFF_RESULT |"
+                  } >> "$GITHUB_STEP_SUMMARY"
+
+            - name: Enforce quality checks
+              if: always()
+              env:
+                  FORMAT_RESULT: ${{ steps.format.outcome }}
+                  TYPECHECK_RESULT: ${{ steps.typecheck.outcome }}
+                  LINT_RESULT: ${{ steps.lint.outcome }}
+                  DEADCODE_RESULT: ${{ steps.deadcode.outcome }}
+                  CPD_RESULT: ${{ steps.cpd.outcome }}
+                  TEST_RESULT: ${{ steps.test.outcome }}
+                  MIGRATIONS_RESULT: ${{ steps.db-migrations.outcome }}
+                  DIFF_RESULT: ${{ steps.diff.outcome }}
+              run: |
+                  for result in "$FORMAT_RESULT" "$TYPECHECK_RESULT" "$LINT_RESULT" "$DEADCODE_RESULT" "$CPD_RESULT" "$TEST_RESULT" "$MIGRATIONS_RESULT" "$DIFF_RESULT"; do
+                    if [ "$result" != "success" ]; then
+                      echo "::error::One or more quality checks failed"
+                      exit 1
+                    fi
+                  done
+
+    lint-workflows:
+        name: Lint workflows
+        runs-on: [self-hosted, linux-portable-2x4]
+        timeout-minutes: 5
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+                  filter: blob:none
+                  sparse-checkout: .github
+
+            - name: Run actionlint
+              shell: bash
+              env:
+                  ACTIONLINT_VERSION: 1.7.12
+                  ACTIONLINT_SHA256_AMD64: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+                  ACTIONLINT_SHA256_ARM64: 325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6
+              run: |
+                  set -euo pipefail
+                  case "$(uname -m)" in
+                    x86_64) arch=amd64; checksum="$ACTIONLINT_SHA256_AMD64" ;;
+                    aarch64|arm64) arch=arm64; checksum="$ACTIONLINT_SHA256_ARM64" ;;
+                    *) echo "::error::No pinned actionlint build for $(uname -m)"; exit 1 ;;
+                  esac
+                  dir="$(mktemp -d)"
+                  archive="actionlint_${ACTIONLINT_VERSION}_linux_${arch}.tar.gz"
+                  curl -fsSL --retry 3 -o "$dir/$archive" "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+                  echo "${checksum}  $dir/$archive" | sha256sum -c -
+                  tar -xzf "$dir/$archive" -C "$dir" actionlint
+                  "$dir/actionlint" -color

@@ -1,0 +1,19 @@
+{
+    "name": "@rondo/test-kit",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./*": "./src/*.ts"
+    },
+    "scripts": {
+        "ts": "tsrs -p ."
+    },
+    "dependencies": {
+        "effect": "4.1.5",
+        "vitest": "5.1.0"
+    },
+    "devDependencies": {
+        "@types/node": "26.6.6"
+    }
+}

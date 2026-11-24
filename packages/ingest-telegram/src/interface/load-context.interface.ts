@@ -1,0 +1,22 @@
+import type { CommunityConfig } from '../config/community-config';
+import type { ImportPlan } from '../extract/assemble-plan';
+import type { Transaction } from './transaction.type';
+
+export interface LoadContext {
+    readonly transaction: Transaction;
+    readonly communityId: string;
+    readonly config: CommunityConfig;
+    readonly plan: ImportPlan;
+}
+
+export interface ReferenceIds {
+    readonly activityIdBySport: ReadonlyMap<string, string>;
+    readonly venueIdByKey: ReadonlyMap<string, string | undefined>;
+    readonly colorIdByEmoji: ReadonlyMap<string, string>;
+}
+
+export interface SessionLoadResult {
+    readonly sessionIds: readonly string[];
+    readonly teams: number;
+    readonly members: number;
+}

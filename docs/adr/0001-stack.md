@@ -1,43 +1,50 @@
 # ADR-0001: Architecture and stack
 
-- **Status:** Proposed (2026-11-24)
+- **Status:** Accepted (2026-11-24)
 - **Deciders:** maintainers
 
 ## Context
 
-Rondo is a Telegram bot for a ~200-member community with bursts of activity around game times
-(a few hundred interactions per hour at peak). It needs rich, live-updating group messages, DMs,
-scheduled jobs (reminders, decision checkpoints, auto-publishing), richer UIs for organizers
-(team builder, ledger, venue registry) and per-user localisation (uk/ru).
+Rondo is a Telegram bot plus Mini App for a ~200-member community, with bursts of activity around
+game times. It needs live-updating group messages, DMs, durable timers (waitlist offers, go/no-go
+checkpoints, reminders), a rich organizer UI, per-user localisation (uk/ru), and a relational core
+that can grow to many communities. The maintainers already run several TypeScript monorepos
+(budgie, knee-doctor, suuudokuuu) with a shared toolchain; Rondo reuses it.
 
 ## Decision
 
-| Concern | Choice | Why |
-|---|---|---|
-| Language | **TypeScript** (Node 22 LTS) | One language for bot, Mini App and shared domain types. |
-| Bot framework | **grammY** | Modern, typed, first-class conversations, sessions, i18n (`@grammyjs/i18n` with Fluent), runner for concurrency, webhook-ready. |
-| Mini App | **React + Vite + `@telegram-apps/sdk`** | Team builder, ledger, venue registry, stats; auth via signed `initData`. |
-| API | **Hono** on the same service | Lightweight; serves the Mini App API and the Telegram webhook. |
-| Database | **PostgreSQL 17 + Drizzle ORM** | Relational domain (games, signups, ledger), migrations in code, strong typing. |
-| Jobs | **pg-boss** (Postgres-backed queue) | Reminders, checkpoints, waitlist timeouts without an extra Redis. |
-| Ratings | **openskill** (Weng-Lin, TrueSkill-like) | Multi-team, partial-play friendly, open licence. |
-| Weather | **GeoSphere Austria API**, fallback **Open-Meteo** | Austrian national service; free; no key. |
-| Holidays | `date-holidays` (AT, Vienna) | Public and school holidays. |
-| i18n | Fluent (`.ftl`) per locale: `uk` (default), `ru`; `en`, `de` later | Plurals and gender handled properly. |
-| Monorepo | **pnpm workspaces + Turborepo**: `apps/bot`, `apps/miniapp`, `packages/domain`, `packages/db` | Shared types; fast CI. |
-| Quality | Biome (lint and format), Vitest, Playwright for the Mini App | Fast local loop. |
-| Hosting | One small container plus managed Postgres (e.g. Fly.io or Hetzner and Neon) | Cheap, EU region (GDPR). Decided at E01. |
-| Observability | pino logs, Sentry, `/health` | Minimal but enough. |
+**TypeScript and Effect v4 end to end.** Every service, repository, job and edge is an Effect
+program composed from `Layer`s; promises exist only at foreign boundaries.
+
+| Concern | Choice |
+|---|---|
+| Runtime | Node 26 (`.nvmrc`); pnpm 12 workspaces; Turborepo |
+| Core library | `effect` 4.x: `Context.Service`, `Layer`, `Schema`, `Config`, `Schema.TaggedError`, `effect/FileSystem` |
+| Database | PostgreSQL 17, one schema per bounded context ([data model](../architecture/data-model.md)) |
+| Data access | Drizzle ORM 1.0 (`drizzle-orm/effect-postgres`) over `@effect/sql-pg`; queries are Effects; `Db` service in `@rondo/db` |
+| Migrations | `drizzle-kit generate` from the TypeScript schema, plus hand-written SQL migrations for invariants Drizzle can't express (exclusion constraints, deferred triggers, RLS, materialized views) |
+| Tests | Vitest 5 and `@effect/vitest`; integration tests run real SQL on in-process Postgres (PGlite served over the wire protocol with `@electric-sql/pglite-socket`), so CI needs no Docker |
+| Bot | grammY behind an Effect `Telegram` service (webhook mode); updates are decoded with `Schema` |
+| Durable work | Transactional outbox (`comms.outbox`) and Effect workers with `FOR UPDATE SKIP LOCKED`; Effect Workflow/Cluster with SQL storage is evaluated for long-lived timers (E04, E06) |
+| Mini App and API | React and Vite with `@effect/atom-react`; Effect `HttpApi` for the typed API shared with the client; auth via signed Telegram `initData` |
+| i18n | Catalogs per locale: `uk` (default), `ru`; `en` and `de` later. Language from Telegram `language_code`, falling back to `uk` |
+| Ratings | `openskill` (Weng-Lin) behind a `Rating` service; private schema `play_private` |
+| Weather and holidays | GeoSphere Austria API (fallback Open-Meteo); `date-holidays` (AT, Vienna) |
+| Observability | Effect logger and tracer → OpenTelemetry; `/health` endpoint |
+| Quality gates | oxfmt; `effect-tsgo --tsrs-lint oxlint --type-aware --deny-warnings` with local Effect rules (`lint-rules/`); knip; jscpd at threshold 0; commitlint; husky with lint-staged |
+| CI/CD | GitHub Actions on self-hosted runners (`linux-portable-*`): quality job (format, types, lint, dead code, duplication, tests, `drizzle-kit check`, clean `git diff`); release-please |
+| Hosting | One container (bot, API, workers) plus managed Postgres in an EU region; decided in E01 |
 
 ### Telegram specifics
 
-- **Live game card:** one message per game, edited in place (`editMessageText`) and pinned while open. Inline buttons for In / Maybe / Out / +1 / Where? / Late.
-- **Native poll fallback:** the bot can send non-anonymous polls and capture `poll_answer` updates, so the community can keep the old habit during migration.
-- **Privacy mode:** the bot runs with privacy mode **on**. It needs only commands, button callbacks and mentions, not the full chat. Admin rights only for pinning.
-- **DMs** require the user to `/start` the bot once; onboarding (E16) drives this.
+- **Live game card:** one message per game, edited in place and pinned while open; inline buttons In / Maybe / Out / +1 / Where? / Late.
+- **Native poll fallback:** the bot can send non-anonymous polls and capture `poll_answer` updates during migration.
+- **Privacy mode on:** the bot only needs commands, callbacks and mentions; admin rights only for pinning.
+- **History:** a Telegram Desktop export is imported once by `@rondo/ingest-telegram` ([runbook](../runbooks/import-telegram-history.md)).
 
 ## Consequences
 
-- Single deployable keeps operations cheap; can split the Mini App later.
-- Postgres is the single source of truth (including the job queue).
-- Ratings are an internal service in `packages/domain`, unit-testable and replaceable.
+- One language, one effect system and one error model from the database to the Mini App.
+- Postgres is the single source of truth, including jobs (outbox) and analytics (materialized views).
+- Community-specific knowledge (organizer names, venue catalog, squad tags) lives in private config, never in code.
+- Drizzle 1.0 and Effect 4 are young; versions are pinned exactly, and the 24h release quarantine (`minimumReleaseAge`) exempts only those vendor families.

@@ -1,0 +1,29 @@
+{
+    "name": "@rondo/ingest-telegram",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./*": "./src/*.ts"
+    },
+    "scripts": {
+        "ts": "tsrs -p .",
+        "test": "vitest run",
+        "ingest": "tsx src/main.ts"
+    },
+    "dependencies": {
+        "@effect/platform-node": "4.1.5",
+        "@rnw-community/shared": "3.0.5",
+        "@rondo/db": "workspace:*",
+        "drizzle-orm": "1.0.0-rc.6",
+        "effect": "4.1.5",
+        "node-html-parser": "9.0.7"
+    },
+    "devDependencies": {
+        "@effect/vitest": "4.1.5",
+        "@electric-sql/pglite": "0.6.0",
+        "@rondo/test-kit": "workspace:*",
+        "tsx": "4.23.15",
+        "vitest": "5.1.0"
+    }
+}

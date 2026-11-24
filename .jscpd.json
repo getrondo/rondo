@@ -1,0 +1,19 @@
+{
+    "threshold": 0,
+    "reporters": ["console"],
+    "pattern": "**/*.{ts,mjs}",
+    "ignore": [
+        "**/*.json",
+        "**/*.md",
+        "**/*.spec.ts",
+        "**/dist/**",
+        "**/coverage/**",
+        "**/node_modules/**",
+        "**/drizzle/**",
+        "**/.worktrees/**",
+        "**/.claude/**",
+        "**/.agents/**"
+    ],
+    "absolute": false,
+    "gitignore": true
+}

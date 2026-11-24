@@ -7,3 +7,12 @@ data/
 exports/
 ChatExport*/
 *.sqlite
+
+# build and tooling output
+.turbo
+coverage
+*.tsbuildinfo
+.env
+.pnpm-store/
+.claude/worktrees/
+graphify-out/
