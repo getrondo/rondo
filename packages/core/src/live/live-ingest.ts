@@ -1,18 +1,13 @@
 import { isDefined, isEmptyArray, isNotEmptyArray } from '@rnw-community/shared';
 import { telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { messageRef } from '@rondo/db/schema/platform.schema';
-import { lineupEntry, team, teamColor } from '@rondo/db/schema/play.schema';
+import { team, teamColor } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { extractLineup } from '@rondo/ingest-telegram/extract/extract-lineup';
 import { extractPoll, makeVenueMatcher } from '@rondo/ingest-telegram/extract/extract-poll';
 import { extractCancellation } from '@rondo/ingest-telegram/extract/extract-signals';
-import { aliasesIn } from '@rondo/ingest-telegram/identity/aliases-in';
-import { countOccurrences } from '@rondo/ingest-telegram/identity/count-occurrences';
-import { ensureAliases } from '@rondo/ingest-telegram/identity/ensure-aliases';
-import { loadDirectory } from '@rondo/ingest-telegram/identity/load-directory';
-import { entriesOf } from '@rondo/ingest-telegram/roster/entries-of';
-import { syncSessionRoster } from '@rondo/ingest-telegram/roster/sync-session-roster';
+import { storeLineup } from '@rondo/ingest-telegram/roster/store-lineup';
 import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -170,21 +165,6 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
     const sessionId = found.value;
     const colors = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId));
 
-    const known = yield* loadDirectory(communityId);
-    yield* ensureAliases({
-        communityId,
-        source: 'bot',
-        aliases: aliasesIn([fact], known, message.senderName)
-    });
-    const directory = yield* loadDirectory(communityId);
-    const previous = yield* db.delete(lineupEntry).where(eq(lineupEntry.sessionId, sessionId)).returning();
-    const entries = entriesOf(
-        sessionId,
-        fact,
-        directory,
-        previous.filter(entry => entry.resolvedBy === 'manual')
-    );
-
     yield* db.delete(team).where(eq(team.sessionId, sessionId));
     yield* db.insert(team).values(
         fact.teams.map(({ ordinal, emoji }) => ({
@@ -194,9 +174,7 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
             publishedAt: message.sentAt
         }))
     );
-    yield* db.insert(lineupEntry).values(entries);
-    yield* countOccurrences(communityId);
-    yield* syncSessionRoster([sessionId]);
+    yield* storeLineup({ communityId, sessionId, lineup: fact, senderName: message.senderName });
 
     const status = fact.localDate < todayIn(config.timeZone, message.sentAt) ? 'played' : 'locked';
     yield* db

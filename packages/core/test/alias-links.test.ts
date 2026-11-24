@@ -4,12 +4,12 @@ import { auditLog, pollVote } from '@rondo/db/schema/platform.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { syncMember, upsertTelegramUser } from '../src/identity/telegram-user';
 import { ingestGroupMessage } from '../src/live/live-ingest';
-import { linkAlias, linkEntry, suggestAliasLinks, unlinkAlias, unlinkEntry } from '../src/people/alias-links.service';
+import { linkAlias, linkEntry, reviewEntries, suggestAliasLinks, unlinkAlias, unlinkEntry } from '../src/people/alias-links.service';
 import { mergePeople, renamePerson, searchPeople } from '../src/people/people.service';
 import { createSession, updateSession, requireSession } from '../src/sessions/session.service';
 import { signedUpByVotes } from '../src/signups/signed-up-by-votes';
@@ -105,30 +105,62 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
         })
     );
 
-    it.effect('keeps two players of one nickname apart, links them per entry and leaves placeholders out of rankings', () =>
+    it.effect('marks a nickname shared after two games, links it per entry and offers it for review', () =>
         Effect.gen(function* () {
             const db = yield* Db;
-            const { communityId, account, aliasId, sessionId } = yield* seeded('shared-fc', 120n, '🟢Я, Зорро\n🔵Олег, Зорро');
-            const played = yield* db.select().from(attendance).where(eq(attendance.sessionId, sessionId));
-            const entries = yield* db.select().from(lineupEntry).where(eq(lineupEntry.raw, 'Зорро')).orderBy(asc(lineupEntry.teamOrdinal));
-            const second = entries.filter(entry => entry.sessionId === sessionId).at(1);
-            const target = { communityId, entryId: second?.id ?? '', actorPersonId: null };
+            const lineup = '🟢Я, Зорро\n🔵Олег, Зорро';
+            const { communityId, account, aliasId, sessionId, organizer } = yield* seeded('shared-fc', 120n, lineup);
+            const once = yield* db.select().from(attendance).where(eq(attendance.sessionId, sessionId));
+            yield* ingestGroupMessage(communityId, seedConfig('shared-fc'), {
+                chatId: -120n,
+                messageId: 2,
+                sentAt: new Date('2026-05-11T15:00:00Z'),
+                senderPersonId: organizer,
+                senderTgUserId: 120n,
+                senderName: 'Org',
+                senderIsAdmin: true,
+                text: `Составы на сегодня, North:\n${lineup}`
+            });
+            const votedAt = new Date('2026-05-01T00:00:00Z');
+            yield* db.insert(pollVote).values({ pollId: 'shared-1', tgUserId: 121n, sessionId, choice: 'yes', votedAt });
+            const twice = yield* db.select().from(attendance).where(eq(attendance.sessionId, sessionId));
+            const ranked = yield* gamesOf(communityId);
             const refused = yield* Effect.flip(
                 linkAlias({ communityId, aliasId: aliasId('зорро'), personId: account, actorPersonId: null })
             );
-            const ranked = yield* gamesOf(communityId);
-
+            const review = yield* reviewEntries(communityId, 20);
+            const [offered, twin] = review.filter(entry => entry.shared && entry.sessionId === sessionId);
+            const target = { communityId, entryId: offered?.entryId ?? '', actorPersonId: null };
             yield* linkEntry({ ...target, personId: account });
+            const sameGame = yield* Effect.flip(linkEntry({ ...target, entryId: twin?.entryId ?? '', personId: account }));
             const linked = yield* playerHistory(communityId, account);
             yield* unlinkEntry(target);
             const unlinked = yield* playerHistory(communityId, account);
 
-            expect(played).toHaveLength(4);
-            expect(refused).toMatchObject({ _tag: 'ActionFailedError', reason: 'several players share this nickname, link it per game' });
+            expect(once).toHaveLength(3);
+            expect(twice).toHaveLength(2);
             expect(Object.keys(ranked).toSorted()).toEqual(['Org', 'Олег']);
+            expect(refused).toMatchObject({ _tag: 'ActionFailedError', reason: 'several players share this nickname, link it per game' });
+            expect(review.filter(entry => entry.shared)).toHaveLength(4);
+            expect(offered?.candidatePersonIds).toEqual([account]);
+            expect(sameGame._tag).toBe('ActionFailedError');
             expect(linked).toMatchObject({ games: 1 });
             expect(unlinked).toMatchObject({ games: 0 });
-            expect(yield* suggestAliasLinks(communityId, 10)).toEqual([]);
+            expect((yield* suggestAliasLinks(communityId, 10)).map(suggestion => suggestion.alias)).not.toContain('Зорро');
+        })
+    );
+
+    it.effect('keeps a vote link undone by an admin as a manual record', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, account, aliasId, sessionId } = yield* seeded('vote-undo-fc', 180n, '🟢Я, Гонзо\n🔵Олег, Семён');
+            const ofAlias = and(eq(lineupEntry.aliasId, aliasId('гонзо')), eq(lineupEntry.sessionId, sessionId));
+            const [entry] = yield* db.update(lineupEntry).set({ personId: account, resolvedBy: 'vote' }).where(ofAlias).returning();
+            yield* unlinkEntry({ communityId, entryId: entry?.id ?? '', actorPersonId: null });
+            const [undone] = yield* db.select().from(lineupEntry).where(ofAlias);
+
+            expect(undone?.resolvedBy).toBe('manual');
+            expect(undone?.personId).not.toBe(account);
         })
     );
 

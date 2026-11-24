@@ -1,9 +1,10 @@
 import { isDefined } from '@rnw-community/shared';
 import { person, personAlias } from '@rondo/db/schema/identity.schema';
+import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db, type Database } from '@rondo/db/service/db.service';
-import { and, between, count, countDistinct, desc, eq, inArray, max, sql } from 'drizzle-orm';
+import { and, between, count, countDistinct, desc, eq, inArray, isNull, max, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { latestVotes } from '../signups/latest-votes';
@@ -21,8 +22,6 @@ const playedGames = (db: Database) =>
         .from(attendance)
         .innerJoin(session, eq(session.id, attendance.sessionId))
         .innerJoin(person, eq(person.id, attendance.personId));
-
-const notPlaceholder = sql`not exists (select 1 from identity.person_alias shared where shared.guest_person_id = ${person.id} and shared.kind = 'placeholder')`;
 
 const signedUpGames = Effect.fn('Core.signedUpGames')(function* (communityId: string, personId: string) {
     const db = yield* Db;
@@ -64,8 +63,7 @@ export const topAttendance = Effect.fn('Core.topAttendance')(function* (communit
                 eq(session.communityId, communityId),
                 between(session.localDate, range.from, range.to),
                 inArray(attendance.outcome, playedOutcomes),
-                eq(session.status, 'played'),
-                notPlaceholder
+                eq(session.status, 'played')
             )
         )
         .groupBy(person.id, person.displayName)
@@ -83,14 +81,7 @@ export const inactivePlayers = Effect.fn('Core.inactivePlayers')(function* (
     const lastPlayed = max(session.localDate);
 
     return yield* playedGames(db)
-        .where(
-            and(
-                eq(session.communityId, communityId),
-                inArray(attendance.outcome, playedOutcomes),
-                eq(session.status, 'played'),
-                notPlaceholder
-            )
-        )
+        .where(and(eq(session.communityId, communityId), inArray(attendance.outcome, playedOutcomes), eq(session.status, 'played')))
         .groupBy(person.id, person.displayName)
         .having(and(sql`${count()} >= ${input.minGames}`, sql`${lastPlayed} < ${input.notSince}`))
         .orderBy(desc(count()))
@@ -137,7 +128,21 @@ export const communitySummary = Effect.fn('Core.communitySummary')(function* (co
             )
         );
 
-    return { ...sessions, ...players };
+    const [entries] = yield* db
+        .select({ unidentifiedAppearances: count() })
+        .from(lineupEntry)
+        .innerJoin(session, eq(session.id, lineupEntry.sessionId))
+        .where(
+            and(
+                eq(session.communityId, communityId),
+                between(session.localDate, range.from, range.to),
+                eq(session.status, 'played'),
+                eq(lineupEntry.isGuest, false),
+                isNull(lineupEntry.personId)
+            )
+        );
+
+    return { ...sessions, ...players, ...entries };
 });
 
 export const playerHistory = Effect.fn('Core.playerHistory')(function* (communityId: string, personId: string) {
