@@ -2,7 +2,7 @@
     "type": "diff",
     "version": "10",
     "dialect": "postgres",
-    "id": "0058b2dc-5479-44f1-9caf-7f9d3adb3234",
+    "id": "c29d5dea-3a0a-40de-b68d-29223e01a56b",
     "prevIds": ["8cda4e4a-0b59-4a16-ba47-8ecdea5fd947"],
     "footprints": [
         {
@@ -236,6 +236,25 @@
                 "n|tbl|identity.person",
                 "n|sch|identity",
                 "n|col|play.lineup_entry.person_id",
+                "n|col|identity.person.id",
+                "e|uniqueness|identity.person.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play", "lineup_entry"],
+            "writes": [
+                "s|fk|play.lineup_entry.lineup_entry_guest_of_person_id_person_id_fkey",
+                "n|fk|play.lineup_entry.lineup_entry_guest_of_person_id_person_id_fkey",
+                "e|fk|play.lineup_entry.lineup_entry_guest_of_person_id_person_id_fkey",
+                "n|con|play.lineup_entry.lineup_entry_guest_of_person_id_person_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play.lineup_entry",
+                "n|sch|play",
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|col|play.lineup_entry.guest_of_person_id",
                 "n|col|identity.person.id",
                 "e|uniqueness|identity.person.id"
             ]
@@ -485,7 +504,23 @@
                 "name": "person_id",
                 "type": "uuid",
                 "typeSchema": null,
-                "notNull": true,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "guest_of_person_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
                 "dimensions": 0,
                 "default": null,
                 "generated": null,
@@ -792,6 +827,22 @@
         {
             "op": "create",
             "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "lineup_entry_guest_of_person_id_person_id_fkey",
+                "nameExplicit": false,
+                "columns": ["guest_of_person_id"],
+                "schemaTo": "identity",
+                "tableTo": "person",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "RESTRICT",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
                 "schema": "comms",
                 "table": "poll_vote",
                 "name": "poll_vote_pkey",
@@ -809,6 +860,16 @@
                 "columns": ["id"],
                 "nameExplicit": false,
                 "entityType": "pks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "lineup_entry_player_ck",
+                "value": "num_nonnulls(\"person_id\", \"guest_of_person_id\") = 1",
+                "entityType": "checks"
             }
         },
         {

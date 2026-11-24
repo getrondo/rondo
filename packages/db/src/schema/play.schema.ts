@@ -89,7 +89,8 @@ export const lineupEntry = play.table(
         raw: text('raw'),
         aliasId: ref('alias_id').references(() => personAlias.id, { onDelete: 'set null' }),
         tgUserId: bigint('tg_user_id', { mode: 'bigint' }).references(() => telegramAccount.tgUserId, { onDelete: 'set null' }),
-        personId: requiredRef('person_id', () => person.id, 'restrict'),
+        personId: ref('person_id').references(() => person.id, { onDelete: 'restrict' }),
+        guestOfPersonId: ref('guest_of_person_id').references(() => person.id, { onDelete: 'restrict' }),
         resolvedBy: entryResolutionEnum('resolved_by').notNull(),
         isGk: boolean('is_gk').notNull().default(false),
         isNewcomer: boolean('is_newcomer').notNull().default(false)
@@ -97,7 +98,8 @@ export const lineupEntry = play.table(
     t => [
         uniqueIndex('lineup_entry_position_uq').on(t.sessionId, t.teamOrdinal, t.position),
         index('lineup_entry_alias_idx').on(t.aliasId),
-        index('lineup_entry_person_idx').on(t.personId)
+        index('lineup_entry_person_idx').on(t.personId),
+        check('lineup_entry_player_ck', sql`num_nonnulls(${t.personId}, ${t.guestOfPersonId}) = 1`)
     ]
 );
 

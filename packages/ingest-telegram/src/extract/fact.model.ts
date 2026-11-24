@@ -22,6 +22,7 @@ export interface LineupMember {
     readonly isGk: boolean;
     readonly isNewcomer: boolean;
     readonly isSelf: boolean;
+    readonly guests: number;
 }
 
 export interface LineupTeam {

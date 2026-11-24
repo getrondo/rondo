@@ -55,16 +55,20 @@ describe('Telegram JSON export parsing', () => {
         })
     );
 
-    it('reads the playing person from composite names', () => {
+    it('reads the playing person and their guests from composite names', () => {
         const lineup = extractLineup(
-            message(1, '2025-05-05T15:00:00Z', 'Составы:\n🟢Иван без Олега, Пётр +1\n🔵Семён+2, Павел'),
+            message(1, '2025-05-05T15:00:00Z', 'Составы:\n🟢Иван без Олега, Пётр +1\n🔵Семён+2, Павел, +3, Олег'),
             testConfig,
             makeVenueMatcher(testConfig)
         );
 
         expect(lineup?.teams.map(team => team.members.map(member => member.aliasNorm))).toEqual([
             ['иван', 'петр'],
-            ['семен', 'павел']
+            ['семен', 'павел', 'олег']
+        ]);
+        expect(lineup?.teams.map(team => team.members.map(member => member.guests))).toEqual([
+            [0, 1],
+            [2, 3, 0]
         ]);
     });
 });

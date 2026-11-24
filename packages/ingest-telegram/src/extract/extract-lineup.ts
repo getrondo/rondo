@@ -38,21 +38,39 @@ const splitMembers = (segment: string): string[] =>
     segment
         .split(/[,\n/;]|\.\s|\sи\s|\sі\s/u)
         .map(part => stripParentheses(part).trim())
-        .filter(part => isNotEmptyString(part) && part.length <= 32 && !noise.test(part) && !/^\+?\d+$/u.test(part));
+        .filter(part => isNotEmptyString(part) && part.length <= 32 && !noise.test(part) && !/^\d+$/u.test(part));
+
+const guestSuffix = /\+ ?(\d{1,2})$/u;
+
+const guestsIn = (text: string): number => Number(guestSuffix.exec(text)?.[1] ?? 0);
 
 const playerName = (text: string): string => {
     const words = text.split(/\s/u).filter(word => isNotEmptyString(word));
     const absent = words.findIndex((word, index) => index > 0 && word.toLowerCase() === 'без');
     const present = absent === -1 ? words : words.slice(0, absent);
 
-    return present
-        .join(' ')
-        .replace(/\+ ?\d+$/u, '')
-        .trim();
+    return present.join(' ').replace(guestSuffix, '').trim();
+};
+
+const attachLooseGuests = (segments: readonly string[]): string[] => {
+    const attached: string[] = [];
+
+    for (const segment of segments) {
+        const previous = attached.at(-1);
+
+        if (!/^\+ ?\d{1,2}$/u.test(segment)) {
+            attached.push(segment);
+        } else if (isDefined(previous) && guestsIn(previous) === 0) {
+            attached.splice(-1, 1, `${previous} ${segment}`);
+        }
+    }
+
+    return attached;
 };
 
 const toMember = (raw: string, selfAliases: ReadonlySet<string>): LineupMember | undefined => {
-    const alias = playerName(stripTrailingPunctuation(removeMarker(removeMarker(raw, gkMarker), newcomerMarker)).trim());
+    const named = stripTrailingPunctuation(removeMarker(removeMarker(raw, gkMarker), newcomerMarker).trim());
+    const alias = playerName(named);
     const aliasNorm = normalizeAlias(alias);
 
     return Option.some({
@@ -60,7 +78,8 @@ const toMember = (raw: string, selfAliases: ReadonlySet<string>): LineupMember |
         aliasNorm,
         isGk: isGkText.test(raw),
         isNewcomer: isNewcomerText.test(raw),
-        isSelf: selfAliases.has(aliasNorm)
+        isSelf: selfAliases.has(aliasNorm),
+        guests: guestsIn(named)
     }).pipe(
         Option.filter(member => member.aliasNorm.length >= 2 || member.isSelf),
         Option.getOrUndefined
@@ -73,7 +92,7 @@ const parseTeam = (rawSegment: string, selfAliases: ReadonlySet<string>): Lineup
     const segment = rawSegment.split(/\n\s*\n/u)[0] ?? '';
     const firstLine = segment.replace(/^[^:\n]*?(?:ые|ие|і|i)\s*:/iu, '').split('\n')[0] ?? '';
 
-    return splitMembers(firstLine)
+    return attachLooseGuests(splitMembers(firstLine))
         .map(raw => toMember(raw, selfAliases))
         .filter(member => isDefined(member));
 };
