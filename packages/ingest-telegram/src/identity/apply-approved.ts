@@ -24,7 +24,7 @@ export const applyApproved = Effect.fn('IngestTelegram.applyApproved')(function*
         resolvedBy: lineupEntry.resolvedBy
     };
     const approvals = yield* db
-        .select({ ...columns, approved: aliasLink.personId, kind: personAlias.kind })
+        .select({ ...columns, approved: aliasLink.personId, aliasId: aliasLink.aliasId })
         .from(lineupEntry)
         .innerJoin(session, eq(session.id, lineupEntry.sessionId))
         .innerJoin(
@@ -35,7 +35,6 @@ export const applyApproved = Effect.fn('IngestTelegram.applyApproved')(function*
                 sql`${aliasLink.during} @> ${session.localDate}`
             )
         )
-        .innerJoin(personAlias, eq(personAlias.id, aliasLink.aliasId))
         .where(and(inScope, notInArray(lineupEntry.resolvedBy, [...fixed])))
         .orderBy(
             sql`upper(${aliasLink.during}) - lower(${aliasLink.during}) nulls last`,
@@ -58,6 +57,8 @@ export const applyApproved = Effect.fn('IngestTelegram.applyApproved')(function*
     const pinned = new Map<string, (typeof approvals)[number]>();
 
     const blocked = new Set<string>();
+    const slots = new Map(approvals.map(row => [row.id, `${row.sessionId}|${row.aliasId}`]));
+    const isOnlySlot = (id: string) => [...slots].every(([other, slot]) => other === id || slot !== slots.get(id));
 
     for (const row of approvals) {
         const player = `${row.sessionId}|${row.approved}`;
@@ -69,7 +70,7 @@ export const applyApproved = Effect.fn('IngestTelegram.applyApproved')(function*
         if (!playing.has(player)) {
             playing.add(player);
             pinned.set(row.id, row);
-        } else if (row.kind !== 'placeholder') {
+        } else if (isOnlySlot(row.id)) {
             // A wider approval of another player must not take the slot
             blocked.add(row.id);
         }
@@ -77,7 +78,10 @@ export const applyApproved = Effect.fn('IngestTelegram.applyApproved')(function*
 
     const changed = [...pinned.values()].filter(row => row.personId !== row.approved || row.resolvedBy !== 'alias');
     const displaced = named.filter(
-        row => !isFixed.has(row.resolvedBy) && !pinned.has(row.id) && playing.has(`${row.sessionId}|${row.personId}`)
+        row =>
+            !isFixed.has(row.resolvedBy) &&
+            !pinned.has(row.id) &&
+            (playing.has(`${row.sessionId}|${row.personId}`) || (blocked.has(row.id) && row.resolvedBy === 'alias'))
     );
     const updates = [
         ...changed.map(row => sql`(${row.id}::uuid, ${row.approved}::uuid, 'alias'::play.entry_resolution)`),

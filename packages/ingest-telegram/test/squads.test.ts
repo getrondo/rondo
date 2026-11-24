@@ -67,6 +67,7 @@ describe('squads by structure', () => {
     it('does not take labelled lines for a squad', () => {
         expect(namesOf('🟢Мяч: Иван, Пётр, Олег, Марк\n🔵Семён, Павел, Глеб, Ян')).toBeNull();
         expect(namesOf('Составы:\n🟢Я, Иван\n🔵Олег, Семён\n📌Форма: белая, синяя, чёрная')).toHaveLength(2);
+        expect(namesOf('Составы:\n🟢Я, Иван\n🔵Олег, Семён\n📌Примечание: вода, форма, обувь')).toHaveLength(2);
     });
 
     it('reads teams that are labelled with their colour', () => {

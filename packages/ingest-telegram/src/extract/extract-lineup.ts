@@ -182,11 +182,11 @@ const isNameList = (names: readonly string[], least: number): boolean =>
             name.trim().length <= maxNameLength
     );
 
-const teamLinesOf = (text: string): TeamLine[] =>
+const teamLinesOf = (text: string, config: CommunityConfig): TeamLine[] =>
     text.split('\n').flatMap(line => {
         const [, emoji, rest = ''] = teamLine.exec(line) ?? [];
-        const names = rest
-            .replace(colorLabel, '')
+        const isKnown = config.teamColors.some(color => color.emoji === emoji);
+        const names = (isKnown ? rest.replace(colorLabel, '') : rest)
             .split(/[,;]/u)
             .map(part => stripParentheses(part))
             .filter(part => /\p{L}|\+\s?\d/u.test(part));
@@ -228,7 +228,7 @@ const buildTeams = (
     config: CommunityConfig,
     mentions: RosterContext['mentions']
 ): { header: string; teams: LineupTeam[] } => {
-    const emojis = teamEmojis(teamLinesOf(text), config).map(emoji => escapeEmoji(emoji));
+    const emojis = teamEmojis(teamLinesOf(text, config), config).map(emoji => escapeEmoji(emoji));
     const parts = markMentions(text, mentions).split(new RegExp(`(?<!\\d ?)(${emojis.join('|')})`, 'u'));
     const context = {
         selfAliases: new Set(config.selfAliases.map(normalizeAlias)),
@@ -254,7 +254,7 @@ export const extractLineup = (
     venueOf: (text: string) => string | undefined
 ): LineupFact | undefined =>
     Option.all({ text: Option.fromNullishOr(message.text), sentAt: Option.fromNullishOr(message.sentAt) }).pipe(
-        Option.filter(({ text }) => /состав|склад/iu.test(text) || isSquadByStructure(teamLinesOf(text), config)),
+        Option.filter(({ text }) => /состав|склад/iu.test(text) || isSquadByStructure(teamLinesOf(text, config), config)),
         Option.flatMap(({ text, sentAt }) => {
             const { header, teams } = buildTeams(text, config, message.mentions ?? []);
             const postedDate = instantToLocalDate(sentAt, config.timeZone);

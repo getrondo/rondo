@@ -1139,13 +1139,14 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
                 method: 'owner_list' as const,
                 status: 'approved' as const
             };
-            yield* db.insert(aliasLink).values([
-                { ...row, personId: striker, during: '[2025-05-02,2025-05-03)' },
-                { ...row, personId: other, during: '(,)' }
-            ]);
+            yield* db.insert(aliasLink).values({ ...row, personId: other, during: '(,)' });
+            yield* applyApproved(first.communityId);
+            const wide = yield* namedOn(first.communityId, '2025-05-02', [other]);
+            yield* db.insert(aliasLink).values({ ...row, personId: striker, during: '[2025-05-02,2025-05-03)' });
             yield* applyApproved(first.communityId);
             const listed = yield* namedOn(first.communityId, '2025-05-02', [striker, other]);
 
+            expect(wide).toHaveLength(1);
             expect(listed).toEqual([{ raw: '@Striker', personId: striker, resolvedBy: 'handle' }]);
         })
     );
