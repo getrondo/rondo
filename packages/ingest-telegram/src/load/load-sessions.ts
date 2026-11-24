@@ -1,10 +1,12 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { extraction, sourceRef } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, team } from '@rondo/db/schema/play.schema';
-import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
+import { attendance, session, sessionChange, signup } from '@rondo/db/schema/scheduling.schema';
 import { and, eq, inArray, notExists, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { zonedToInstant } from '../extract/zoned-time';
+import { markShared } from '../identity/mark-shared';
 import { entriesOf } from '../roster/entries-of';
 import { syncSessionRoster } from '../roster/sync-session-roster';
 import { chunks } from '../utils/chunks.util';
@@ -12,6 +14,7 @@ import { insertMany } from '../utils/insert-many.util';
 import { lookupId } from '../utils/lookup-id.util';
 
 import { liveMessages } from './live-messages';
+import { sessionEntity } from './load-provenance';
 
 import type { PlannedSession } from '../extract/assemble-plan';
 import type { LineupFact } from '../extract/fact.model';
@@ -33,21 +36,54 @@ const existingSessions = Effect.fn('IngestTelegram.existingSessions')(function* 
         .select({ id: session.id, localDate: session.localDate, activityId: session.activityId, source: session.source })
         .from(session)
         .where(eq(session.communityId, communityId));
-    const byKey = new Map<string, typeof rows>();
+    const references = yield* transaction
+        .select({ messageId: sourceRef.messageId, sessionId: extraction.entityId })
+        .from(sourceRef)
+        .innerJoin(extraction, eq(extraction.sourceRefId, sourceRef.id))
+        .where(and(eq(sourceRef.communityId, communityId), eq(extraction.entityType, sessionEntity)));
+    const changed = yield* transaction
+        .select({ id: sessionChange.sessionId })
+        .from(sessionChange)
+        .innerJoin(session, eq(session.id, sessionChange.sessionId))
+        .where(eq(session.communityId, communityId));
+    const rowById = new Map(rows.map(row => [row.id, row]));
+    const byDay = new Map<string, typeof rows>();
 
     for (const row of rows) {
         const key = `${row.localDate}|${row.activityId}`;
-        byKey.set(key, [...(byKey.get(key) ?? []), row]);
+        byDay.set(key, [...(byDay.get(key) ?? []), row]);
     }
 
-    return (key: string) => {
-        const sameDay = byKey.get(key) ?? [];
-
-        const [only, ...others] = sameDay;
-
-        return sameDay.find(row => row.source === 'import') ?? (isNotEmptyArray(others) ? null : only);
+    return {
+        edited: new Set(changed.map(({ id }) => id)),
+        byMessage: new Map(references.map(({ messageId, sessionId }) => [messageId, rowById.get(sessionId)])),
+        byDay
     };
 });
+
+type Existing = Effect.Success<ReturnType<typeof existingSessions>>;
+
+const matchSessions = (
+    planned: readonly { readonly key: string; readonly messageIds: readonly number[] }[],
+    { byMessage, byDay, edited }: Existing
+) => {
+    const used = new Set<string>();
+    const take = <Row extends { readonly id: string }>(candidates: readonly (Row | null | undefined)[]): Row | null => {
+        const free = candidates.find(row => isDefined(row) && !used.has(row.id)) ?? null;
+        used.add(free?.id ?? '');
+
+        return free;
+    };
+    const sameMessage = planned.map(({ messageIds }) => take(messageIds.map(id => byMessage.get(id))));
+
+    return planned.map(({ key }, index) => {
+        const sameDay = (byDay.get(key) ?? []).filter(({ id }) => !edited.has(id));
+        const [only, ...others] = sameDay;
+        const imported = sameDay.filter(row => row.source === 'import');
+
+        return sameMessage[index] ?? take(isNotEmptyArray(imported) || isNotEmptyArray(others) ? imported : [only]);
+    });
+};
 
 const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function* (
     context: LoadContext,
@@ -55,16 +91,23 @@ const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function
     liveSessionIds: ReadonlySet<string>
 ) {
     const { transaction, communityId, config, plan } = context;
-    const find = yield* existingSessions(context);
-    const planned = plan.sessions.map(item => {
+    const existing = yield* existingSessions(context);
+    const matched = matchSessions(
+        plan.sessions.map(item => ({
+            key: `${item.localDate}|${reference.activityIdBySport.get(item.sport)}`,
+            messageIds: [...item.pollMessageIds, ...(isDefined(item.lineup) ? [item.lineup.messageId] : [])]
+        })),
+        existing
+    );
+    const planned = plan.sessions.map((item, index) => {
         const startsAt = startOf(item, config.timeZone);
         const activityId = reference.activityIdBySport.get(item.sport) ?? '';
-        const existing = find(`${item.localDate}|${activityId}`);
+        const found = matched[index];
 
         return {
-            keep: isDefined(existing) && (existing.source !== 'import' || liveSessionIds.has(existing.id)),
+            keep: isDefined(found) && (found.source !== 'import' || liveSessionIds.has(found.id) || existing.edited.has(found.id)),
             row: {
-                id: existing?.id,
+                id: found?.id,
                 communityId,
                 activityId,
                 venueId: lookupId(reference.venueIdByKey, item.venueKey) ?? null,
@@ -91,7 +134,9 @@ const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function
             .onConflictDoUpdate({
                 target: session.id,
                 set: {
-                    venueId: sql`excluded.venue_id`,
+                    localDate: sql`excluded.local_date`,
+                    activityId: sql`excluded.activity_id`,
+                    venueId: sql`coalesce(excluded.venue_id, ${session.venueId})`,
                     startsAt: sql`excluded.starts_at`,
                     endsAt: sql`excluded.ends_at`,
                     status: sql`excluded.status`,
@@ -124,6 +169,7 @@ const deleteStaleSessions = Effect.fn('IngestTelegram.deleteStaleSessions')(func
             and(
                 eq(session.communityId, communityId),
                 eq(session.source, 'import'),
+                notExists(transaction.select().from(sessionChange).where(eq(sessionChange.sessionId, session.id))),
                 notExists(transaction.select().from(signup).where(eq(signup.sessionId, session.id))),
                 notExists(
                     transaction
@@ -195,6 +241,7 @@ const guestRequestEntries = ({ plan }: LoadContext, directory: Directory, games:
                     teamOrdinal: unassignedTeam,
                     position: first + index + 1,
                     tgUserId: BigInt(userId),
+                    isGuest: true,
                     guestOfPersonId,
                     resolvedBy: 'guest' as const
                 }))
@@ -241,6 +288,7 @@ const replaceEntries = Effect.fn('IngestTelegram.replaceEntries')(function* (
     );
 
     yield* insertMany([...entries, ...requests.entries], batch => transaction.insert(lineupEntry).values(batch));
+    yield* markShared(context.communityId);
     yield* syncSessionRoster([...new Set([...previous, ...entries].map(entry => entry.sessionId))]);
 
     return { entries: entries.length, unassigned: requests.unassigned };

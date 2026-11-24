@@ -12,8 +12,15 @@ export interface PollFact {
     readonly format?: string;
     readonly isReserve: boolean;
     readonly isChoice: boolean;
+    readonly isGame: boolean;
+    readonly joinsGame: boolean;
     readonly title: string;
     readonly confidence: number;
+}
+
+interface GuestDescription {
+    readonly host?: string;
+    readonly count: number;
 }
 
 export interface LineupMember {
@@ -26,6 +33,7 @@ export interface LineupMember {
     readonly isNewcomer: boolean;
     readonly isSelf: boolean;
     readonly guests: number;
+    readonly guest?: GuestDescription;
 }
 
 export interface LineupTeam {

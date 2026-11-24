@@ -5,9 +5,9 @@ import { and, inArray, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 const nickname = sql`(
-    select linked.alias from identity.person_alias linked
-    where linked.person_id = ${person.id} and linked.resolution in ('confirmed', 'vote') and linked.kind not in ('self', 'placeholder')
-    order by linked.occurrences desc, linked.last_seen_at desc limit 1
+    select linked.alias from play.lineup_entry entry join identity.person_alias linked on linked.id = entry.alias_id
+    where entry.person_id = ${person.id} and entry.resolved_by in ('alias', 'vote', 'manual') and linked.kind not in ('self', 'placeholder')
+    group by linked.id, linked.alias order by count(*) desc, linked.alias limit 1
 )`;
 
 const telegramName = sql`(
@@ -27,6 +27,6 @@ export const refreshNames = Effect.fn('IngestTelegram.refreshNames')(function* (
         yield* db
             .update(person)
             .set({ displayName: sql`coalesce(${nickname}, ${telegramName}, ${person.displayName})` })
-            .where(and(inArray(person.id, [...personIds]), ne(person.source, 'manual'), sql`not ${renamedByAdmin}`));
+            .where(and(inArray(person.id, [...new Set(personIds)]), ne(person.source, 'manual'), sql`not ${renamedByAdmin}`));
     }
 });

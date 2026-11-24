@@ -145,19 +145,27 @@ const playedLineup = (lineup: LineupFact, cancellation: CancellationFact | undef
 
 export const assemblePlan = (facts: ExtractedFacts, asOf: string): ImportPlan => {
     const gamePolls = facts.polls.filter(poll => !poll.isReserve);
-    const pollsByKey = groupBy(gamePolls, poll => `${poll.localDate}|${poll.sport}`);
+    const keyOf = (poll: PollFact): string => `${poll.localDate}|${poll.sport}`;
+    const ownPollsByKey = groupBy(
+        gamePolls.filter(poll => poll.isGame),
+        keyOf
+    );
     const cancellationsByDate = new Map(facts.cancellations.map(cancellation => [cancellation.localDate, cancellation]));
     const lineupsByKey = new Map<string, LineupFact>(
         facts.lineups.flatMap(lineup =>
             playedLineup(lineup, cancellationsByDate.get(lineup.localDate)).pipe(
                 Option.match({
                     onNone: () => [],
-                    onSome: played => [[`${played.localDate}|${lineupSport(played.localDate, pollsByKey)}`, played] as const]
+                    onSome: played => [[`${played.localDate}|${lineupSport(played.localDate, ownPollsByKey)}`, played] as const]
                 })
             )
         )
     );
-    const keys = new Set([...pollsByKey.keys(), ...lineupsByKey.keys()]);
+    const keys = new Set([...ownPollsByKey.keys(), ...lineupsByKey.keys()]);
+    const pollsByKey = groupBy(
+        gamePolls.filter(poll => poll.isGame || (poll.joinsGame && keys.has(keyOf(poll)))),
+        keyOf
+    );
 
     const sessions = [...keys].toSorted().map(key =>
         buildSession({

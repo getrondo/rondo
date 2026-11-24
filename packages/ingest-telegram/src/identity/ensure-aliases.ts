@@ -1,7 +1,7 @@
 import { isNotEmptyArray } from '@rnw-community/shared';
 import { person, personAlias } from '@rondo/db/schema/identity.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { insertMany } from '../utils/insert-many.util';
@@ -31,22 +31,16 @@ export const ensureAliases = Effect.fn('IngestTelegram.ensureAliases')(function*
                 target: [personAlias.communityId, personAlias.aliasNorm],
                 set: {
                     ...(source === 'import' ? { alias: sql`excluded.alias` } : {}),
-                    kind: sql`case when excluded.kind = 'placeholder' then excluded.kind else ${personAlias.kind} end`,
                     firstSeenAt: sql`least(${personAlias.firstSeenAt}, excluded.first_seen_at)`,
                     lastSeenAt: sql`greatest(${personAlias.lastSeenAt}, excluded.last_seen_at)`
                 }
             })
     );
 
-    yield* db
-        .update(personAlias)
-        .set({ personId: personAlias.guestPersonId, resolution: 'unresolved' })
-        .where(and(eq(personAlias.communityId, communityId), eq(personAlias.kind, 'placeholder')));
-
     const withoutPerson = yield* db
         .select({ id: personAlias.id, alias: personAlias.alias, aliasNorm: personAlias.aliasNorm })
         .from(personAlias)
-        .where(and(eq(personAlias.communityId, communityId), isNull(personAlias.personId)));
+        .where(and(eq(personAlias.communityId, communityId), isNull(personAlias.personId), ne(personAlias.kind, 'placeholder')));
     const personNames = new Map(aliases.map(({ aliasNorm, personName }) => [aliasNorm, personName]));
 
     if (isNotEmptyArray(withoutPerson)) {

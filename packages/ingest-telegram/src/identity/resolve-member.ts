@@ -1,7 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
 import * as Option from 'effect/Option';
-
-import { placeholderNorm } from './placeholder-norm';
 
 import type { LineupMember } from '../extract/fact.model';
 import type { Alias, Directory, ResolvedMember } from '../interface/directory.interface';
@@ -9,7 +6,7 @@ import type { Alias, Directory, ResolvedMember } from '../interface/directory.in
 const byAccount = (directory: Directory, tgUserId: bigint, resolvedBy: 'account' | 'handle'): Option.Option<ResolvedMember> =>
     Option.fromNullishOr(directory.personIdByAccount.get(tgUserId)).pipe(Option.map(personId => ({ personId, tgUserId, resolvedBy })));
 
-const aliasResolution = ({ resolution }: Alias): ResolvedMember['resolvedBy'] => {
+export const aliasResolution = ({ resolution }: Alias): ResolvedMember['resolvedBy'] => {
     if (resolution === 'confirmed') {
         return 'alias';
     }
@@ -27,11 +24,7 @@ export const resolveAccount = (member: LineupMember, authorId: number | undefine
     );
 };
 
-export const resolveAlias = (member: LineupMember, occurrence: number, directory: Directory): Option.Option<ResolvedMember> => {
-    const known = directory.aliasByNorm.get(member.aliasNorm);
-    const alias = known?.kind === 'placeholder' ? directory.aliasByNorm.get(placeholderNorm(member.aliasNorm, occurrence)) : known;
-
-    return isDefined(alias?.personId)
-        ? Option.some({ personId: alias.personId, aliasId: alias.id, resolvedBy: aliasResolution(alias) })
-        : Option.none();
-};
+export const resolveAlias = (aliasNorm: string, directory: Directory): Option.Option<ResolvedMember> =>
+    Option.fromNullishOr(directory.aliasByNorm.get(aliasNorm)).pipe(
+        Option.map(alias => ({ personId: alias.personId, aliasId: alias.id, resolvedBy: aliasResolution(alias) }))
+    );

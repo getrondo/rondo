@@ -5,6 +5,7 @@ import { Db } from '@rondo/db/service/db.service';
 import { and, eq, isNotNull, ne } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
+import { alignGuests } from '../roster/align-guests';
 import { syncSessionRoster } from '../roster/sync-session-roster';
 
 import { refreshNames } from './refresh-names';
@@ -13,7 +14,7 @@ import type { Alias } from '../interface/directory.interface';
 
 interface AliasAssignment {
     readonly alias: Alias;
-    readonly personId: string;
+    readonly personId: string | null;
     readonly resolution: Alias['resolution'];
     readonly resolvedBy: 'alias' | 'vote' | 'guest';
 }
@@ -25,20 +26,20 @@ export const assignAlias = Effect.fn('IngestTelegram.assignAlias')(function* ({
     resolvedBy
 }: AliasAssignment) {
     const db = yield* Db;
-    const previousPersonId = alias.personId ?? personId;
+    const placed = alias.kind === 'placeholder' ? [] : [isNotNull(lineupEntry.personId)];
+
+    const former = yield* db.selectDistinct({ personId: lineupEntry.personId }).from(lineupEntry).where(eq(lineupEntry.aliasId, alias.id));
+    const formerPersonIds = [alias.personId, ...former.map(entry => entry.personId)];
 
     yield* db.update(personAlias).set({ personId, resolution }).where(eq(personAlias.id, alias.id));
     const entries = yield* db
         .update(lineupEntry)
         .set({ personId, resolvedBy })
-        .where(and(eq(lineupEntry.aliasId, alias.id), isNotNull(lineupEntry.personId), ne(lineupEntry.resolvedBy, 'manual')))
+        .where(and(eq(lineupEntry.aliasId, alias.id), eq(lineupEntry.isGuest, false), ne(lineupEntry.resolvedBy, 'manual'), ...placed))
         .returning({ sessionId: lineupEntry.sessionId });
-    yield* db
-        .update(lineupEntry)
-        .set({ guestOfPersonId: personId })
-        .where(and(eq(lineupEntry.aliasId, alias.id), eq(lineupEntry.guestOfPersonId, previousPersonId)));
+    yield* alignGuests(alias.communityId);
     yield* syncSessionRoster([...new Set(entries.map(entry => entry.sessionId))]);
-    yield* refreshNames([previousPersonId, personId]);
+    yield* refreshNames([...formerPersonIds, personId].filter(id => isDefined(id)));
 });
 
 export const guestPersonOf = Effect.fn('IngestTelegram.guestPersonOf')(function* (alias: Alias) {

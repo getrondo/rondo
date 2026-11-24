@@ -1,126 +1,191 @@
-import { isDefined } from '@rnw-community/shared';
-import { personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
-import { pollVote } from '@rondo/db/schema/platform.schema';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { personAlias } from '@rondo/db/schema/identity.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
-import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, desc, eq, inArray, isNotNull, ne } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 
-import { assignAlias, guestPersonOf } from './assign-alias';
-import { isCertain, rankVoteMatches, type RankedMatch, type VoteEvidence } from './match-votes';
+import { syncSessionRoster } from '../roster/sync-session-roster';
 
-const addTo = <Key>(groups: Map<Key, Set<string>>, key: Key, value: string): void => {
-    const group = groups.get(key) ?? new Set();
-    group.add(value);
-    groups.set(key, group);
-};
+import { assignAlias } from './assign-alias';
+import { loadEvidence, type LinkEvidence } from './load-evidence';
+import { isCertainSet, judge, matchSegments, matchSet, splitByGaps, type VoteMatch } from './match-votes';
+import { refreshNames } from './refresh-names';
 
-const loadEvidence = Effect.fn('IngestTelegram.loadEvidence')(function* (communityId: string) {
-    const db = yield* Db;
-    const votes = yield* db
-        .selectDistinctOn([pollVote.sessionId, pollVote.tgUserId], {
-            sessionId: pollVote.sessionId,
-            tgUserId: pollVote.tgUserId,
-            personId: telegramAccount.personId,
-            choice: pollVote.choice
-        })
-        .from(pollVote)
-        .innerJoin(session, eq(session.id, pollVote.sessionId))
-        .innerJoin(telegramAccount, eq(telegramAccount.tgUserId, pollVote.tgUserId))
-        .where(eq(session.communityId, communityId))
-        .orderBy(pollVote.sessionId, pollVote.tgUserId, desc(pollVote.votedAt));
-    const entries = yield* db
-        .select({
-            sessionId: lineupEntry.sessionId,
-            aliasId: lineupEntry.aliasId,
-            personId: lineupEntry.personId,
-            resolvedBy: lineupEntry.resolvedBy,
-            kind: personAlias.kind
-        })
-        .from(lineupEntry)
-        .innerJoin(session, eq(session.id, lineupEntry.sessionId))
-        .leftJoin(personAlias, eq(personAlias.id, lineupEntry.aliasId))
-        .where(and(eq(session.communityId, communityId), isNotNull(lineupEntry.personId)));
-    const withLineup = new Set(entries.map(entry => entry.sessionId));
-    const withVoters = new Set(votes.map(vote => vote.sessionId));
-    const yesGamesByAccount = new Map<bigint, Set<string>>();
-    const gamesByAlias = new Map<string, Set<string>>();
-    const personIdByAccount = new Map(
-        votes.flatMap(({ tgUserId, personId }) => (isDefined(personId) ? [[tgUserId, personId] as const] : []))
-    );
-
-    for (const { choice, sessionId, tgUserId } of votes) {
-        if (choice === 'yes' && isDefined(sessionId) && withLineup.has(sessionId)) {
-            addTo(yesGamesByAccount, tgUserId, sessionId);
-        }
-    }
-
-    for (const { aliasId, sessionId, resolvedBy, kind } of entries) {
-        if (isDefined(aliasId) && kind !== 'placeholder' && resolvedBy !== 'manual' && withVoters.has(sessionId)) {
-            addTo(gamesByAlias, aliasId, sessionId);
-        }
-    }
-
-    return {
-        personIdByAccount,
-        yesGamesByAccount,
-        gamesByAlias,
-        otherAliasGamesByPerson: (personId, aliasId) =>
-            new Set(entries.filter(entry => entry.personId === personId && entry.aliasId !== aliasId).map(entry => entry.sessionId))
-    } satisfies VoteEvidence;
-});
-
-const openResolutions = ['unresolved', 'suggested'] as const;
-
-export const rankedLinks = Effect.fn('IngestTelegram.rankedLinks')(function* (communityId: string) {
+const openAliases = Effect.fn('IngestTelegram.openAliases')(function* (communityId: string) {
     const db = yield* Db;
     const open = yield* db
         .select()
         .from(personAlias)
-        .where(
-            and(eq(personAlias.communityId, communityId), inArray(personAlias.resolution, openResolutions), ne(personAlias.kind, 'self'))
-        );
-    const aliasById = new Map(open.map(alias => [alias.id, alias]));
+        .where(and(eq(personAlias.communityId, communityId), inArray(personAlias.resolution, ['unresolved', 'suggested'])));
 
+    return new Map(open.map(alias => [alias.id, alias]));
+});
+
+export const rankedLinks = Effect.fn('IngestTelegram.rankedLinks')(function* (communityId: string) {
     const evidence = yield* loadEvidence(communityId);
+    const open = yield* openAliases(communityId);
 
-    return rankVoteMatches(evidence).flatMap(match => {
-        const alias = aliasById.get(match.aliasId);
+    return [...evidence.timelines]
+        .flatMap(([aliasId, timeline]) => {
+            const alias = open.get(aliasId);
 
-        return isDefined(alias) ? [{ ...match, alias }] : [];
-    });
+            return judge(evidence, aliasId, timeline).pipe(Option.toArray, matches =>
+                isDefined(alias) ? matches.map(match => Object.assign(match, { alias })) : []
+            );
+        })
+        .toSorted((left, right) => right.score - left.score);
 });
 
 export const releaseVoteLinks = Effect.fn('IngestTelegram.releaseVoteLinks')(function* (communityId: string) {
     const db = yield* Db;
-    const linked = yield* db
-        .select()
-        .from(personAlias)
-        .where(and(eq(personAlias.communityId, communityId), eq(personAlias.resolution, 'vote')));
+    const inCommunity = sql`select id from identity.person_alias where community_id = ${communityId}::uuid`;
 
-    for (const alias of linked) {
-        const personId = yield* guestPersonOf(alias);
-        yield* assignAlias({ alias, personId, resolution: 'unresolved', resolvedBy: 'guest' });
+    yield* db
+        .update(personAlias)
+        .set({ personId: personAlias.guestPersonId, resolution: 'unresolved' })
+        .where(and(eq(personAlias.communityId, communityId), eq(personAlias.resolution, 'vote')));
+    yield* db
+        .update(personAlias)
+        .set({ kind: 'nickname', personId: personAlias.guestPersonId })
+        .where(and(eq(personAlias.communityId, communityId), eq(personAlias.kind, 'placeholder')));
+    const linked = yield* db
+        .select({ personId: lineupEntry.personId, sessionId: lineupEntry.sessionId })
+        .from(lineupEntry)
+        .where(and(eq(lineupEntry.resolvedBy, 'vote'), sql`${lineupEntry.aliasId} in (${inCommunity})`));
+    yield* db
+        .update(lineupEntry)
+        .set({
+            resolvedBy: 'guest',
+            personId: sql`(select alias.person_id from identity.person_alias alias where alias.id = ${lineupEntry.aliasId})`
+        })
+        .where(and(eq(lineupEntry.resolvedBy, 'vote'), sql`${lineupEntry.aliasId} in (${inCommunity})`));
+
+    yield* syncSessionRoster([...new Set(linked.map(({ sessionId }) => sessionId))]);
+
+    return linked.flatMap(({ personId }) => (isDefined(personId) ? [personId] : []));
+});
+
+const assignEntries = Effect.fn('IngestTelegram.assignEntries')(function* (entryIds: readonly string[], personId: string) {
+    const db = yield* Db;
+
+    if (isNotEmptyArray(entryIds)) {
+        yield* db
+            .update(lineupEntry)
+            .set({ personId, resolvedBy: 'vote' })
+            .where(inArray(lineupEntry.id, [...entryIds]));
     }
 });
 
-const firstPerPerson = <Match extends RankedMatch>(matches: readonly Match[]): Match[] => [
-    ...new Map(matches.toSorted((left, right) => left.score - right.score).map(match => [match.personId, match])).values()
-];
+const firstAliasPerPerson = (matches: readonly VoteMatch[]): VoteMatch[] => {
+    const aliasByPerson = new Map<string, string>();
 
-export const linkByVotes = Effect.fn('IngestTelegram.linkByVotes')(function* (communityId: string) {
+    for (const { personId, aliasId } of matches.toSorted((left, right) => right.shared - left.shared)) {
+        aliasByPerson.set(personId, aliasByPerson.get(personId) ?? aliasId);
+    }
+
+    return matches.filter(({ personId, aliasId }) => aliasByPerson.get(personId) === aliasId);
+};
+
+const entriesIn = (evidence: LinkEvidence, aliasId: string, sessionIds: readonly string[]) => {
+    const sessions = new Set(sessionIds);
+
+    return evidence.entries.filter(entry => entry.aliasId === aliasId && entry.resolvedBy !== 'manual' && sessions.has(entry.sessionId));
+};
+
+const linkNicknames = Effect.fn('IngestTelegram.linkNicknames')(function* (communityId: string) {
     const db = yield* Db;
+    const evidence = yield* loadEvidence(communityId);
+    const open = yield* openAliases(communityId);
     const confirmed = yield* db
         .select({ personId: personAlias.personId })
         .from(personAlias)
         .where(and(eq(personAlias.communityId, communityId), eq(personAlias.resolution, 'confirmed')));
-    const taken = new Set(confirmed.map(alias => alias.personId));
-    const certain = firstPerPerson((yield* rankedLinks(communityId)).filter(match => isCertain(match) && !taken.has(match.personId)));
+    const taken = new Set(confirmed.map(({ personId }) => personId));
+    const results = [...evidence.timelines.keys()]
+        .filter(aliasId => open.has(aliasId))
+        .map(aliasId => Object.assign(matchSegments(evidence, aliasId), { aliasId }));
+    const allowed = new Set(firstAliasPerPerson(results.flatMap(({ matches }) => matches).filter(({ personId }) => !taken.has(personId))));
+    const touched: string[] = [];
+    let aliases = 0;
+    let segmentLinks = 0;
 
-    for (const { alias, personId } of certain) {
-        yield* assignAlias({ alias, personId, resolution: 'vote', resolvedBy: 'vote' });
+    for (const { aliasId, segments, matches } of results) {
+        const kept = matches.filter(match => allowed.has(match));
+        const alias = open.get(aliasId);
+        const [first] = kept;
+        const agreed = kept.length === segments && kept.every(({ personId }) => personId === first?.personId);
+
+        if (isDefined(alias) && isDefined(first) && agreed) {
+            aliases += 1;
+            yield* assignAlias({ alias, personId: first.personId, resolution: 'vote', resolvedBy: 'vote' });
+        } else {
+            for (const { personId, sessionIds } of kept) {
+                const entries = entriesIn(evidence, aliasId, sessionIds).filter(entry => isDefined(entry.personId));
+                segmentLinks += 1;
+                touched.push(...entries.map(({ sessionId }) => sessionId));
+                yield* assignEntries(
+                    entries.map(({ id }) => id),
+                    personId
+                );
+            }
+        }
     }
 
-    return certain.length;
+    yield* syncSessionRoster([...new Set(touched)]);
+    yield* refreshNames([...allowed].map(({ personId }) => personId));
+
+    return { aliases, segments: segmentLinks };
+});
+
+const gameAssignments = (evidence: LinkEvidence, aliasId: string, accounts: readonly bigint[], segment: readonly { sessionId: string }[]) =>
+    segment.flatMap(({ sessionId }) => {
+        const yes = evidence.squads.find(squad => squad.sessionId === sessionId)?.yes;
+        const playing = accounts.filter(account => yes?.has(account) === true);
+        const entries = evidence.entries.filter(entry => entry.aliasId === aliasId && entry.sessionId === sessionId);
+        const isOpen = entries.every(({ resolvedBy }) => resolvedBy !== 'manual');
+
+        return isOpen && playing.length === entries.length
+            ? entries.map((entry, index) => ({ entry, personId: evidence.personIdByAccount.get(playing[index] ?? 0n) ?? '' }))
+            : [];
+    });
+
+const linkSharedNickname = Effect.fn('IngestTelegram.linkSharedNickname')(function* (communityId: string, aliasId: string) {
+    const evidence = yield* loadEvidence(communityId);
+    const assignments = splitByGaps(evidence.sharedTimelines.get(aliasId) ?? []).flatMap(segment => {
+        const isPossible = (account: bigint): boolean => {
+            const otherGames = evidence.gamesUnderOtherName(evidence.personIdByAccount.get(account) ?? '', aliasId);
+
+            return segment.every(({ sessionId }) => !otherGames.has(sessionId));
+        };
+
+        return matchSet(evidence.squads, segment, isPossible).pipe(
+            Option.filter(found => isCertainSet(found)),
+            Option.match({ onNone: () => [], onSome: ({ accounts }) => gameAssignments(evidence, aliasId, accounts, segment) })
+        );
+    });
+
+    for (const { entry, personId } of assignments) {
+        yield* assignEntries([entry.id], personId);
+    }
+
+    yield* syncSessionRoster([...new Set(assignments.map(({ entry }) => entry.sessionId))]);
+
+    return assignments.length;
+});
+
+export const linkByVotes = Effect.fn('IngestTelegram.linkByVotes')(function* (communityId: string) {
+    const { aliases, segments } = yield* linkNicknames(communityId);
+    const open = yield* openAliases(communityId);
+    const shared = [...open.values()]
+        .filter(({ kind }) => kind === 'placeholder')
+        .toSorted((left, right) => right.occurrences - left.occurrences || left.aliasNorm.localeCompare(right.aliasNorm));
+    let sharedEntries = 0;
+
+    for (const { id } of shared) {
+        sharedEntries += yield* linkSharedNickname(communityId, id);
+    }
+
+    return { aliases, segments, sharedEntries };
 });

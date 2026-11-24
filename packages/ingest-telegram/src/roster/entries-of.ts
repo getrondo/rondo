@@ -1,70 +1,116 @@
 import { isDefined } from '@rnw-community/shared';
 import * as Option from 'effect/Option';
 
+import { normalizeAlias } from '../extract/normalize';
 import { resolveAccount, resolveAlias } from '../identity/resolve-member';
+
+import { hostOf } from './host-of';
 
 import type { LineupFact, LineupMember } from '../extract/fact.model';
 import type { Directory, EntryRow, ResolvedMember } from '../interface/directory.interface';
 
-const takeManual = (manual: EntryRow[], raw: string, teamOrdinal: number, position: number): EntryRow | undefined => {
-    const same = manual.filter(entry => entry.raw === raw);
-    const taken = same.find(entry => entry.teamOrdinal === teamOrdinal && entry.position === position) ?? same[0];
+type Player = Pick<ResolvedMember, 'personId' | 'aliasId'>;
 
-    if (isDefined(taken)) {
-        manual.splice(manual.indexOf(taken), 1);
+const guestRows = (host: Player, count: number, raw?: string) =>
+    Array.from({ length: count }, (_, index) => ({
+        aliasId: host.aliasId,
+        guestOfPersonId: host.personId,
+        resolvedBy: 'guest' as const,
+        isGuest: true,
+        raw: index === 0 ? raw : null
+    }));
+
+const applyManual = (rows: readonly EntryRow[], manual: readonly EntryRow[]): EntryRow[] => {
+    const overrides = new Map<EntryRow, EntryRow>();
+    const place = (entry: EntryRow, isTarget: (row: EntryRow) => boolean): void => {
+        const row = rows.find(candidate => isTarget(candidate) && !overrides.has(candidate));
+
+        if (isDefined(row)) {
+            overrides.set(row, entry);
+        }
+    };
+    const isPlayer = (row: EntryRow, entry: EntryRow): boolean => row.isGuest !== true && row.raw === entry.raw;
+    const isSamePlace = (row: EntryRow, entry: EntryRow): boolean =>
+        row.teamOrdinal === entry.teamOrdinal && row.position === entry.position;
+
+    for (const entry of manual) {
+        place(entry, row => isPlayer(row, entry) && isSamePlace(row, entry));
     }
 
-    return taken;
+    for (const entry of manual.filter(candidate => ![...overrides.values()].includes(candidate))) {
+        place(entry, row => isPlayer(row, entry));
+    }
+
+    return rows.map(row => {
+        const override = overrides.get(row);
+
+        return isDefined(override) ? Object.assign(row, { personId: override.personId, resolvedBy: 'manual' as const }) : row;
+    });
 };
 
-const entriesOfMember = (member: LineupMember, resolved: ResolvedMember, override: EntryRow | undefined) => {
-    const manualPersonId = override?.personId;
-    const player = isDefined(manualPersonId)
-        ? { personId: manualPersonId, aliasId: resolved.aliasId, resolvedBy: 'manual' as const }
-        : resolved;
-
-    return [
-        { ...player, raw: member.raw, isGk: member.isGk, isNewcomer: member.isNewcomer },
-        ...Array.from({ length: member.guests }, () => ({
-            aliasId: resolved.aliasId,
-            guestOfPersonId: player.personId,
-            resolvedBy: 'guest' as const
-        }))
-    ];
-};
-
-export const entriesOf = (
-    sessionId: string,
-    lineup: LineupFact,
-    directory: Directory,
-    manualEntries: readonly EntryRow[] = []
-): EntryRow[] => {
-    const manual = [...manualEntries];
-    const occurrences = new Map<string, number>();
+export const entriesOf = (sessionId: string, lineup: LineupFact, directory: Directory, manual: readonly EntryRow[] = []): EntryRow[] => {
+    const members = lineup.teams.flatMap(team => team.members);
+    const listedAlone = new Set(members.filter(({ guests }) => guests === 0).map(({ aliasNorm }) => aliasNorm));
+    const placed = new Set<string>();
 
     const resolve = (member: LineupMember): Option.Option<ResolvedMember> =>
-        resolveAccount(member, lineup.authorId, directory).pipe(
-            Option.orElse(() => {
-                const occurrence = (occurrences.get(member.aliasNorm) ?? 0) + 1;
-                occurrences.set(member.aliasNorm, occurrence);
+        resolveAccount(member, lineup.authorId, directory).pipe(Option.orElse(() => resolveAlias(member.aliasNorm, directory)));
 
-                return resolveAlias(member, occurrence, directory);
-            })
+    const resolveHost = (host: string): Option.Option<ResolvedMember> =>
+        hostOf(host, lineup).pipe(
+            Option.flatMap(member => resolve(member)),
+            Option.orElse(() => resolveAlias(normalizeAlias(host), directory))
         );
 
-    return lineup.teams.flatMap(({ ordinal, members }) => {
-        const rows: EntryRow[] = [];
+    const playerRow = (member: LineupMember, player: ResolvedMember) => {
+        const isRepeated = isDefined(player.personId) && placed.has(player.personId);
 
-        for (const member of members) {
-            for (const resolved of Option.toArray(resolve(member))) {
-                const override = takeManual(manual, member.raw, ordinal, rows.length + 1);
-
-                for (const entry of entriesOfMember(member, resolved, override)) {
-                    rows.push({ ...entry, sessionId, messageId: lineup.messageId, teamOrdinal: ordinal, position: rows.length + 1 });
-                }
-            }
+        if (isDefined(player.personId)) {
+            placed.add(player.personId);
         }
 
-        return rows;
-    });
+        return {
+            ...player,
+            ...(isRepeated ? { personId: null, resolvedBy: 'guest' as const } : {}),
+            raw: member.raw,
+            isGk: member.isGk,
+            isNewcomer: member.isNewcomer
+        };
+    };
+
+    const rowsOf = (member: LineupMember) => {
+        const { guest } = member;
+
+        if (isDefined(guest)) {
+            const host = Option.fromNullishOr(guest.host).pipe(
+                Option.flatMap(name => resolveHost(name)),
+                Option.getOrElse((): Player => ({ personId: null }))
+            );
+
+            return guestRows(host, guest.count, member.raw);
+        }
+
+        return resolve(member).pipe(Option.toArray, items =>
+            items.flatMap(player =>
+                member.guests > 0 && listedAlone.has(member.aliasNorm)
+                    ? guestRows(player, member.guests, member.raw)
+                    : [playerRow(member, player), ...guestRows(player, member.guests)]
+            )
+        );
+    };
+
+    const rows = lineup.teams.flatMap(({ ordinal, members: teamMembers }) =>
+        teamMembers
+            .flatMap(member => rowsOf(member))
+            .map((row, index): EntryRow =>
+                Object.assign(row, {
+                    sessionId,
+                    messageId: lineup.messageId,
+                    teamOrdinal: ordinal,
+                    position: index + 1
+                })
+            )
+    );
+
+    return applyManual(rows, manual);
 };

@@ -1,5 +1,6 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { extraction, ingestRun, sourceRef } from '@rondo/db/schema/platform.schema';
+import { eq } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
@@ -14,6 +15,8 @@ interface ProvenanceInput {
     readonly sessionIds: readonly string[];
     readonly stats: Record<string, number>;
 }
+
+export const sessionEntity = 'scheduling.session';
 
 const lineupConfidence = 0.95;
 const cancellationConfidence = 0.75;
@@ -32,6 +35,7 @@ export const recordProvenance = Effect.fn('IngestTelegram.recordProvenance')(fun
     { transaction, communityId, plan }: LoadContext,
     { fileSha256, sessionIds, stats }: ProvenanceInput
 ) {
+    yield* transaction.delete(ingestRun).where(eq(ingestRun.communityId, communityId));
     const finishedAt = yield* DateTime.nowAsDate;
     const [run] = yield* transaction
         .insert(ingestRun)
@@ -73,7 +77,7 @@ export const recordProvenance = Effect.fn('IngestTelegram.recordProvenance')(fun
     yield* insertMany(
         unique.map((ref, index) => ({
             sourceRefId: sourceRefIds[index] ?? '',
-            entityType: 'scheduling.session',
+            entityType: sessionEntity,
             entityId: ref.sessionId,
             confidence: ref.confidence
         })),

@@ -1,7 +1,6 @@
 import { isDefined } from '@rnw-community/shared';
 import * as Option from 'effect/Option';
 
-import { placeholderNorm } from './placeholder-norm';
 import { resolveAccount } from './resolve-member';
 
 import type { LineupFact, LineupMember } from '../extract/fact.model';
@@ -11,15 +10,6 @@ interface Sighting {
     readonly member: LineupMember;
     readonly seenAt: Date;
 }
-
-const membersWithoutAccount = (lineup: LineupFact, directory: Directory): LineupMember[] =>
-    lineup.teams.flatMap(({ members }) => members).filter(member => Option.isNone(resolveAccount(member, lineup.authorId, directory)));
-
-const repeatedNorms = (members: readonly LineupMember[]): string[] => {
-    const alone = members.filter(({ guests }) => guests === 0).map(({ aliasNorm }) => aliasNorm);
-
-    return alone.filter((aliasNorm, index) => alone.indexOf(aliasNorm) !== index);
-};
 
 const mostFrequent = (spellings: readonly string[]): string => {
     const counts = new Map<string, number>();
@@ -34,42 +24,30 @@ const mostFrequent = (spellings: readonly string[]): string => {
 };
 
 export const aliasesIn = (lineups: readonly LineupFact[], directory: Directory, selfName: string): SeenAlias[] => {
-    const games = lineups.map(lineup => ({ seenAt: lineup.postedAt, members: membersWithoutAccount(lineup, directory) }));
-    const shared = new Set(games.flatMap(({ members }) => repeatedNorms(members)));
-    const isShared = (aliasNorm: string): boolean => shared.has(aliasNorm) || directory.aliasByNorm.get(aliasNorm)?.kind === 'placeholder';
     const sightings = new Map<string, Sighting[]>();
 
-    for (const { seenAt, members } of games) {
-        const occurrences = new Map<string, number>();
+    for (const lineup of lineups) {
+        const named = lineup.teams
+            .flatMap(({ members }) => members)
+            .filter(member => !isDefined(member.guest) && Option.isNone(resolveAccount(member, lineup.authorId, directory)));
 
-        for (const member of members) {
-            const occurrence = (occurrences.get(member.aliasNorm) ?? 0) + 1;
-            const key = isShared(member.aliasNorm) ? placeholderNorm(member.aliasNorm, occurrence) : member.aliasNorm;
-            occurrences.set(member.aliasNorm, occurrence);
-            sightings.set(key, [...(sightings.get(key) ?? []), { member, seenAt }]);
+        for (const member of named) {
+            sightings.set(member.aliasNorm, [...(sightings.get(member.aliasNorm) ?? []), { member, seenAt: lineup.postedAt }]);
         }
     }
 
-    return [...sightings].flatMap(([aliasNorm, group]) => {
-        const first = group[0]?.member;
-
-        if (!isDefined(first)) {
-            return [];
-        }
-
+    return [...sightings].map(([aliasNorm, group]) => {
         const times = group.map(({ seenAt }) => seenAt.getTime());
-        const knownKind = isShared(first.aliasNorm) ? ('placeholder' as const) : ('nickname' as const);
+        const isSelf = group.some(({ member }) => member.isSelf);
 
-        return [
-            {
-                alias: mostFrequent(group.map(({ member }) => member.alias)),
-                aliasNorm,
-                kind: first.isSelf ? ('self' as const) : knownKind,
-                personName: first.isSelf ? selfName : null,
-                occurrences: group.length,
-                firstSeenAt: new Date(Math.min(...times)),
-                lastSeenAt: new Date(Math.max(...times))
-            }
-        ];
+        return {
+            alias: mostFrequent(group.map(({ member }) => member.alias)),
+            aliasNorm,
+            kind: isSelf ? ('self' as const) : ('nickname' as const),
+            personName: isSelf ? selfName : null,
+            occurrences: group.length,
+            firstSeenAt: new Date(Math.min(...times)),
+            lastSeenAt: new Date(Math.max(...times))
+        };
     });
 };

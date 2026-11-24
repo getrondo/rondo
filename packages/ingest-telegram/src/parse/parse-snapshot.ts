@@ -2,6 +2,7 @@ import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
+import { isSignupPair, noAnswer, yesAnswer } from '../extract/poll-answers';
 import {
     SnapshotMessageSchema,
     SnapshotUserSchema,
@@ -20,14 +21,15 @@ interface SnapshotFiles {
 
 type Answers = NonNullable<(typeof SnapshotMessageSchema.Type)['poll']>['answers'];
 
-const yesAnswer = /^[+➕✔✅]/u;
-const noAnswer = /^(?:[-–➖❌🙅✖]|нет|не\s)/iu;
-
 const answerChoice = (answers: Answers, option: string): VoteChoice => {
     const index = answers.findIndex(answer => answer.option === option);
 
-    if (answers.length === 2) {
+    if (answers.length === 2 && isSignupPair(answers.map(answer => answer.text))) {
         return index === 0 ? 'yes' : 'no';
+    }
+
+    if (answers.length === 2) {
+        return 'other';
     }
 
     const text = (answers[index]?.text ?? '').trim();

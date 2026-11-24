@@ -37,7 +37,7 @@ export const syncSessionRoster = Effect.fn('IngestTelegram.syncSessionRoster')(f
             (case when ${session.source} = 'import' then 'import' else 'bot' end)::identity.record_source
         from ${lineupEntry}
         join ${session} on ${session.id} = ${lineupEntry.sessionId}
-        where ${players}
+        where ${players} and ${session.status} <> 'cancelled'
         on conflict do nothing
     `);
 });

@@ -9,7 +9,7 @@ export const countOccurrences = Effect.fn('IngestTelegram.countOccurrences')(fun
     yield* db
         .update(personAlias)
         .set({
-            occurrences: sql`(select count(*) from play.lineup_entry entry where entry.alias_id = ${personAlias.id} and entry.person_id is not null)`
+            occurrences: sql`(select count(*) from play.lineup_entry entry where entry.alias_id = ${personAlias.id} and not entry.is_guest)`
         })
         .where(eq(personAlias.communityId, communityId));
 });

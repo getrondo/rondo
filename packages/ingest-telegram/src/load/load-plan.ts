@@ -3,7 +3,9 @@ import * as Effect from 'effect/Effect';
 
 import { countOccurrences } from '../identity/count-occurrences';
 import { loadDirectory } from '../identity/load-directory';
+import { refreshNames } from '../identity/refresh-names';
 import { linkByVotes, releaseVoteLinks } from '../identity/vote-links';
+import { alignGuests } from '../roster/align-guests';
 
 import { loadAccounts } from './load-accounts';
 import { assertUniqueVenueNames, purgePreviousImport, upsertCommunity, upsertReference } from './load-community';
@@ -34,14 +36,16 @@ export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
             yield* purgePreviousImport(transaction, communityId);
             const reference = yield* upsertReference(context);
             const accounts = yield* loadAccounts(context);
-            yield* releaseVoteLinks(communityId);
+            const released = yield* releaseVoteLinks(communityId);
             const known = yield* loadDirectory(communityId);
             const aliases = yield* insertPeople(context, known);
             const directory = yield* loadDirectory(communityId);
             const sessions = yield* loadSessions(context, reference, directory);
             const votes = yield* insertVotes(context, directory, sessions.sessionIds);
             yield* countOccurrences(communityId);
-            const voteLinks = yield* linkByVotes(communityId);
+            const links = yield* linkByVotes(communityId);
+            yield* alignGuests(communityId);
+            yield* refreshNames(released);
             const fixtures = yield* insertMoneyAndLeague(context, reference.venueIdByKey);
             const stats = {
                 sessions: plan.sessions.length,
@@ -50,7 +54,9 @@ export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
                 unassignedGuestRequests: sessions.unassignedGuestRequests,
                 accounts,
                 votes,
-                voteLinks,
+                aliasLinks: links.aliases,
+                segmentLinks: links.segments,
+                sharedEntries: links.sharedEntries,
                 aliases,
                 authors: plan.facts.authors.length,
                 priceRules: plan.prices.length,

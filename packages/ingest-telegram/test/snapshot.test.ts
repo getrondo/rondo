@@ -1,9 +1,10 @@
 import { expect, layer } from '@effect/vitest';
+import { isDefined } from '@rnw-community/shared';
 import { person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { community, membership, telegramChat } from '@rondo/db/schema/org.schema';
 import { messageRef, pollVote } from '@rondo/db/schema/platform.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
-import { attendance, session } from '@rondo/db/schema/scheduling.schema';
+import { attendance, session, sessionChange } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { testDbLayer } from '@rondo/db/testing/test-db.layer';
 import { and, asc, eq, sql } from 'drizzle-orm';
@@ -37,7 +38,7 @@ const messages: TelegramMessage[] = Array.from({ length: games }, (_, index) => 
               message(
                   pollMessage(index) + 1,
                   `2025-05-${dayOf(index)}T12:00:00Z`,
-                  `Составы на сегодня, North:\n🟢Я, Гонзо${index === 0 ? ', Гонзо +1' : ''}, Зорро\n🔵${index % 2 === 0 ? 'Олег' : 'Семён'}${index === 1 ? ', Зорро' : ''}`,
+                  `Составы на сегодня, North:\n🟢Я, Гонзо${index === 0 ? ', Гонзо +1' : ''}, Зорро\n🔵${index % 2 === 0 ? 'Олег' : 'Семён'}${index === 1 || index === 2 ? ', Зорро' : ''}${index === 3 ? ', Пират, Пират, Друг Гонзо, новый' : ''}`,
                   { authorId: ids.org }
               )
           ])
@@ -134,6 +135,8 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
                 .select()
                 .from(telegramAccount)
                 .where(eq(telegramAccount.tgUserId, BigInt(ids.bot)));
+            const guestsNamed = (raw: string) =>
+                entries.filter(({ entry }) => entry.raw === raw).map(({ entry }) => [entry.isGuest, entry.guestOfPersonId]);
             const lastGame = entries.filter(({ localDate }) => localDate === '2025-05-12');
             const lastAttendance = yield* db
                 .select()
@@ -141,7 +144,15 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
                 .innerJoin(session, eq(session.id, attendance.sessionId))
                 .where(and(eq(session.communityId, communityId), eq(session.localDate, '2025-05-12')));
 
-            expect(stats).toMatchObject({ sessions: games, accounts: 5, votes: games * 3, voteLinks: 1, unassignedGuestRequests: 1 });
+            expect(stats).toMatchObject({
+                sessions: games,
+                accounts: 5,
+                votes: games * 3,
+                aliasLinks: 1,
+                segmentLinks: 0,
+                sharedEntries: 0,
+                unassignedGuestRequests: 1
+            });
             expect(members.filter(({ status }) => status === 'active')).toHaveLength(2);
             expect(members.filter(({ status }) => status === 'left')).toHaveLength(3);
             expect(bots).toEqual([]);
@@ -149,13 +160,22 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
             expect(alias('гонзо')).toMatchObject({ personId: striker, resolution: 'vote' });
             expect(shown?.displayName).toBe('Гонзо');
             expect(entries.filter(({ entry }) => entry.raw === 'Я').every(({ entry }) => entry.resolvedBy === 'account')).toBe(true);
+            expect(aliases.filter(({ kind }) => kind === 'placeholder').map(({ aliasNorm }) => aliasNorm)).toEqual(['зорро']);
+            expect(entries.filter(({ entry }) => entry.raw === 'Зорро').every(({ entry }) => !isDefined(entry.personId))).toBe(true);
+            expect(entries.filter(({ entry }) => entry.raw === 'Пират').map(({ entry }) => !isDefined(entry.personId))).toEqual([
+                false,
+                true
+            ]);
+            expect(guestsNamed('Друг Гонзо')).toEqual([[true, striker]]);
+            expect(guestsNamed('новый')).toEqual([[true, null]]);
             expect(
-                aliases
-                    .filter(({ kind }) => kind === 'placeholder')
-                    .map(({ aliasNorm }) => aliasNorm)
-                    .toSorted()
-            ).toEqual(['зорро', 'зорро #2']);
-            expect(new Set(aliases.filter(({ kind }) => kind === 'placeholder').map(({ personId }) => personId)).size).toBe(2);
+                entries
+                    .filter(({ entry, localDate }) => localDate === '2025-05-01' && entry.aliasId === alias('гонзо')?.id)
+                    .map(({ entry }) => [entry.raw, entry.isGuest])
+            ).toEqual([
+                ['Гонзо', false],
+                ['Гонзо +1', true]
+            ]);
             expect(lastGame.map(({ entry }) => [entry.teamOrdinal, entry.personId])).toEqual([
                 [0, null],
                 [0, null]
@@ -210,7 +230,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
             expect(kept.filter(({ entry }) => entry.resolvedBy === 'manual').map(({ entry }) => entry.personId)).toEqual([other]);
             expect(noShow?.outcome).toBe('no_show');
             expect(third.alias('гонзо')?.resolution).toBe('guest');
-            expect(third.stats.voteLinks).toBe(0);
+            expect(third.stats.aliasLinks).toBe(0);
             expect(third.entries.some(({ entry, localDate }) => entry.personId === striker && localDate !== '2025-05-05')).toBe(true);
             expect(liveEntries.map(({ entry }) => entry.id)).toContain(live?.entry.id);
         })
@@ -238,12 +258,38 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
         })
     );
 
+    it.effect('keeps what an admin changed in an imported game, even its date', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'edited-fc';
+            const first = yield* load(slug);
+            const gameOn = (date: string): string => first.entries.find(({ localDate }) => localDate === date)?.entry.sessionId ?? '';
+            const edited = gameOn('2025-05-07');
+            const cancelled = gameOn('2025-05-08');
+            const startsAt = new Date('2025-06-20T18:30:00Z');
+            yield* db
+                .update(session)
+                .set({ localDate: '2025-06-20', startsAt, endsAt: new Date('2025-06-20T20:00:00Z') })
+                .where(eq(session.id, edited));
+            yield* db.update(session).set({ status: 'cancelled', cancelReason: 'weather' }).where(eq(session.id, cancelled));
+            yield* db.insert(sessionChange).values([edited, cancelled].map(sessionId => ({ sessionId, diff: {} })));
+            const again = yield* load(slug);
+            const all = yield* db.select().from(session).where(eq(session.communityId, again.communityId));
+            const played = yield* db.select().from(attendance).where(eq(attendance.sessionId, cancelled));
+
+            expect(all).toHaveLength(first.stats.sessions);
+            expect(all.find(({ id }) => id === edited)).toMatchObject({ localDate: '2025-06-20', startsAt });
+            expect(all.find(({ id }) => id === cancelled)).toMatchObject({ status: 'cancelled', cancelReason: 'weather' });
+            expect(played).toEqual([]);
+        })
+    );
+
     it.effect('works without a snapshot', () =>
         Effect.gen(function* () {
             const config = { ...testConfig, slug: 'no-snapshot-fc' };
             const stats = yield* loadPlan(config, assemblePlan(extractAll(messages, config), '2025-06-30'), 'sha');
 
-            expect(stats).toMatchObject({ sessions: games, accounts: 1, votes: 0, voteLinks: 0 });
+            expect(stats).toMatchObject({ sessions: games, accounts: 1, votes: 0, aliasLinks: 0 });
         })
     );
 });

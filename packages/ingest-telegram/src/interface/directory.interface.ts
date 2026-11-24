@@ -12,7 +12,7 @@ export interface Directory {
 }
 
 export interface ResolvedMember {
-    readonly personId: string;
+    readonly personId: string | null;
     readonly tgUserId?: bigint;
     readonly aliasId?: string;
     readonly resolvedBy: EntryRow['resolvedBy'];
@@ -21,7 +21,7 @@ export interface ResolvedMember {
 export interface SeenAlias {
     readonly alias: string;
     readonly aliasNorm: string;
-    readonly kind: 'nickname' | 'placeholder' | 'self';
+    readonly kind: 'nickname' | 'self';
     readonly personName: string | null;
     readonly occurrences: number;
     readonly firstSeenAt: Date;
