@@ -1,4 +1,4 @@
-import { isNotEmptyArray } from '@rnw-community/shared';
+import { isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
 import { person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { membership } from '@rondo/db/schema/org.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
@@ -9,6 +9,7 @@ import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
+import { ensureMembership } from '../identity/telegram-user';
 
 interface PersonMatch {
     readonly personId: string;
@@ -121,6 +122,36 @@ export const mergePeople = Effect.fn('Core.mergePeople')(function* (input: {
         entityId: input.intoPersonId,
         diff: { from: input.fromPersonId }
     });
+});
+
+export const createPerson = Effect.fn('Core.createPerson')(function* (input: {
+    readonly communityId: string;
+    readonly displayName: string;
+    readonly actorPersonId: string | null;
+}) {
+    const db = yield* Db;
+    const displayName = input.displayName.trim();
+
+    if (!isNotEmptyString(displayName)) {
+        return yield* ActionFailedError.make({ reason: 'the name is empty' });
+    }
+
+    return yield* db.transaction(() =>
+        Effect.gen(function* () {
+            const [created] = yield* db.insert(person).values({ displayName, source: 'manual' }).returning({ id: person.id });
+            const personId = created?.id ?? '';
+            yield* ensureMembership(input.communityId, personId);
+            yield* recordAudit({
+                communityId: input.communityId,
+                actorPersonId: input.actorPersonId,
+                action: 'person.create',
+                entityType: 'person',
+                entityId: personId
+            });
+
+            return personId;
+        })
+    );
 });
 
 export const renamePerson = Effect.fn('Core.renamePerson')(function* (input: {

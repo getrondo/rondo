@@ -5,10 +5,11 @@ import * as Option from 'effect/Option';
 import { grantAdmin, isAdminOf } from '../access/admin-access';
 import { ActionFailedError } from '../error/action-failed.error';
 import { notifySessionCancelled, notifySessionChanged } from '../notify/notifier';
-import { arePeopleOf, mergePeople, renamePerson } from '../people/people.service';
-import { cancelSession, createSession, listVenues, requireSession, updateSession } from '../sessions/session.service';
+import { arePeopleOf, createPerson, mergePeople, renamePerson } from '../people/people.service';
+import { cancelSession, createSession, requireSession, updateSession } from '../sessions/session.service';
 import { announceSession, closePollsOf } from '../signups/signup.service';
 import { publishTeams, setSeedRating } from '../teams/team.service';
+import { createVenue, requireVenue, updateVenue } from '../venues/venue.service';
 
 import type { Locale } from '../i18n/locale';
 import type { Action } from './action.model';
@@ -114,6 +115,23 @@ const executeAction = Effect.fn('Core.executeAction')(function* (action: Action,
         case 'set_rating': {
             return yield* setSeedRating({ ...action, communityId, actorPersonId }).pipe(Effect.as({ personId: action.personId }), asResult);
         }
+        case 'create_person': {
+            const personId = yield* createPerson({ displayName: action.displayName, communityId, actorPersonId });
+
+            return { personId } satisfies ActionResult;
+        }
+        case 'create_venue': {
+            const { _tag, ...details } = action;
+            const venueId = yield* createVenue({ ...details, communityId, actorPersonId });
+
+            return { venueId } satisfies ActionResult;
+        }
+        case 'update_venue': {
+            const { _tag, venueId, ...patch } = action;
+            yield* updateVenue({ communityId, venueId, patch, actorPersonId });
+
+            return { venueId } satisfies ActionResult;
+        }
         default: {
             return yield* Effect.die(new Error('unknown action'));
         }
@@ -133,6 +151,9 @@ const peopleIn = (action: Action): readonly string[] => {
         case 'set_rating': {
             return [action.personId];
         }
+        case 'create_person':
+        case 'create_venue':
+        case 'update_venue':
         case 'create_session':
         case 'update_session':
         case 'cancel_session':
@@ -150,15 +171,15 @@ export const requireActionScope = Effect.fn('Core.requireActionScope')(function*
         return yield* ActionFailedError.make({ reason: 'player not found in this community' });
     }
 
-    if ('sessionId' in action) {
+    if ('sessionId' in action && isDefined(action.sessionId)) {
         yield* requireSession(communityId, action.sessionId);
     }
 
     if ('venueId' in action && isDefined(action.venueId)) {
-        const venues = yield* listVenues(communityId);
+        const found = yield* requireVenue(communityId, action.venueId);
 
-        if (!venues.some(({ id }) => id === action.venueId)) {
-            return yield* ActionFailedError.make({ reason: 'venue not found in this community' });
+        if (action._tag !== 'update_venue' && found.status !== 'active') {
+            return yield* ActionFailedError.make({ reason: 'this venue is no longer used' });
         }
     }
 

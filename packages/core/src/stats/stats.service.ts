@@ -1,3 +1,4 @@
+import { isDefined } from '@rnw-community/shared';
 import { person, personAlias } from '@rondo/db/schema/identity.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
@@ -18,6 +19,25 @@ const playedGames = (db: Database) =>
         .from(attendance)
         .innerJoin(session, eq(session.id, attendance.sessionId))
         .innerJoin(person, eq(person.id, attendance.personId));
+
+export const attendanceCoverage = Effect.fn('Core.attendanceCoverage')(function* (communityId: string, range?: DateRange) {
+    const db = yield* Db;
+    const [row] = yield* db
+        .select({
+            playedGames: count(),
+            gamesWithKnownPlayers: sql<number>`count(*) filter (where exists (select 1 from play.team_member known where known.session_id = ${session.id}))::int`
+        })
+        .from(session)
+        .where(
+            and(
+                eq(session.communityId, communityId),
+                eq(session.status, 'played'),
+                ...(isDefined(range) ? [between(session.localDate, range.from, range.to)] : [])
+            )
+        );
+
+    return row ?? { playedGames: 0, gamesWithKnownPlayers: 0 };
+});
 
 export const topAttendance = Effect.fn('Core.topAttendance')(function* (communityId: string, range: DateRange, limit: number) {
     const db = yield* Db;

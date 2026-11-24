@@ -1,11 +1,14 @@
 import { expect, layer } from '@effect/vitest';
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { AiGateway } from '@rondo/assistant/service/ai-gateway.service';
 import { Access } from '@rondo/core/access/admin-access';
 import { createSession } from '@rondo/core/sessions/session.service';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
+import { telegramAccount } from '@rondo/db/schema/identity.schema';
+import { membership } from '@rondo/db/schema/org.schema';
 import { processedUpdate, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
+import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { testDbLayer } from '@rondo/db/testing/test-db.layer';
 import { makeRecorder, recordingTelegramLayer } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -17,7 +20,7 @@ import * as Layer from 'effect/Layer';
 
 import { handleUpdate } from '../src/handle-update';
 
-import type { Update } from 'grammy/types';
+import type { Poll, Update } from 'grammy/types';
 
 const owner = { id: 42, is_bot: false, first_name: 'Alex', language_code: 'uk' };
 const player = { id: 77, is_bot: false, first_name: 'Ivan', language_code: 'ru' };
@@ -25,6 +28,7 @@ const groupChat = { id: -100_500, type: 'supergroup' as const, title: 'Football'
 const usage = { inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 5, text: 5, reasoning: 0 } };
 
 let modelCalls = 0;
+let place = '';
 const model = new MockLanguageModelV4({
     doGenerate: async () => {
         modelCalls += 1;
@@ -45,7 +49,7 @@ const model = new MockLanguageModelV4({
                       warnings: []
                   }
                 : {
-                      content: [{ type: 'text' as const, text: 'Гра готова до підтвердження.' }],
+                      content: [{ type: 'text' as const, text: isNotEmptyString(place) ? place : 'Гра готова до підтвердження.' }],
                       finishReason: { unified: 'stop' as const, raw: 'end_turn' },
                       usage,
                       warnings: []
@@ -220,6 +224,101 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
             expect(proposal?.payload.chat_id).toBe(owner.id);
             expect(open?.status).toBe('open');
             expect(done).toMatchObject({ status: 'cancelled', cancelReason: 'weather' });
+        })
+    );
+
+    it.effect('syncs members and proposes an unknown venue to the admin who posted the poll', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const group = { id: -100_600, type: 'supergroup' as const, title: 'Second' };
+            const { communityId } = yield* seedCommunity(seedConfig('directory-fc'));
+            const newcomer = { id: 88, is_bot: false, first_name: 'New' };
+            const service = { message_id: 60, date: 1_777_831_200, chat: group, from: player };
+            const pollOf = (from: typeof owner, question: string) =>
+                nextUpdate({
+                    message: {
+                        ...service,
+                        from,
+                        poll: {
+                            question,
+                            options: ['+', '-'].map(option => ({ text: option, persistent_id: option, voter_count: 0 }))
+                        } as Poll
+                    }
+                });
+            yield* handleUpdate(message(owner, group, '/link directory-fc'));
+            yield* handleUpdate(
+                nextUpdate({ message: { ...service, new_chat_members: [newcomer, { ...newcomer, id: 89, is_bot: true }] } })
+            );
+            yield* handleUpdate(nextUpdate({ message: { ...service, left_chat_member: newcomer } }));
+            yield* handleUpdate(
+                nextUpdate({
+                    message: { ...service, venue: { title: 'Fake', address: 'x', location: { latitude: 1, longitude: 1 } } }
+                })
+            );
+            place = 'Stadlau';
+            yield* handleUpdate(pollOf(player, 'Понедельник, 4 мая, 19.00 Stadlau. 18 чел'));
+            const beforeAdmin = recorder.calls.length;
+            yield* handleUpdate(pollOf(owner, 'Понедельник, 4 мая, 19.00 Stadlau. 18 чел'));
+            const proposal = recorder.calls.slice(beforeAdmin).find(call => call.method === 'sendMessage');
+            const keyboard = proposal?.payload.reply_markup as { inline_keyboard: { callback_data: string }[][] } | undefined;
+            yield* handleUpdate(
+                nextUpdate({
+                    callback_query: {
+                        id: 'cb-3',
+                        from: owner,
+                        chat_instance: 'x',
+                        data: keyboard?.inline_keyboard[0]?.[0]?.callback_data ?? '',
+                        message: { message_id: 10, date: 0, chat: { id: owner.id, type: 'private', first_name: 'Alex' } }
+                    }
+                })
+            );
+            place = 'Invented Arena';
+            yield* handleUpdate(pollOf(owner, 'Вторник, 5 мая, 19.00 Aspern. 18 чел'));
+            const venues = yield* db.select().from(venue).where(eq(venue.communityId, communityId));
+            const games = yield* db.select().from(session).where(eq(session.communityId, communityId)).orderBy(session.localDate);
+            const members = yield* db
+                .select({ tgUserId: telegramAccount.tgUserId, status: membership.status })
+                .from(membership)
+                .innerJoin(telegramAccount, eq(telegramAccount.personId, membership.personId))
+                .where(eq(membership.communityId, communityId));
+
+            expect(proposal?.payload.chat_id).toBe(owner.id);
+            expect(venues.map(row => row.name).toSorted()).toEqual(['North Arena', 'Park Field', 'Stadlau']);
+            expect(games.map(game => game.venueId)).toEqual([venues.find(row => row.name === 'Stadlau')?.id, null]);
+            expect(members.find(row => row.tgUserId === 88n)?.status).toBe('left');
+            expect(members.some(row => row.tgUserId === 89n)).toBe(false);
+        })
+    );
+
+    it.effect('follows joins and kicks from member updates and ignores bots', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const group = { id: -100_800, type: 'supergroup' as const, title: 'Fourth' };
+            const { communityId } = yield* seedCommunity(seedConfig('presence-fc'));
+            yield* handleUpdate(message(owner, group, '/link presence-fc'));
+            const change = (id: number, status: 'member' | 'kicked', isBot = false) => {
+                const user = { id, is_bot: isBot, first_name: 'U' };
+                const member = status === 'kicked' ? { status, user, until_date: 0 } : { status, user };
+
+                return nextUpdate({
+                    chat_member: { chat: group, from: owner, date: 1, old_chat_member: { status: 'left', user }, new_chat_member: member }
+                });
+            };
+            yield* handleUpdate(change(301, 'member'));
+            yield* handleUpdate(change(302, 'member'));
+            yield* handleUpdate(change(302, 'kicked'));
+            yield* handleUpdate(change(303, 'member', true));
+            const rows = yield* db
+                .select({ id: telegramAccount.tgUserId, status: membership.status })
+                .from(membership)
+                .innerJoin(telegramAccount, eq(telegramAccount.personId, membership.personId))
+                .where(eq(membership.communityId, communityId))
+                .orderBy(telegramAccount.tgUserId);
+
+            expect(rows).toEqual([
+                { id: 301n, status: 'active' },
+                { id: 302n, status: 'removed' }
+            ]);
         })
     );
 });

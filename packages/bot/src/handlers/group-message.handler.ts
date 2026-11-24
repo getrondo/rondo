@@ -2,8 +2,9 @@ import { isDefined } from '@rnw-community/shared';
 import { adminCommunityIds, isAdminOf } from '@rondo/core/access/admin-access';
 import { bindChat, communityProfile, findCommunityByChat, findCommunityBySlug } from '@rondo/core/community/community.repository';
 import { text } from '@rondo/core/i18n/messages';
-import { displayNameOf, ensureMembership, upsertTelegramUser } from '@rondo/core/identity/telegram-user';
+import { displayNameOf, syncMember } from '@rondo/core/identity/telegram-user';
 import { ingestGroupMessage } from '@rondo/core/live/live-ingest';
+import { learnVenuePin } from '@rondo/core/venues/venue.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -11,6 +12,9 @@ import * as Option from 'effect/Option';
 
 import { proposeToAdmin } from '../context/propose-to-admin';
 import { toTelegramUser } from '../context/telegram-user.mapper';
+
+import { syncGroupUsers } from './chat-member.handler';
+import { proposeUnknownPlace } from './unknown-place.handler';
 
 import type { Message } from 'grammy/types';
 
@@ -67,8 +71,23 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
     }
 
     const user = toTelegramUser(sender);
-    const personId = yield* upsertTelegramUser(user);
-    yield* ensureMembership(communityId.value, personId);
+    const personId = yield* syncMember(communityId.value, user, 'active');
+    const senderIsAdmin = yield* isAdminOf(user.id, communityId.value);
+    yield* syncGroupUsers(communityId.value, message.new_chat_members ?? [], 'active');
+    yield* syncGroupUsers(communityId.value, isDefined(message.left_chat_member) ? [message.left_chat_member] : [], 'left');
+
+    if (isDefined(message.venue) && senderIsAdmin) {
+        const { title, address, location } = message.venue;
+        yield* learnVenuePin({
+            communityId: communityId.value,
+            actorPersonId: personId,
+            title,
+            address,
+            lat: location.latitude,
+            lng: location.longitude
+        });
+    }
+
     const profile = yield* communityProfile(communityId.value);
     const config = profile.pipe(Option.flatMap(value => value.config));
 
@@ -83,7 +102,7 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
         senderPersonId: personId,
         senderTgUserId: user.id,
         senderName: displayNameOf(user),
-        senderIsAdmin: yield* isAdminOf(user.id, communityId.value),
+        senderIsAdmin,
         ...(isDefined(body) ? { text: body } : {}),
         ...(isDefined(message.poll)
             ? { poll: { question: message.poll.question, answers: message.poll.options.map(option => option.text) } }
@@ -95,6 +114,10 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
         yield* proposeToAdmin(communityId.value, user, { _tag: 'cancel_session', ...result.cancellation, notify: false }).pipe(
             Effect.catchTag('TelegramApiError', error => Effect.logWarning('[group] proposal not delivered', error))
         );
+    }
+
+    if (isDefined(result.unknownPlace)) {
+        yield* proposeUnknownPlace(communityId.value, user, result.unknownPlace);
     }
 
     if (result.poll || result.lineup || isDefined(result.cancellation)) {

@@ -11,7 +11,7 @@ import * as Exit from 'effect/Exit';
 import * as Option from 'effect/Option';
 
 import { formatSessionLabel, text } from '../i18n/messages';
-import { ensureMembership, upsertTelegramUser, type TelegramUser } from '../identity/telegram-user';
+import { syncMember, type TelegramUser } from '../identity/telegram-user';
 
 import type { Locale } from '../i18n/locale';
 import type { SessionView } from '../sessions/session.model';
@@ -195,8 +195,7 @@ export const applyPollAnswer = Effect.fn('Core.applyPollAnswer')(function* (inpu
         return Option.none<PollAnswerOutcome>();
     }
 
-    const personId = yield* upsertTelegramUser(input.user);
-    yield* ensureMembership(poll.communityId, personId);
+    const personId = yield* syncMember(poll.communityId, input.user, 'active');
     const chosen = poll.options[input.optionIds[0] ?? -1];
     const choice = pollChoices.find(candidate => candidate === chosen) ?? 'out';
 

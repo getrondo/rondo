@@ -1,11 +1,19 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { describeAction } from '@rondo/core/actions/describe-action';
 import { requireActionScope } from '@rondo/core/actions/execute-action';
 import { proposeAction } from '@rondo/core/actions/pending-action.service';
 import { searchPeople, unresolvedAliases } from '@rondo/core/people/people.service';
 import { listSessions, listVenues, requireSession } from '@rondo/core/sessions/session.service';
 import { rosterOf } from '@rondo/core/signups/signup.service';
-import { communitySummary, inactivePlayers, playerHistory, topAttendance, venueUsage } from '@rondo/core/stats/stats.service';
+import {
+    attendanceCoverage,
+    communitySummary,
+    inactivePlayers,
+    playerHistory,
+    topAttendance,
+    venueUsage,
+    type DateRange
+} from '@rondo/core/stats/stats.service';
 import { proposeTeams } from '@rondo/core/teams/team.service';
 import { tool } from 'ai';
 import * as Effect from 'effect/Effect';
@@ -35,6 +43,28 @@ const Limit = optionalNullable(Schema.Int.check(Schema.isBetween({ minimum: 1, m
 const SessionRef = Schema.Struct({ sessionId: Schema.String.annotate({ description: 'session id from list_sessions' }) });
 const CancelReason = Schema.Literals(['weather', 'low_turnout', 'venue', 'holiday', 'organizer', 'other']);
 
+const knownDetails = (details: {
+    readonly address?: string | null;
+    readonly district?: number | null;
+    readonly indoor?: boolean | null;
+}) => ({
+    ...(isNotEmptyString(details.address) ? { address: details.address } : {}),
+    ...(isDefined(details.district) ? { district: details.district } : {}),
+    ...(isDefined(details.indoor) ? { indoor: details.indoor } : {})
+});
+
+const withCoverage = <Value, Failure, Requirements>(
+    scope: ToolScope,
+    query: Effect.Effect<Value, Failure, Requirements>,
+    range?: DateRange
+) => Effect.all({ result: query, coverage: attendanceCoverage(scope.communityId, range) });
+
+const venueFields = {
+    address: optionalNullable(Schema.String),
+    district: optionalNullable(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 23 }))),
+    indoor: optionalNullable(Schema.Boolean)
+};
+
 const propose = (scope: ToolScope, action: Action) =>
     Effect.gen(function* () {
         yield* requireActionScope(action, scope.communityId);
@@ -60,7 +90,7 @@ const readTools = (scope: ToolScope, run: ToolRunner) => ({
     top_players: tool({
         description: 'Players ranked by number of games played in a date range.',
         inputSchema: toolSchema(Schema.Struct({ ...Range.fields, limit: Limit })),
-        execute: async input => await run(topAttendance(scope.communityId, input, input.limit ?? 10))
+        execute: async input => await run(withCoverage(scope, topAttendance(scope.communityId, input, input.limit ?? 10), input))
     }),
     inactive_players: tool({
         description: 'Regular players (at least minGames games) who have not played since a date.',
@@ -76,7 +106,7 @@ const readTools = (scope: ToolScope, run: ToolRunner) => ({
     community_summary: tool({
         description: 'Totals for a date range: games, played, cancelled, distinct players, appearances.',
         inputSchema: toolSchema(Range),
-        execute: async input => await run(communitySummary(scope.communityId, input))
+        execute: async input => await run(withCoverage(scope, communitySummary(scope.communityId, input), input))
     }),
     search_people: tool({
         description: 'Find players by name, nickname or Telegram username. Returns person ids, aliases and games played.',
@@ -86,7 +116,7 @@ const readTools = (scope: ToolScope, run: ToolRunner) => ({
     player_history: tool({
         description: 'Games played, first and last game and nicknames of one player.',
         inputSchema: toolSchema(Schema.Struct({ personId: Schema.String })),
-        execute: async input => await run(playerHistory(scope.communityId, input.personId))
+        execute: async input => await run(withCoverage(scope, playerHistory(scope.communityId, input.personId)))
     }),
     unresolved_aliases: tool({
         description: 'Line-up nicknames not yet confirmed as a known person, most frequent first. Useful to clean up duplicates.',
@@ -176,12 +206,6 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
                 })
             )
     }),
-    propose_merge_people: tool({
-        description:
-            'Propose merging two person records that are the same human (e.g. nickname and full name). All games move to intoPersonId.',
-        inputSchema: toolSchema(Schema.Struct({ fromPersonId: Schema.String, intoPersonId: Schema.String })),
-        execute: async input => await run(propose(scope, { _tag: 'merge_people', ...input }))
-    }),
     propose_rename_person: tool({
         description: 'Propose changing the display name of a player.',
         inputSchema: toolSchema(Schema.Struct({ personId: Schema.String, displayName: Schema.String })),
@@ -192,6 +216,40 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
             'Propose making a player an admin (organizer) of the community. They must have written to the bot or the group before.',
         inputSchema: toolSchema(Schema.Struct({ personId: Schema.String })),
         execute: async input => await run(propose(scope, { _tag: 'grant_admin', ...input }))
+    }),
+    propose_create_person: tool({
+        description: 'Propose adding a player who has no Telegram. Search first; people on Telegram are added automatically.',
+        inputSchema: toolSchema(Schema.Struct({ displayName: Schema.String })),
+        execute: async input => await run(propose(scope, { _tag: 'create_person', ...input }))
+    }),
+    propose_create_venue: tool({
+        description: 'Propose adding a venue (football field). Check list_venues first.',
+        inputSchema: toolSchema(Schema.Struct({ name: Schema.String, ...venueFields })),
+        execute: async ({ name, ...details }) => await run(propose(scope, { _tag: 'create_venue', name, ...knownDetails(details) }))
+    }),
+    propose_update_venue: tool({
+        description:
+            'Propose changing a venue: name, alias used in chat, address, Vienna district, indoor, or active=false to stop using it.',
+        inputSchema: toolSchema(
+            Schema.Struct({
+                venueId: Schema.String,
+                name: optionalNullable(Schema.String),
+                alias: optionalNullable(Schema.String),
+                active: optionalNullable(Schema.Boolean),
+                ...venueFields
+            })
+        ),
+        execute: async ({ venueId, name, alias, active, ...details }) =>
+            await run(
+                propose(scope, {
+                    _tag: 'update_venue',
+                    venueId,
+                    ...knownDetails(details),
+                    ...(isNotEmptyString(name) ? { name } : {}),
+                    ...(isNotEmptyString(alias) ? { alias } : {}),
+                    ...(isDefined(active) ? { active } : {})
+                })
+            )
     }),
     propose_set_level: tool({
         description: 'Propose setting a confidential player level from 1 (weak) to 10 (strong), used for team balancing.',

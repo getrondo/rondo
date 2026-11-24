@@ -8,6 +8,7 @@ import * as Effect from 'effect/Effect';
 
 import { UpdateInProgressError } from './error/update-in-progress.error';
 import { handleCallbackQuery } from './handlers/callback-query.handler';
+import { handleChatMember } from './handlers/chat-member.handler';
 import { handleGroupMessage } from './handlers/group-message.handler';
 import { handlePollAnswer } from './handlers/poll-answer.handler';
 import { handlePrivateMessage } from './handlers/private-message.handler';
@@ -69,6 +70,8 @@ const route = Effect.fn('Bot.route')(function* (update: Update) {
         yield* message.chat.type === 'private' ? handlePrivateMessage(message) : handleGroupMessage(message);
     } else if (isDefined(update.poll_answer)) {
         yield* handlePollAnswer(update.poll_answer);
+    } else if (isDefined(update.chat_member)) {
+        yield* handleChatMember(update.chat_member);
     } else if (isDefined(update.callback_query)) {
         yield* handleCallbackQuery(update.callback_query);
     }

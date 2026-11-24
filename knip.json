@@ -15,7 +15,7 @@
             "includeEntryExports": true
         },
         "apps/*": {
-            "entry": ["src/app/**/{page,layout,route}.{ts,tsx}"],
+            "entry": ["src/app/**/{page,layout,route,manifest}.{ts,tsx}"],
             "project": ["src/**/*.{ts,tsx}"]
         }
     }
