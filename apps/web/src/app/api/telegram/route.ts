@@ -14,15 +14,20 @@ const accept = (request: Request) =>
         const secret = yield* Config.Redacted('TELEGRAM_WEBHOOK_SECRET');
         yield* verifyWebhookSecret(request.headers.get(webhookSecretHeader), secret);
         const update = yield* Effect.tryPromise(async () => (await request.json()) as Update);
-        after(async () => {
-            await serverRuntime.runPromise(handleUpdate(update));
-        });
+        // The assistant is slow, so admin chats run after the reply. Everything else runs first: a failure answers 500 and Telegram retries in order.
+        if (update.message?.chat.type === 'private') {
+            after(async () => {
+                await serverRuntime.runPromise(handleUpdate(update));
+            });
+        } else {
+            yield* handleUpdate(update);
+        }
 
         return new Response(null, { status: 200 });
     }).pipe(
         Effect.catchTag('InvalidWebhookSecretError', () => Effect.succeed(new Response(null, { status: 401 }))),
         Effect.tapCause(Effect.logError),
-        Effect.catchCause(() => Effect.succeed(new Response(null, { status: 400 })))
+        Effect.catchCause(() => Effect.succeed(new Response(null, { status: 500 })))
     );
 
 export async function POST(request: Request): Promise<Response> {

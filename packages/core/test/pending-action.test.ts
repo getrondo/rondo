@@ -1,6 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { person } from '@rondo/db/schema/identity.schema';
-import { attendance, session } from '@rondo/db/schema/scheduling.schema';
+import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
@@ -124,6 +124,71 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
 
             expect(games).toHaveLength(2);
             expect(tombstone?.mergedIntoPersonId).toBe(fullNameId);
+        })
+    );
+
+    it.effect('refuses former admins, other communities and games that are over', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const own = yield* seedCommunity(seedConfig('scope-own-fc'));
+            const foreign = yield* seedCommunity(seedConfig('scope-foreign-fc'));
+            const game = (communityId: string) =>
+                createSession({
+                    communityId,
+                    timezone: 'Europe/Vienna',
+                    localDate: '2026-11-03',
+                    localTime: '19:00',
+                    venueId: null,
+                    capacityMax: null,
+                    title: null,
+                    actorPersonId: null
+                });
+            const ownId = yield* game(own.communityId);
+            const foreignId = yield* game(foreign.communityId);
+            const decide = Effect.fn('test.decide')(function* (sessionId: string, tgUserId: bigint) {
+                const action: Action = { _tag: 'cancel_session', sessionId, reason: 'weather', notify: false };
+                const actionId = yield* proposeAction({ communityId: own.communityId, tgUserId, action, summary: 'cancel' });
+
+                return yield* decideAction({ actionId, tgUserId, confirm: true, context: contextFor(null) });
+            });
+            const formerAdmin = yield* decide(ownId, 7n);
+            const otherCommunity = yield* decide(foreignId, admin);
+            yield* db.update(session).set({ status: 'played' }).where(eq(session.id, ownId));
+            const over = yield* decide(ownId, admin);
+            const statuses = yield* db.select({ status: session.status }).from(session).where(eq(session.id, foreignId));
+
+            expect(formerAdmin).toMatchObject({ _tag: 'failed', reason: 'not an admin any more' });
+            expect(otherCommunity).toMatchObject({ _tag: 'failed' });
+            expect(over).toMatchObject({ _tag: 'failed', reason: 'the game is already over or cancelled' });
+            expect(statuses).toEqual([{ status: 'open' }]);
+        })
+    );
+
+    it.effect('refuses to merge two people who signed up for the same game', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig('merge-signup-fc'));
+            const people = yield* db
+                .insert(person)
+                .values([{ displayName: 'One' }, { displayName: 'Two' }])
+                .returning({ id: person.id });
+            const sessionId = yield* createSession({
+                communityId,
+                timezone: 'Europe/Vienna',
+                localDate: '2026-11-04',
+                localTime: '19:00',
+                venueId: null,
+                capacityMax: null,
+                title: null,
+                actorPersonId: null
+            });
+            yield* db.insert(signup).values(people.map(({ id }) => ({ sessionId, personId: id, status: 'in' as const })));
+            const [from, into] = people;
+            const error = yield* Effect.flip(
+                mergePeople({ communityId, fromPersonId: from?.id ?? '', intoPersonId: into?.id ?? '', actorPersonId: null })
+            );
+
+            expect(error._tag).toBe('ActionFailedError');
         })
     );
 });

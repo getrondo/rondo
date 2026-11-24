@@ -4,17 +4,17 @@ import { personAlias } from '@rondo/db/schema/identity.schema';
 import { teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { testDbLayer } from '@rondo/db/testing/test-db.layer';
 import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { upsertTelegramUser } from '../src/identity/telegram-user';
 import { ingestGroupMessage } from '../src/live/live-ingest';
+import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
 const config = seedConfig('live-fc');
 
-layer(testDbLayer, { timeout: 60_000 })('live group listener', it => {
+layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it => {
     it.effect('turns a poll, a line-up and an organizer cancellation into session data', () =>
         Effect.gen(function* () {
             const db = yield* Db;
@@ -72,7 +72,7 @@ layer(testDbLayer, { timeout: 60_000 })('live group listener', it => {
 
             expect(poll).toMatchObject({ poll: true, lineup: false });
             expect(lineup).toMatchObject({ lineup: true });
-            expect(played).toMatchObject({ localDate: '2026-05-04', status: 'played', capacityMax: 18 });
+            expect(played).toMatchObject({ localDate: '2026-05-04', status: 'locked', capacityMax: 18 });
             expect(members).toHaveLength(6);
             expect(isDefined(selfMember)).toBe(true);
             expect(aliases.map(alias => alias.aliasNorm).toSorted()).toEqual(['иван', 'олег', 'павел', 'петр', 'семен']);
@@ -82,17 +82,18 @@ layer(testDbLayer, { timeout: 60_000 })('live group listener', it => {
         })
     );
 
-    it.effect('ignores cancellations from members who are not organizers', () =>
+    it.effect('ignores line-ups and cancellations from members, even one named like the organizer', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const scoped = seedConfig('live-member-fc');
             const { communityId } = yield* seedCommunity(scoped);
-            const member = { id: 8n, firstName: 'Member' };
+            const member = { id: 8n, firstName: 'Org' };
             const personId = yield* upsertTelegramUser(member);
-            const base = { chatId: -101n, senderPersonId: personId, senderTgUserId: member.id, senderName: 'Member', senderIsAdmin: false };
+            const base = { chatId: -101n, senderPersonId: personId, senderTgUserId: member.id, senderName: 'Org', senderIsAdmin: false };
 
             yield* ingestGroupMessage(communityId, scoped, {
                 ...base,
+                senderIsAdmin: true,
                 messageId: 1,
                 sentAt: new Date('2026-05-08T10:00:00Z'),
                 poll: { question: 'Пятница, 8 мая, 19.30 Park', answers: ['+', '-'] }
@@ -103,9 +104,23 @@ layer(testDbLayer, { timeout: 60_000 })('live group listener', it => {
                 sentAt: new Date('2026-05-08T12:00:00Z'),
                 text: 'Сегодня отмена, дождь'
             });
+            const lineup = yield* ingestGroupMessage(communityId, scoped, {
+                ...base,
+                messageId: 3,
+                sentAt: new Date('2026-05-08T13:00:00Z'),
+                text: 'Составы на сегодня, Park:\n🟢Иван, Пётр\n🔵Олег, Семён'
+            });
+            yield* ingestGroupMessage(communityId, scoped, {
+                ...base,
+                senderIsAdmin: true,
+                messageId: 4,
+                sentAt: new Date('2026-05-08T14:00:00Z'),
+                text: 'Переносим сегодняшний футбол на завтра'
+            });
             const [kept] = yield* db.select().from(session).where(eq(session.communityId, communityId));
 
             expect(result.cancellation).toBe(false);
+            expect(lineup.lineup).toBe(false);
             expect(kept?.status).toBe('open');
         })
     );

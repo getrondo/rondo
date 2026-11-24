@@ -2,7 +2,7 @@ import { isDefined } from '@rnw-community/shared';
 import { describeAction } from '@rondo/core/actions/describe-action';
 import { proposeAction } from '@rondo/core/actions/pending-action.service';
 import { searchPeople, unresolvedAliases } from '@rondo/core/people/people.service';
-import { listSessions, listVenues } from '@rondo/core/sessions/session.service';
+import { listSessions, listVenues, requireSession } from '@rondo/core/sessions/session.service';
 import { rosterOf } from '@rondo/core/signups/signup.service';
 import { communitySummary, inactivePlayers, playerHistory, topAttendance, venueUsage } from '@rondo/core/stats/stats.service';
 import { proposeTeams } from '@rondo/core/teams/team.service';
@@ -52,7 +52,8 @@ const readTools = (scope: ToolScope, run: ToolRunner) => ({
     session_roster: tool({
         description: 'Who signed up for a game via the bot poll: status in/out/waitlisted and role field/gk.',
         inputSchema: toolSchema(SessionRef),
-        execute: async input => await run(rosterOf(input.sessionId))
+        execute: async input =>
+            await run(requireSession(scope.communityId, input.sessionId).pipe(Effect.andThen(rosterOf(input.sessionId))))
     }),
     top_players: tool({
         description: 'Players ranked by number of games played in a date range.',
@@ -166,6 +167,7 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
         execute: async input =>
             await run(
                 Effect.gen(function* () {
+                    yield* requireSession(scope.communityId, input.sessionId);
                     const teams = yield* proposeTeams(input.sessionId, input.teamCount);
 
                     return yield* propose(scope, { _tag: 'publish_teams', sessionId: input.sessionId, teams });

@@ -49,6 +49,7 @@ export const runAssistant = Effect.fn('Assistant.run')(function* (request: Assis
                 messages: [...history, { role: 'user', content: request.userText }],
                 tools: buildTools(scope, run),
                 stopWhen: isStepCount(ASSISTANT_MODEL.maxSteps),
+                abortSignal: AbortSignal.timeout(45_000),
                 maxOutputTokens: ASSISTANT_MODEL.maxOutputTokens,
                 providerOptions: { gateway: { models: [...ASSISTANT_MODEL.fallbackGatewayIds] } }
             })

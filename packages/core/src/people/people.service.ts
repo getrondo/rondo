@@ -1,11 +1,14 @@
+import { isNotEmptyArray } from '@rnw-community/shared';
 import { person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
+import { membership } from '@rondo/db/schema/org.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { normalizeAlias } from '@rondo/ingest-telegram/extract/normalize';
-import { and, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
+import { ActionFailedError } from '../error/action-failed.error';
 
 interface PersonMatch {
     readonly personId: string;
@@ -14,6 +17,26 @@ interface PersonMatch {
     readonly telegramUsername: string | null;
     readonly games: number;
 }
+
+const inCommunity = (communityId: string): SQL =>
+    sql`(exists (select 1 from ${membership} where ${membership.personId} = ${person.id} and ${membership.communityId} = ${communityId})
+        or exists (select 1 from identity.person_alias known where known.person_id = ${person.id} and known.community_id = ${communityId}))`;
+
+export const arePeopleOf = Effect.fn('Core.arePeopleOf')(function* (communityId: string, personIds: readonly string[]) {
+    const db = yield* Db;
+    const wanted = [...new Set(personIds)];
+
+    if (!isNotEmptyArray(wanted)) {
+        return true;
+    }
+
+    const found = yield* db
+        .select({ id: person.id })
+        .from(person)
+        .where(and(inArray(person.id, wanted), isNull(person.mergedIntoPersonId), inCommunity(communityId)));
+
+    return found.length === wanted.length;
+});
 
 export const searchPeople = Effect.fn('Core.searchPeople')(function* (communityId: string, query: string, limit: number) {
     const db = yield* Db;
@@ -35,6 +58,7 @@ export const searchPeople = Effect.fn('Core.searchPeople')(function* (communityI
         .where(
             and(
                 isNull(person.mergedIntoPersonId),
+                inCommunity(communityId),
                 or(ilike(person.displayName, pattern), ilike(personAlias.aliasNorm, normalized), ilike(telegramAccount.username, pattern))
             )
         )
@@ -75,7 +99,14 @@ export const mergePeople = Effect.fn('Core.mergePeople')(function* (input: {
 
     yield* db.transaction(transaction =>
         Effect.gen(function* () {
-            yield* transaction.execute(sql`select identity.merge_person(${input.fromPersonId}::uuid, ${input.intoPersonId}::uuid)`);
+            yield* transaction.execute(sql`select identity.merge_person(${input.fromPersonId}::uuid, ${input.intoPersonId}::uuid)`).pipe(
+                Effect.tapError(error => Effect.logWarning('[merge] refused', error)),
+                Effect.mapError(() =>
+                    ActionFailedError.make({
+                        reason: 'records conflict: both have Telegram, both signed up for one game, or already merged'
+                    })
+                )
+            );
             yield* transaction
                 .update(personAlias)
                 .set({ resolution: 'confirmed', confidence: 1 })

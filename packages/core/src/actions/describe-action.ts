@@ -1,5 +1,5 @@
 import { isDefined } from '@rnw-community/shared';
-import { person } from '@rondo/db/schema/identity.schema';
+import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { eq } from 'drizzle-orm';
@@ -15,9 +15,13 @@ import type { Action } from './action.model';
 
 const nameOfPerson = Effect.fn('Core.nameOfPerson')(function* (personId: string) {
     const db = yield* Db;
-    const [row] = yield* db.select({ name: person.displayName }).from(person).where(eq(person.id, personId));
+    const [row] = yield* db
+        .select({ name: person.displayName, username: telegramAccount.username })
+        .from(person)
+        .leftJoin(telegramAccount, eq(telegramAccount.personId, person.id))
+        .where(eq(person.id, personId));
 
-    return row?.name ?? personId;
+    return isDefined(row?.username) ? `${row.name} (@${row.username})` : (row?.name ?? personId);
 });
 
 const nameOfVenue = Effect.fn('Core.nameOfVenue')(function* (venueId: string | null | undefined) {

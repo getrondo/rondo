@@ -1,11 +1,12 @@
+import { isDefined } from '@rnw-community/shared';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
-import { grantAdmin } from '../access/admin-access';
+import { grantAdmin, isAdminOf } from '../access/admin-access';
 import { ActionFailedError } from '../error/action-failed.error';
 import { notifySessionCancelled, notifySessionChanged } from '../notify/notifier';
-import { mergePeople, renamePerson } from '../people/people.service';
-import { cancelSession, createSession, getSession, updateSession } from '../sessions/session.service';
+import { arePeopleOf, mergePeople, renamePerson } from '../people/people.service';
+import { cancelSession, createSession, listVenues, requireSession, updateSession } from '../sessions/session.service';
 import { announceSession, closePollsOf } from '../signups/signup.service';
 import { publishTeams, setSeedRating } from '../teams/team.service';
 
@@ -19,12 +20,6 @@ export interface ActionContext {
     readonly groupLocale: Locale;
     readonly actorPersonId: string | null;
 }
-
-const requireSession = (sessionId: string) =>
-    getSession(sessionId).pipe(
-        Effect.flatMap(found => Effect.fromOption(found)),
-        Effect.mapError(() => ActionFailedError.make({ reason: `session ${sessionId} not found` }))
-    );
 
 const requireChat = (context: ActionContext) =>
     Option.isSome(context.mainChatId)
@@ -41,7 +36,7 @@ type ActionResult = Readonly<Record<string, string | number>>;
 
 const asResult = Effect.map((value: ActionResult): ActionResult => value);
 
-export const executeAction = Effect.fn('Core.executeAction')(function* (action: Action, context: ActionContext) {
+const executeAction = Effect.fn('Core.executeAction')(function* (action: Action, context: ActionContext) {
     const { actorPersonId, communityId, groupLocale: locale } = context;
 
     switch (action._tag) {
@@ -50,7 +45,7 @@ export const executeAction = Effect.fn('Core.executeAction')(function* (action: 
                 const sessionId = yield* createSession({ ...action, communityId, timezone: context.timezone, actorPersonId });
 
                 if (action.announce) {
-                    const created = yield* requireSession(sessionId);
+                    const created = yield* requireSession(communityId, sessionId);
                     const chatId = yield* requireChat(context);
                     yield* announceSession(created, chatId, locale);
                 }
@@ -60,9 +55,9 @@ export const executeAction = Effect.fn('Core.executeAction')(function* (action: 
         }
         case 'update_session': {
             return yield* Effect.gen(function* () {
-                const before = yield* requireSession(action.sessionId);
+                const before = yield* requireSession(communityId, action.sessionId);
                 yield* updateSession(before, action, context.timezone, actorPersonId);
-                const after = yield* requireSession(action.sessionId);
+                const after = yield* requireSession(communityId, action.sessionId);
                 yield* whenChat(context, action.notify, chatId => notifySessionChanged({ before, after, chatId, locale }));
 
                 return { sessionId: action.sessionId };
@@ -70,7 +65,7 @@ export const executeAction = Effect.fn('Core.executeAction')(function* (action: 
         }
         case 'cancel_session': {
             return yield* Effect.gen(function* () {
-                const target = yield* requireSession(action.sessionId);
+                const target = yield* requireSession(communityId, action.sessionId);
                 yield* cancelSession(target, action.reason, actorPersonId);
                 yield* closePollsOf(target.id);
                 yield* whenChat(context, action.notify, chatId =>
@@ -82,7 +77,7 @@ export const executeAction = Effect.fn('Core.executeAction')(function* (action: 
         }
         case 'announce_session': {
             return yield* Effect.gen(function* () {
-                const target = yield* requireSession(action.sessionId);
+                const target = yield* requireSession(communityId, action.sessionId);
                 const chatId = yield* requireChat(context);
                 const messageId = yield* announceSession(target, chatId, locale);
 
@@ -91,7 +86,7 @@ export const executeAction = Effect.fn('Core.executeAction')(function* (action: 
         }
         case 'publish_teams': {
             return yield* Effect.gen(function* () {
-                const target = yield* requireSession(action.sessionId);
+                const target = yield* requireSession(communityId, action.sessionId);
                 yield* publishTeams({ target, teams: action.teams, chatId: yield* requireChat(context), locale, actorPersonId });
 
                 return { sessionId: action.sessionId };
@@ -119,4 +114,51 @@ export const executeAction = Effect.fn('Core.executeAction')(function* (action: 
             return yield* Effect.die(new Error('unknown action'));
         }
     }
+});
+
+const peopleIn = (action: Action): readonly string[] => {
+    switch (action._tag) {
+        case 'publish_teams': {
+            return action.teams.flatMap(({ players }) => players.map(({ personId }) => personId));
+        }
+        case 'merge_people': {
+            return [action.fromPersonId, action.intoPersonId];
+        }
+        case 'rename_person':
+        case 'grant_admin':
+        case 'set_rating': {
+            return [action.personId];
+        }
+        case 'create_session':
+        case 'update_session':
+        case 'cancel_session':
+        case 'announce_session': {
+            return [];
+        }
+        default: {
+            return [];
+        }
+    }
+};
+
+export const runAdminAction = Effect.fn('Core.runAdminAction')(function* (tgUserId: bigint, action: Action, context: ActionContext) {
+    const { communityId } = context;
+
+    if (!(yield* isAdminOf(tgUserId, communityId))) {
+        return yield* ActionFailedError.make({ reason: 'not an admin any more' });
+    }
+
+    if (!(yield* arePeopleOf(communityId, peopleIn(action)))) {
+        return yield* ActionFailedError.make({ reason: 'player not found in this community' });
+    }
+
+    if ('venueId' in action && isDefined(action.venueId)) {
+        const venues = yield* listVenues(communityId);
+
+        if (!venues.some(({ id }) => id === action.venueId)) {
+            return yield* ActionFailedError.make({ reason: 'venue not found in this community' });
+        }
+    }
+
+    return yield* executeAction(action, context);
 });

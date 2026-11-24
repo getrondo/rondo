@@ -72,6 +72,8 @@ export const telegramPoll = comms.table(
 
 export const processedUpdate = comms.table('processed_update', {
     updateId: bigint('update_id', { mode: 'number' }).primaryKey(),
+    attempts: integer('attempts').notNull().default(1),
+    doneAt: instant('done_at'),
     at: instant('at').notNull().defaultNow()
 });
 

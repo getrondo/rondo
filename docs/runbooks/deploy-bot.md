@@ -13,7 +13,7 @@ All values live in Infisical project `getrondo` (`prod`, `dev`); never paste the
 | `TELEGRAM_WEBHOOK_SECRET` | Vercel production | Checked against Telegram's `X-Telegram-Bot-Api-Secret-Token` |
 | `CRON_SECRET` | Vercel production | Bearer token Vercel Cron sends to `/api/cron/maintenance` |
 | `RONDO_OWNER_TG_USER_IDS` | Vercel production | Comma-separated Telegram user ids with full admin rights |
-| `DATABASE_URL`, `DATABASE_URL_UNPOOLED` | Neon integration | Pooled runtime URL; unpooled URL for migrations |
+| `DATABASE_URL`, `DATABASE_URL_UNPOOLED` | Neon integration, production only | Pooled runtime URL; unpooled URL for migrations |
 
 The AI Gateway authenticates with Vercel OIDC on deployments; set `AI_GATEWAY_API_KEY` only
 for local runs.
@@ -40,6 +40,9 @@ isec run getrondo prod -- sh -c 'RONDO_WEBHOOK_URL=https://<production-domain>/a
 1. In @BotFather: `/setprivacy` → **Disable** for the bot, so it sees every group message.
 2. Add the bot to the group (as admin if it should pin polls later).
 3. An owner sends `/link <community-slug>` in the group (the slug from the import config).
+
+4. Make every organizer an admin through the assistant (they must have written in the group or to the bot
+   first). Polls, line-ups and cancellations posted by anyone else are ignored.
 
 From then on the bot keeps sessions, line-ups and cancellations current, and admins can talk to
 it privately. `/start` shows examples; `/reset` clears the conversation.

@@ -27,7 +27,8 @@ export const topAttendance = Effect.fn('Core.topAttendance')(function* (communit
             and(
                 eq(session.communityId, communityId),
                 between(session.localDate, range.from, range.to),
-                inArray(attendance.outcome, playedOutcomes)
+                inArray(attendance.outcome, playedOutcomes),
+                eq(session.status, 'played')
             )
         )
         .groupBy(person.id, person.displayName)
@@ -45,7 +46,7 @@ export const inactivePlayers = Effect.fn('Core.inactivePlayers')(function* (
     const lastPlayed = max(session.localDate);
 
     return yield* playedGames(db)
-        .where(and(eq(session.communityId, communityId), inArray(attendance.outcome, playedOutcomes)))
+        .where(and(eq(session.communityId, communityId), inArray(attendance.outcome, playedOutcomes), eq(session.status, 'played')))
         .groupBy(person.id, person.displayName)
         .having(and(sql`${count()} >= ${input.minGames}`, sql`${lastPlayed} < ${input.notSince}`))
         .orderBy(desc(count()))
@@ -87,7 +88,8 @@ export const communitySummary = Effect.fn('Core.communitySummary')(function* (co
             and(
                 eq(session.communityId, communityId),
                 between(session.localDate, range.from, range.to),
-                inArray(attendance.outcome, playedOutcomes)
+                inArray(attendance.outcome, playedOutcomes),
+                eq(session.status, 'played')
             )
         );
 
@@ -104,7 +106,14 @@ export const playerHistory = Effect.fn('Core.playerHistory')(function* (communit
         })
         .from(attendance)
         .innerJoin(session, eq(session.id, attendance.sessionId))
-        .where(and(eq(session.communityId, communityId), eq(attendance.personId, personId), inArray(attendance.outcome, playedOutcomes)));
+        .where(
+            and(
+                eq(session.communityId, communityId),
+                eq(attendance.personId, personId),
+                inArray(attendance.outcome, playedOutcomes),
+                eq(session.status, 'played')
+            )
+        );
     const aliases = yield* db
         .select({ alias: personAlias.alias, occurrences: personAlias.occurrences })
         .from(personAlias)

@@ -5,6 +5,7 @@ export type CancelReason = 'weather' | 'low_turnout' | 'venue' | 'holiday' | 'or
 export interface SessionView {
     readonly id: string;
     readonly communityId: string;
+    readonly sport: string;
     readonly localDate: string;
     readonly localTime: string;
     readonly startsAt: Date;

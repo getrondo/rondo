@@ -37,7 +37,7 @@ export const handleCallbackQuery = Effect.fn('Bot.handleCallbackQuery')(function
     const match = actionData.exec(query.data ?? '');
     const answer = telegram.call('answerCallbackQuery', api => api.answerCallbackQuery(query.id)).pipe(Effect.ignore);
 
-    if (!isDefined(match)) {
+    if (!isDefined(match) || query.message?.chat.type !== 'private') {
         yield* answer;
 
         return;

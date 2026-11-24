@@ -3,7 +3,7 @@ import { isDefined } from '@rnw-community/shared';
 import { AiGateway } from '@rondo/assistant/service/ai-gateway.service';
 import { Access } from '@rondo/core/access/admin-access';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
-import { telegramPoll } from '@rondo/db/schema/platform.schema';
+import { processedUpdate, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { testDbLayer } from '@rondo/db/testing/test-db.layer';
@@ -136,6 +136,31 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
 
             expect(modelCalls).toBe(before);
             expect(String(reply?.payload.text)).toContain('Пока я работаю с администраторами');
+        })
+    );
+
+    it.effect('retries a failed update up to three times and ignores confirmations outside a private chat', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const failing = message({ ...owner, id: Number.NaN }, groupChat, 'boom');
+            const exits = yield* Effect.all(Array.from({ length: 4 }, () => Effect.exit(handleUpdate(failing))));
+            const [stored] = yield* db.select().from(processedUpdate).where(eq(processedUpdate.updateId, failing.update_id));
+            const edits = recorder.calls.filter(call => call.method === 'editMessageText').length;
+            yield* handleUpdate(
+                nextUpdate({
+                    callback_query: {
+                        id: 'cb-2',
+                        from: owner,
+                        chat_instance: 'x',
+                        data: 'act:00000000-0000-7000-8000-000000000000:y',
+                        message: { message_id: 9, date: 0, chat: groupChat }
+                    }
+                })
+            );
+
+            expect(exits.map(exit => exit._tag)).toEqual(['Failure', 'Failure', 'Failure', 'Success']);
+            expect(stored).toMatchObject({ attempts: 3, doneAt: null });
+            expect(recorder.calls.filter(call => call.method === 'editMessageText')).toHaveLength(edits);
         })
     );
 });

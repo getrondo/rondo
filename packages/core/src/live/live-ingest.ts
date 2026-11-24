@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isEmptyArray, isNotEmptyArray } from '@rnw-community/shared';
 import { person, personAlias, telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { messageRef } from '@rondo/db/schema/platform.schema';
 import { team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
@@ -8,13 +8,15 @@ import { Db } from '@rondo/db/service/db.service';
 import { extractLineup } from '@rondo/ingest-telegram/extract/extract-lineup';
 import { extractPoll, makeVenueMatcher } from '@rondo/ingest-telegram/extract/extract-poll';
 import { extractCancellation } from '@rondo/ingest-telegram/extract/extract-signals';
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { todayIn } from '../sessions/local-time';
-import { cancelSession, createSession, getSession } from '../sessions/session.service';
+import { cancelSession, createSession, listSessions } from '../sessions/session.service';
+import { closePollsOf } from '../signups/signup.service';
 
+import type { SessionView } from '../sessions/session.model';
 import type { CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
 import type { LineupFact, PollFact } from '@rondo/ingest-telegram/extract/fact.model';
 import type { TelegramMessage } from '@rondo/ingest-telegram/model/telegram-message.model';
@@ -78,16 +80,12 @@ const venueIdFor = Effect.fn('Core.venueIdFor')(function* (communityId: string, 
     return row?.id ?? null;
 });
 
-const sessionOnDate = Effect.fn('Core.sessionOnDate')(function* (communityId: string, localDate: string) {
-    const db = yield* Db;
-    const [row] = yield* db
-        .select({ id: session.id })
-        .from(session)
-        .where(and(eq(session.communityId, communityId), eq(session.localDate, localDate), ne(session.status, 'cancelled')))
-        .orderBy(session.startsAt)
-        .limit(1);
+const rescheduleSignal = /перенос|перенес/iu;
 
-    return Option.fromNullishOr(row?.id);
+const gamesOn = Effect.fn('Core.gamesOn')(function* (communityId: string, localDate: string) {
+    const sessions = yield* listSessions(communityId, { from: localDate, to: localDate });
+
+    return sessions.filter(({ sport, status }) => sport === 'football' && status !== 'cancelled');
 });
 
 const ensureSession = Effect.fn('Core.ensureSession')(function* (
@@ -95,22 +93,36 @@ const ensureSession = Effect.fn('Core.ensureSession')(function* (
     config: CommunityConfig,
     fact: Pick<PollFact, 'localDate' | 'localTime' | 'venueKey'> & { readonly capacityMax?: number; readonly title?: string }
 ) {
-    const existing = yield* sessionOnDate(communityId, fact.localDate);
+    const venueId = yield* venueIdFor(communityId, config, fact.venueKey);
+    const countConflicts = (game: SessionView): number =>
+        Number(isDefined(venueId) && isDefined(game.venueId) && venueId !== game.venueId) +
+        Number(isDefined(fact.localTime) && fact.localTime !== game.localTime);
+    const possible = (yield* gamesOn(communityId, fact.localDate)).filter(game => countConflicts(game) < 2);
+    const exact = possible.filter(game => countConflicts(game) === 0);
+    const [match, ...others] = isNotEmptyArray(exact) ? exact : possible;
 
-    if (Option.isSome(existing)) {
-        return existing.value;
+    if (isNotEmptyArray(others)) {
+        yield* Effect.logWarning('[group] several games match, message skipped');
+
+        return Option.none<string>();
     }
 
-    return yield* createSession({
+    if (isDefined(match)) {
+        return Option.fromNullishOr(match.id);
+    }
+
+    const created = yield* createSession({
         communityId,
         timezone: config.timeZone,
         localDate: fact.localDate,
         localTime: fact.localTime ?? '19:00',
-        venueId: yield* venueIdFor(communityId, config, fact.venueKey),
+        venueId,
         capacityMax: fact.capacityMax ?? null,
         title: fact.title ?? null,
         actorPersonId: null
     });
+
+    return Option.fromNullishOr(created);
 });
 
 const rememberMessage = Effect.fn('Core.rememberMessage')(function* (message: GroupMessage, purpose: 'poll' | 'lineup', sessionId: string) {
@@ -168,7 +180,13 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
     message: GroupMessage
 ) {
     const db = yield* Db;
-    const sessionId = yield* ensureSession(communityId, config, fact);
+    const found = yield* ensureSession(communityId, config, fact);
+
+    if (Option.isNone(found)) {
+        return;
+    }
+
+    const sessionId = found.value;
     const colors = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId));
 
     yield* db.delete(team).where(eq(team.sessionId, sessionId));
@@ -202,7 +220,7 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
         }
     }
 
-    const status = fact.localDate <= todayIn(config.timeZone, message.sentAt) ? 'played' : 'locked';
+    const status = fact.localDate < todayIn(config.timeZone, message.sentAt) ? 'played' : 'locked';
     yield* db.update(session).set({ status }).where(eq(session.id, sessionId));
     yield* rememberMessage(message, 'lineup', sessionId);
 });
@@ -212,6 +230,7 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
     config: CommunityConfig,
     message: GroupMessage
 ) {
+    const db = yield* Db;
     yield* recordAuthor(communityId, message);
 
     const telegramMessage: TelegramMessage = {
@@ -223,30 +242,37 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
         poll: message.poll,
         media: []
     };
-    const organizers = new Set([...config.organizers, ...(message.senderIsAdmin ? [message.senderName] : [])]);
+    if (!message.senderIsAdmin) {
+        return { poll: false, lineup: false, cancellation: false } satisfies LiveIngestResult;
+    }
+
     const venueOf = makeVenueMatcher(config);
     const poll = Option.fromNullishOr(extractPoll(telegramMessage, config, venueOf)).pipe(
-        Option.filter(fact => !fact.isReserve && !fact.isChoice)
+        Option.filter(fact => !fact.isReserve && !fact.isChoice && fact.sport === 'football')
     );
     const lineup = Option.fromNullishOr(extractLineup(telegramMessage, config, venueOf));
-    const cancellation = Option.fromNullishOr(extractCancellation(telegramMessage, config, organizers));
+    const cancellation = Option.fromNullishOr(extractCancellation(telegramMessage, config, new Set([message.senderName]))).pipe(
+        Option.filter(() => !rescheduleSignal.test(message.text ?? ''))
+    );
 
     if (Option.isSome(poll)) {
         const sessionId = yield* ensureSession(communityId, config, poll.value);
-        yield* rememberMessage(message, 'poll', sessionId);
+
+        if (Option.isSome(sessionId)) {
+            yield* rememberMessage(message, 'poll', sessionId.value);
+        }
     }
 
     if (Option.isSome(lineup)) {
-        yield* applyLineup(communityId, config, lineup.value, message);
+        yield* db.transaction(() => applyLineup(communityId, config, lineup.value, message));
     }
 
     if (Option.isSome(cancellation)) {
-        const target = yield* sessionOnDate(communityId, cancellation.value.localDate).pipe(
-            Effect.flatMap(id => (Option.isSome(id) ? getSession(id.value) : Effect.succeedNone))
-        );
+        const [target, ...others] = yield* gamesOn(communityId, cancellation.value.localDate);
 
-        if (Option.isSome(target)) {
-            yield* cancelSession(target.value, cancellation.value.reason, message.senderPersonId);
+        if (isDefined(target) && isEmptyArray(others) && target.status !== 'played') {
+            yield* cancelSession(target, cancellation.value.reason, message.senderPersonId);
+            yield* closePollsOf(target.id);
         }
     }
 

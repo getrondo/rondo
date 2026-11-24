@@ -8,10 +8,11 @@ import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 import * as Schema from 'effect/Schema';
 
+import { ActionFailedError } from '../error/action-failed.error';
 import { addMillis } from '../utils/add-millis.util';
 
 import { ActionSchema, type Action } from './action.model';
-import { executeAction, type ActionContext } from './execute-action';
+import { runAdminAction, type ActionContext } from './execute-action';
 
 const confirmationWindowMs = 30 * 60_000;
 
@@ -84,7 +85,7 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
 
     const action = yield* Schema.decodeUnknownEffect(ActionSchema)(claimed.payload).pipe(Effect.orDie);
     const context = yield* input.context(claimed.communityId);
-    const exit = yield* Effect.exit(executeAction(action, context));
+    const exit = yield* Effect.exit(runAdminAction(input.tgUserId, action, context));
 
     if (Exit.isSuccess(exit)) {
         yield* db.update(pendingAction).set({ result: exit.value }).where(eq(pendingAction.id, claimed.id));
@@ -92,7 +93,9 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
         return { _tag: 'done', summary: claimed.summary } as const;
     }
 
-    const reason = Cause.pretty(exit.cause).split('\n')[0] ?? 'error';
+    const failure = Cause.squash(exit.cause);
+    const reason = Schema.is(ActionFailedError)(failure) ? failure.reason : 'unexpected error';
+    yield* Effect.logError('[action] failed', exit.cause);
     yield* db.update(pendingAction).set({ status: 'failed', result: { reason } }).where(eq(pendingAction.id, claimed.id));
 
     return { _tag: 'failed', summary: claimed.summary, reason } as const;

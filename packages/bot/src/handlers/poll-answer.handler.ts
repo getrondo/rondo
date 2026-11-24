@@ -30,6 +30,9 @@ export const handlePollAnswer = Effect.fn('Bot.handlePollAnswer')(function* (ans
     const chatId = yield* mainChatOf(target.value.communityId);
 
     if (Option.isSome(chatId)) {
-        yield* notifyPromoted({ target: target.value, promoted: outcome.value.promoted, chatId: chatId.value, locale: 'uk' });
+        yield* notifyPromoted({ target: target.value, promoted: outcome.value.promoted, chatId: chatId.value, locale: 'uk' }).pipe(
+            Effect.tapCause(Effect.logWarning),
+            Effect.ignore
+        );
     }
 });

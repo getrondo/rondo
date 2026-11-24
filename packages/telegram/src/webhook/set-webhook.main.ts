@@ -25,6 +25,7 @@ const program = Effect.gen(function* () {
         api.setWebhook(url, {
             secret_token: Redacted.value(secret),
             allowed_updates: ['message', 'poll_answer', 'callback_query', 'my_chat_member'],
+            max_connections: 1,
             drop_pending_updates: false
         })
     );

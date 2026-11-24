@@ -1,7 +1,7 @@
 import { community, telegramChat } from '@rondo/db/schema/org.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { CommunityConfigSchema, type CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
@@ -64,6 +64,11 @@ export const bindChat = Effect.fn('Core.bindChat')(function* (input: {
 }) {
     const db = yield* Db;
 
+    yield* db
+        .delete(telegramChat)
+        .where(
+            and(eq(telegramChat.communityId, input.communityId), eq(telegramChat.purpose, 'main'), ne(telegramChat.chatId, input.chatId))
+        );
     yield* db
         .insert(telegramChat)
         .values({ ...input, purpose: 'main' })

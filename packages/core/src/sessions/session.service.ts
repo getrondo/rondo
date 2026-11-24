@@ -1,13 +1,15 @@
+import { isNotEmptyArray } from '@rnw-community/shared';
 import { activity, community } from '@rondo/db/schema/org.schema';
 import { attendance, session, sessionChange } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db, type Database } from '@rondo/db/service/db.service';
-import { and, asc, between, eq } from 'drizzle-orm';
+import { and, asc, between, eq, notInArray } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Predicate from 'effect/Predicate';
 
 import { recordAudit } from '../audit/record-audit';
+import { ActionFailedError } from '../error/action-failed.error';
 import { addMillis } from '../utils/add-millis.util';
 
 import { instantOf, localTimeOf } from './local-time';
@@ -19,6 +21,7 @@ const sessionMinutes = 90;
 const selection = {
     id: session.id,
     communityId: session.communityId,
+    sport: activity.sport,
     localDate: session.localDate,
     startsAt: session.startsAt,
     status: session.status,
@@ -40,6 +43,7 @@ const baseQuery = (db: Database) =>
         .select(selection)
         .from(session)
         .innerJoin(community, eq(community.id, session.communityId))
+        .innerJoin(activity, eq(activity.id, session.activityId))
         .leftJoin(venue, eq(venue.id, session.venueId));
 
 export const getSession = Effect.fn('Core.getSession')(function* (sessionId: string) {
@@ -48,6 +52,13 @@ export const getSession = Effect.fn('Core.getSession')(function* (sessionId: str
 
     return Option.fromNullishOr(row).pipe(Option.map(found => toView(found)));
 });
+
+export const requireSession = (communityId: string, sessionId: string) =>
+    getSession(sessionId).pipe(
+        Effect.map(found => found.pipe(Option.filter(target => target.communityId === communityId))),
+        Effect.flatMap(found => Effect.fromOption(found)),
+        Effect.mapError(() => ActionFailedError.make({ reason: `session ${sessionId} not found` }))
+    );
 
 export const listSessions = Effect.fn('Core.listSessions')(function* (
     communityId: string,
@@ -154,17 +165,31 @@ export const cancelSession = Effect.fn('Core.cancelSession')(function* (
 ) {
     const db = yield* Db;
 
-    yield* db.update(session).set({ status: 'cancelled', cancelReason: reason }).where(eq(session.id, target.id));
-    yield* db.delete(attendance).where(eq(attendance.sessionId, target.id));
-    yield* db.insert(sessionChange).values({ sessionId: target.id, actorPersonId, diff: { status: 'cancelled', reason } });
-    yield* recordAudit({
-        communityId: target.communityId,
-        actorPersonId,
-        action: 'session.cancel',
-        entityType: 'session',
-        entityId: target.id,
-        diff: { reason }
-    });
+    yield* db.transaction(() =>
+        Effect.gen(function* () {
+            const cancelled = yield* db
+                .update(session)
+                .set({ status: 'cancelled', cancelReason: reason })
+                .where(and(eq(session.id, target.id), notInArray(session.status, ['played', 'cancelled', 'moved'])))
+                .returning({ id: session.id });
+
+            if (!isNotEmptyArray(cancelled)) {
+                return yield* ActionFailedError.make({ reason: 'the game is already over or cancelled' });
+            }
+
+            yield* db.delete(attendance).where(eq(attendance.sessionId, target.id));
+            yield* db.insert(sessionChange).values({ sessionId: target.id, actorPersonId, diff: { status: 'cancelled', reason } });
+
+            return yield* recordAudit({
+                communityId: target.communityId,
+                actorPersonId,
+                action: 'session.cancel',
+                entityType: 'session',
+                entityId: target.id,
+                diff: { reason }
+            });
+        })
+    );
 });
 
 export const listVenues = Effect.fn('Core.listVenues')(function* (communityId: string) {

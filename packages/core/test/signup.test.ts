@@ -68,4 +68,54 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
             expect(Option.isNone(outcome)).toBe(true);
         })
     );
+
+    it.effect('gives the last seat to one of two simultaneous votes and refuses votes after the game', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig('signup-race-fc'));
+            const sessionId = yield* createSession({
+                communityId,
+                timezone: 'Europe/Vienna',
+                localDate: '2026-12-05',
+                localTime: '19:30',
+                venueId: null,
+                capacityMax: 1,
+                title: null,
+                actorPersonId: null
+            });
+            yield* db.insert(telegramPoll).values({ pollId: 'race', chatId: -1n, messageId: 1, sessionId, options: ['in', 'gk', 'out'] });
+            const answer = (id: number) => applyPollAnswer({ pollId: 'race', user: user(id), optionIds: [0] });
+            yield* Effect.all([answer(21), answer(22)], { concurrency: 'unbounded' });
+            const statuses = yield* db.select({ status: signup.status }).from(signup).where(eq(signup.sessionId, sessionId));
+            yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
+            const late = yield* answer(23);
+
+            expect(statuses.map(row => row.status).toSorted()).toEqual(['in', 'waitlisted']);
+            expect(Option.isNone(late)).toBe(true);
+        })
+    );
+
+    it.effect('rolls back every domain write of a failed transaction', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig('rollback-fc'));
+            yield* Effect.exit(
+                db.transaction(() =>
+                    createSession({
+                        communityId,
+                        timezone: 'Europe/Vienna',
+                        localDate: '2026-12-06',
+                        localTime: '19:30',
+                        venueId: null,
+                        capacityMax: null,
+                        title: null,
+                        actorPersonId: null
+                    }).pipe(Effect.andThen(Effect.fail('boom')))
+                )
+            );
+            const rows = yield* db.select().from(session).where(eq(session.communityId, communityId));
+
+            expect(rows).toEqual([]);
+        })
+    );
 });
