@@ -90,7 +90,7 @@ const minutesOf = (time: string): number => {
 
 const minutesApart = (left: string, right: string): number => Math.abs(minutesOf(left) - minutesOf(right));
 
-const rescheduleSignal = /перенос|перенес/iu;
+const keepsGameSignal = /перенос|перенес|не\s+отмен/iu;
 
 const gamesOn = Effect.fn('Core.gamesOn')(function* (communityId: string, localDate: string) {
     const sessions = yield* listSessions(communityId, { from: localDate, to: localDate });
@@ -267,7 +267,7 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
     );
     const lineup = Option.fromNullishOr(extractLineup(telegramMessage, config, venueOf));
     const cancellation = Option.fromNullishOr(extractCancellation(telegramMessage, config, new Set([message.senderName]))).pipe(
-        Option.filter(() => !rescheduleSignal.test(message.text ?? ''))
+        Option.filter(() => !keepsGameSignal.test(message.text ?? ''))
     );
 
     if (Option.isSome(poll)) {

@@ -69,7 +69,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
         })
     );
 
-    it.effect('gives the last seat to one of two simultaneous votes and refuses votes after the game', () =>
+    it.effect('gives the last seat to one of two votes and refuses votes after the game', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('signup-race-fc'));

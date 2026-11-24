@@ -42,6 +42,10 @@ const executeAction = Effect.fn('Core.executeAction')(function* (action: Action,
     switch (action._tag) {
         case 'create_session': {
             return yield* Effect.gen(function* () {
+                if (action.announce) {
+                    yield* requireChat(context);
+                }
+
                 const sessionId = yield* createSession({ ...action, communityId, timezone: context.timezone, actorPersonId });
 
                 if (action.announce) {

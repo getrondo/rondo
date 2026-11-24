@@ -117,6 +117,13 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
                 sentAt: new Date('2026-05-08T14:00:00Z'),
                 text: 'Переносим сегодняшний футбол на завтра'
             });
+            yield* ingestGroupMessage(communityId, scoped, {
+                ...base,
+                senderIsAdmin: true,
+                messageId: 5,
+                sentAt: new Date('2026-05-08T15:00:00Z'),
+                text: 'Сегодня ничего не отменяем, играем, дождь небольшой'
+            });
             const [kept] = yield* db.select().from(session).where(eq(session.communityId, communityId));
 
             expect(result.cancellation).toBe(false);

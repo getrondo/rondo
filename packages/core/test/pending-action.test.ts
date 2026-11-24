@@ -61,6 +61,19 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
     it.effect('reports a failed action and expires stale ones', () =>
         Effect.gen(function* () {
             const { communityId } = yield* seedCommunity(seedConfig('actions-fail-fc'));
+            const db = yield* Db;
+            const unlinked: Action = {
+                _tag: 'create_session',
+                localDate: '2026-12-05',
+                localTime: '10:00',
+                venueId: null,
+                capacityMax: null,
+                title: null,
+                announce: true
+            };
+            const create = yield* proposeAction({ communityId, tgUserId: admin, action: unlinked, summary: 'create' });
+            const notCreated = yield* decideAction({ actionId: create, tgUserId: admin, confirm: true, context: contextFor(null) });
+            const sessions = yield* db.select().from(session).where(eq(session.communityId, communityId));
             const announce: Action = { _tag: 'announce_session', sessionId: '00000000-0000-7000-8000-000000000000' };
             const failing = yield* proposeAction({ communityId, tgUserId: admin, action: announce, summary: 'announce' });
             const stale = yield* proposeAction({
@@ -82,6 +95,8 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
             });
             const declined = yield* decideAction({ actionId: rejected, tgUserId: admin, confirm: false, context: contextFor(null) });
 
+            expect(notCreated).toMatchObject({ _tag: 'failed', reason: 'no group is linked to this community yet' });
+            expect(sessions).toEqual([]);
             expect(failed).toMatchObject({ _tag: 'failed' });
             expect(expired._tag).toBe('expired');
             expect(declined._tag).toBe('rejected');
