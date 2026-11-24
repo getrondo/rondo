@@ -47,12 +47,35 @@ const timelinesOf = (entries: readonly EvidenceEntry[], squadById: ReadonlyMap<s
     );
 };
 
+const entryIndex = (entries: readonly EvidenceEntry[]): Pick<LinkEvidence, 'entries' | 'gamesUnderOtherName'> => {
+    const byPerson = new Map<string, EvidenceEntry[]>();
+
+    for (const entry of entries) {
+        if (isDefined(entry.personId)) {
+            byPerson.set(entry.personId, [...(byPerson.get(entry.personId) ?? []), entry]);
+        }
+    }
+
+    return {
+        entries,
+        gamesUnderOtherName: (personId, aliasId) =>
+            new Set((byPerson.get(personId) ?? []).filter(entry => entry.aliasId !== aliasId).map(({ sessionId }) => sessionId))
+    };
+};
+
+const withPerson = (entry: EvidenceEntry, personId: string | undefined): EvidenceEntry =>
+    isDefined(personId) ? { ...entry, personId } : entry;
+
+export const withLinks = (evidence: LinkEvidence, personIdByEntry: ReadonlyMap<string, string>): LinkEvidence => ({
+    ...evidence,
+    ...entryIndex(evidence.entries.map(entry => withPerson(entry, personIdByEntry.get(entry.id))))
+});
+
 export const loadEvidence = Effect.fn('IngestTelegram.loadEvidence')(function* (communityId: string) {
     const db = yield* Db;
     const votes = yield* db
-        .selectDistinctOn([pollVote.sessionId, pollVote.tgUserId], {
+        .selectDistinctOn([pollVote.sessionId, telegramAccount.personId], {
             sessionId: pollVote.sessionId,
-            tgUserId: pollVote.tgUserId,
             personId: telegramAccount.personId,
             choice: pollVote.choice
         })
@@ -60,7 +83,7 @@ export const loadEvidence = Effect.fn('IngestTelegram.loadEvidence')(function* (
         .innerJoin(session, eq(session.id, pollVote.sessionId))
         .innerJoin(telegramAccount, eq(telegramAccount.tgUserId, pollVote.tgUserId))
         .where(eq(session.communityId, communityId))
-        .orderBy(pollVote.sessionId, pollVote.tgUserId, desc(pollVote.votedAt));
+        .orderBy(pollVote.sessionId, telegramAccount.personId, desc(pollVote.votedAt));
     const entries: EvidenceEntry[] = yield* db
         .select({
             id: lineupEntry.id,
@@ -76,11 +99,11 @@ export const loadEvidence = Effect.fn('IngestTelegram.loadEvidence')(function* (
         .leftJoin(personAlias, eq(personAlias.id, lineupEntry.aliasId))
         .where(and(eq(session.communityId, communityId), eq(lineupEntry.isGuest, false), ne(session.status, 'cancelled')))
         .orderBy(asc(session.localDate), asc(lineupEntry.sessionId), asc(lineupEntry.teamOrdinal), asc(lineupEntry.position));
-    const yesBySession = new Map<string, Set<bigint>>();
+    const yesBySession = new Map<string, Set<string>>();
 
-    for (const { choice, sessionId, tgUserId } of votes) {
+    for (const { choice, sessionId, personId } of votes) {
         const yes = yesBySession.get(sessionId ?? '') ?? new Set();
-        yesBySession.set(sessionId ?? '', choice === 'yes' ? yes.add(tgUserId) : yes);
+        yesBySession.set(sessionId ?? '', choice === 'yes' && isDefined(personId) ? yes.add(personId) : yes);
     }
 
     const squadById = new Map<string, Squad>(
@@ -89,7 +112,6 @@ export const loadEvidence = Effect.fn('IngestTelegram.loadEvidence')(function* (
 
     return {
         squads: [...squadById.values()],
-        personIdByAccount: new Map(votes.flatMap(({ tgUserId, personId }) => (isDefined(personId) ? [[tgUserId, personId] as const] : []))),
         timelines: timelinesOf(
             entries.filter(({ kind }) => kind === 'nickname'),
             squadById
@@ -98,8 +120,6 @@ export const loadEvidence = Effect.fn('IngestTelegram.loadEvidence')(function* (
             entries.filter(({ kind }) => kind === 'placeholder'),
             squadById
         ),
-        entries,
-        gamesUnderOtherName: (personId, aliasId) =>
-            new Set(entries.filter(entry => entry.personId === personId && entry.aliasId !== aliasId).map(entry => entry.sessionId))
+        ...entryIndex(entries)
     } satisfies LinkEvidence;
 });

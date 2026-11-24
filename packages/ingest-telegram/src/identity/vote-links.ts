@@ -9,7 +9,7 @@ import * as Option from 'effect/Option';
 import { syncSessionRoster } from '../roster/sync-session-roster';
 
 import { assignAlias } from './assign-alias';
-import { loadEvidence, type LinkEvidence } from './load-evidence';
+import { loadEvidence, withLinks, type LinkEvidence } from './load-evidence';
 import { isCertainSet, judge, matchSegments, matchSet, splitByGaps, type VoteMatch } from './match-votes';
 import { refreshNames } from './refresh-names';
 
@@ -94,9 +94,8 @@ const entriesIn = (evidence: LinkEvidence, aliasId: string, sessionIds: readonly
     return evidence.entries.filter(entry => entry.aliasId === aliasId && entry.resolvedBy !== 'manual' && sessions.has(entry.sessionId));
 };
 
-const linkNicknames = Effect.fn('IngestTelegram.linkNicknames')(function* (communityId: string) {
+const linkNicknames = Effect.fn('IngestTelegram.linkNicknames')(function* (communityId: string, evidence: LinkEvidence) {
     const db = yield* Db;
-    const evidence = yield* loadEvidence(communityId);
     const open = yield* openAliases(communityId);
     const confirmed = yield* db
         .select({ personId: personAlias.personId })
@@ -108,6 +107,7 @@ const linkNicknames = Effect.fn('IngestTelegram.linkNicknames')(function* (commu
         .map(aliasId => Object.assign(matchSegments(evidence, aliasId), { aliasId }));
     const allowed = new Set(firstAliasPerPerson(results.flatMap(({ matches }) => matches).filter(({ personId }) => !taken.has(personId))));
     const touched: string[] = [];
+    const linked = new Map<string, string>();
     let aliases = 0;
     let segmentLinks = 0;
 
@@ -117,12 +117,14 @@ const linkNicknames = Effect.fn('IngestTelegram.linkNicknames')(function* (commu
         const [first] = kept;
         const agreed = kept.length === segments && kept.every(({ personId }) => personId === first?.personId);
 
-        if (isDefined(alias) && isDefined(first) && agreed) {
-            aliases += 1;
-            yield* assignAlias({ alias, personId: first.personId, resolution: 'vote', resolvedBy: 'vote' });
-        } else {
-            for (const { personId, sessionIds } of kept) {
-                const entries = entriesIn(evidence, aliasId, sessionIds).filter(entry => isDefined(entry.personId));
+        for (const { personId, sessionIds } of kept) {
+            const entries = entriesIn(evidence, aliasId, sessionIds).filter(entry => isDefined(entry.personId));
+
+            for (const { id } of entries) {
+                linked.set(id, personId);
+            }
+
+            if (!agreed) {
                 segmentLinks += 1;
                 touched.push(...entries.map(({ sessionId }) => sessionId));
                 yield* assignEntries(
@@ -131,38 +133,47 @@ const linkNicknames = Effect.fn('IngestTelegram.linkNicknames')(function* (commu
                 );
             }
         }
+
+        if (isDefined(alias) && isDefined(first) && agreed) {
+            aliases += 1;
+            yield* assignAlias({ alias, personId: first.personId, resolution: 'vote', resolvedBy: 'vote' });
+        }
     }
 
     yield* syncSessionRoster([...new Set(touched)]);
     yield* refreshNames([...allowed].map(({ personId }) => personId));
 
-    return { aliases, segments: segmentLinks };
+    return { aliases, segments: segmentLinks, linked };
 });
 
-const gameAssignments = (evidence: LinkEvidence, aliasId: string, accounts: readonly bigint[], segment: readonly { sessionId: string }[]) =>
+const gameAssignments = (
+    evidence: LinkEvidence,
+    aliasId: string,
+    personIds: readonly string[],
+    segment: readonly { sessionId: string }[]
+) =>
     segment.flatMap(({ sessionId }) => {
         const yes = evidence.squads.find(squad => squad.sessionId === sessionId)?.yes;
-        const playing = accounts.filter(account => yes?.has(account) === true);
+        const playing = personIds.filter(personId => yes?.has(personId) === true);
         const entries = evidence.entries.filter(entry => entry.aliasId === aliasId && entry.sessionId === sessionId);
         const isOpen = entries.every(({ resolvedBy }) => resolvedBy !== 'manual');
 
         return isOpen && playing.length === entries.length
-            ? entries.map((entry, index) => ({ entry, personId: evidence.personIdByAccount.get(playing[index] ?? 0n) ?? '' }))
+            ? entries.map((entry, index) => ({ entry, personId: playing[index] ?? '' }))
             : [];
     });
 
-const linkSharedNickname = Effect.fn('IngestTelegram.linkSharedNickname')(function* (communityId: string, aliasId: string) {
-    const evidence = yield* loadEvidence(communityId);
+const linkSharedNickname = Effect.fn('IngestTelegram.linkSharedNickname')(function* (evidence: LinkEvidence, aliasId: string) {
     const assignments = splitByGaps(evidence.sharedTimelines.get(aliasId) ?? []).flatMap(segment => {
-        const isPossible = (account: bigint): boolean => {
-            const otherGames = evidence.gamesUnderOtherName(evidence.personIdByAccount.get(account) ?? '', aliasId);
+        const isPossible = (personId: string): boolean => {
+            const otherGames = evidence.gamesUnderOtherName(personId, aliasId);
 
             return segment.every(({ sessionId }) => !otherGames.has(sessionId));
         };
 
         return matchSet(evidence.squads, segment, isPossible).pipe(
             Option.filter(found => isCertainSet(found)),
-            Option.match({ onNone: () => [], onSome: ({ accounts }) => gameAssignments(evidence, aliasId, accounts, segment) })
+            Option.match({ onNone: () => [], onSome: ({ personIds }) => gameAssignments(evidence, aliasId, personIds, segment) })
         );
     });
 
@@ -172,19 +183,23 @@ const linkSharedNickname = Effect.fn('IngestTelegram.linkSharedNickname')(functi
 
     yield* syncSessionRoster([...new Set(assignments.map(({ entry }) => entry.sessionId))]);
 
-    return assignments.length;
+    return new Map(assignments.map(({ entry, personId }) => [entry.id, personId]));
 });
 
 export const linkByVotes = Effect.fn('IngestTelegram.linkByVotes')(function* (communityId: string) {
-    const { aliases, segments } = yield* linkNicknames(communityId);
+    const loaded = yield* loadEvidence(communityId);
+    const { aliases, segments, linked } = yield* linkNicknames(communityId, loaded);
     const open = yield* openAliases(communityId);
     const shared = [...open.values()]
         .filter(({ kind }) => kind === 'placeholder')
         .toSorted((left, right) => right.occurrences - left.occurrences || left.aliasNorm.localeCompare(right.aliasNorm));
+    let evidence = withLinks(loaded, linked);
     let sharedEntries = 0;
 
     for (const { id } of shared) {
-        sharedEntries += yield* linkSharedNickname(communityId, id);
+        const assigned = yield* linkSharedNickname(evidence, id);
+        evidence = withLinks(evidence, assigned);
+        sharedEntries += assigned.size;
     }
 
     return { aliases, segments, sharedEntries };
