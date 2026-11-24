@@ -18,6 +18,7 @@ import { eq } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
+import * as Option from 'effect/Option';
 
 import { handleUpdate } from '../src/handle-update';
 
@@ -73,6 +74,7 @@ const message = (
     text: string
 ) => nextUpdate({ message: { message_id: updateId, date: 1_764_500_000, chat: chat as never, from, text } });
 
+const deliver = (update: Update) => handleUpdate(update).pipe(Effect.flatMap(Option.getOrElse(() => Effect.void)));
 const confirm = (data: string) =>
     handleUpdate(
         nextUpdate({
@@ -300,12 +302,15 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
             place = 'Stadlau';
             yield* handleUpdate(pollOf(player, 'Понедельник, 4 мая, 19.00 Stadlau. 18 чел'));
             const beforeAdmin = recorder.calls.length;
-            yield* handleUpdate(pollOf(owner, 'Понедельник, 4 мая, 19.00 Stadlau. 18 чел'));
+            const callsBefore = modelCalls;
+            const followUp = yield* handleUpdate(pollOf(owner, 'Понедельник, 4 мая, 19.00 Stadlau. 18 чел'));
+            const callsDuring = modelCalls - callsBefore;
+            yield* Option.getOrElse(followUp, () => Effect.void);
             const proposal = recorder.calls.slice(beforeAdmin).find(call => call.method === 'sendMessage');
             const keyboard = proposal?.payload.reply_markup as { inline_keyboard: { callback_data: string }[][] } | undefined;
             yield* confirm(keyboard?.inline_keyboard[0]?.[0]?.callback_data ?? '');
             place = 'Invented Arena';
-            yield* handleUpdate(pollOf(owner, 'Вторник, 5 мая, 19.00 Aspern. 18 чел'));
+            yield* deliver(pollOf(owner, 'Вторник, 5 мая, 19.00 Aspern. 18 чел'));
             const venues = yield* db.select().from(venue).where(eq(venue.communityId, communityId));
             const games = yield* db.select().from(session).where(eq(session.communityId, communityId)).orderBy(session.localDate);
             const members = yield* db
@@ -314,6 +319,7 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
                 .innerJoin(telegramAccount, eq(telegramAccount.personId, membership.personId))
                 .where(eq(membership.communityId, communityId));
 
+            expect(callsDuring).toBe(0);
             expect(proposal?.payload.chat_id).toBe(owner.id);
             expect(venues.map(row => row.name).toSorted()).toEqual(['North Arena', 'Park Field', 'Stadlau']);
             expect(games.map(game => game.venueId)).toEqual([venues.find(row => row.name === 'Stadlau')?.id, null]);

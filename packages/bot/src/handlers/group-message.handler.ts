@@ -21,6 +21,8 @@ import { proposeUnknownPlace } from './unknown-place.handler';
 
 import type { Message } from 'grammy/types';
 
+export const noFollowUp = Option.none<ReturnType<typeof proposeUnknownPlace>>();
+
 const linkCommand = /^\/link(?:@\w+)?\s+(\S+)/u;
 
 const handleLink = Effect.fn('Bot.handleLink')(function* (message: Message, slug: string) {
@@ -63,7 +65,7 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
     const body = message.text ?? message.caption;
 
     if (!isDefined(sender) || sender.is_bot) {
-        return;
+        return noFollowUp;
     }
 
     const link = linkCommand.exec(body ?? '');
@@ -71,13 +73,13 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
     if (isDefined(link)) {
         yield* handleLink(message, link[1] ?? '');
 
-        return;
+        return noFollowUp;
     }
 
     const chat = yield* findLinkedChat(BigInt(message.chat.id));
 
     if (Option.isNone(chat)) {
-        return;
+        return noFollowUp;
     }
 
     const { communityId, topicId } = chat.value;
@@ -103,7 +105,7 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
     const config = profile.pipe(Option.flatMap(value => value.config));
 
     if (Option.isNone(config)) {
-        return;
+        return noFollowUp;
     }
 
     const result = yield* ingestGroupMessage(communityId, config.value, {
@@ -127,11 +129,9 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
         );
     }
 
-    if (isDefined(result.unknownPlace)) {
-        yield* proposeUnknownPlace(communityId, user, result.unknownPlace);
-    }
-
     if (result.poll || result.lineup || isDefined(result.cancellation)) {
         yield* Effect.logInfo('[group] extracted', result);
     }
+
+    return Option.fromNullishOr(result.unknownPlace).pipe(Option.map(place => proposeUnknownPlace(communityId, user, place)));
 });

@@ -9,7 +9,7 @@ import * as Effect from 'effect/Effect';
 import { UpdateInProgressError } from './error/update-in-progress.error';
 import { handleCallbackQuery } from './handlers/callback-query.handler';
 import { handleChatMember } from './handlers/chat-member.handler';
-import { handleGroupMessage } from './handlers/group-message.handler';
+import { handleGroupMessage, noFollowUp } from './handlers/group-message.handler';
 import { handlePollAnswer } from './handlers/poll-answer.handler';
 import { handlePrivateMessage } from './handlers/private-message.handler';
 
@@ -65,9 +65,12 @@ const releaseUpdate = Effect.fn('Bot.releaseUpdate')(function* (updateId: number
 });
 
 const route = Effect.fn('Bot.route')(function* (update: Update) {
+    if (isDefined(update.message) && update.message.chat.type !== 'private') {
+        return yield* handleGroupMessage(update.message);
+    }
+
     if (isDefined(update.message)) {
-        const { message } = update;
-        yield* message.chat.type === 'private' ? handlePrivateMessage(message) : handleGroupMessage(message);
+        yield* handlePrivateMessage(update.message);
     } else if (isDefined(update.poll_answer)) {
         yield* handlePollAnswer(update.poll_answer);
     } else if (isDefined(update.chat_member)) {
@@ -75,18 +78,22 @@ const route = Effect.fn('Bot.route')(function* (update: Update) {
     } else if (isDefined(update.callback_query)) {
         yield* handleCallbackQuery(update.callback_query);
     }
+
+    return noFollowUp;
 });
 
 export const handleUpdate = Effect.fn('Bot.handleUpdate')(function* (update: Update) {
     if (!(yield* claimUpdate(update.update_id))) {
-        return;
+        return noFollowUp;
     }
 
-    yield* route(update).pipe(
+    const followUp = yield* route(update).pipe(
         Effect.tapCause(cause => Effect.logError(`[update ${update.update_id}] failed`, cause)),
         Effect.onError(() => releaseUpdate(update.update_id).pipe(Effect.ignore))
     );
     const db = yield* Db;
     const doneAt = yield* DateTime.nowAsDate;
     yield* db.update(processedUpdate).set({ doneAt }).where(eq(processedUpdate.updateId, update.update_id));
+
+    return followUp;
 });
