@@ -46,6 +46,7 @@ const countsOf = Effect.fn('test.countsOf')(function* (communityId: string) {
     return {
         sessions: total(yield* db.select({ value: count() }).from(session).where(eq(session.communityId, communityId))),
         aliases: total(yield* db.select({ value: count() }).from(personAlias).where(eq(personAlias.communityId, communityId))),
+        allPeople: total(yield* db.select({ value: count() }).from(person)),
         people: total(
             yield* db
                 .select({ value: countDistinct(personAlias.personId) })

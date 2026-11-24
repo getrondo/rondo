@@ -99,6 +99,7 @@ describe('line-ups', () => {
         expect(dateOf('Составы на сегодня, North:')).toBe('2025-05-05');
         expect(dateOf('Составы, North:')).toBe('2025-05-05');
         expect(dateOf('Составы на пятницу, North:')).toBe('2025-05-09');
+        expect(dateOf('Составы на игру, четверо в резерве:')).toBe('2025-05-05');
     });
 
     it('ignores messages with fewer than two teams', () => {
@@ -108,6 +109,14 @@ describe('line-ups', () => {
 
 describe('league fixtures', () => {
     const fixtures = makeFixtureExtractor(testConfig, new Set(['Org']));
+
+    it('reads a labelled score line and numeric team names', () => {
+        const scoreOf = (text: string) =>
+            fixtures(message(30, '2025-09-11T10:00:00Z', text)).map(fact => [fact.opponent, fact.goalsFor, fact.goalsAgainst]);
+
+        expect(scoreOf('TFC - Alpha\nСчёт — победа 3:1')).toEqual([['Alpha', 3, 1]]);
+        expect(scoreOf('TFC - 1860 3:1')).toEqual([['1860', 3, 1]]);
+    });
 
     it('reads away results with the score on a later line and squad from context', () => {
         expect(fixtures(message(20, '2025-09-11T10:00:00Z', '5я лига. Rivals FC- TFC2 . / 7 сентября. / Счет: 0-17'))).toMatchObject([

@@ -145,7 +145,9 @@ interface Pairing {
     readonly home: boolean;
 }
 
-const hasLetter = (side: string): boolean => /\p{L}/u.test(side);
+const isTeamName = (side: string): boolean => /\p{L}/u.test(side) || /\d{3,}/u.test(side);
+
+const scoreLabel = /сч[её]т|full ?time|итог|финал|score/iu;
 
 const parsePairing = (line: string): Option.Option<{ match: RegExpExecArray; left: string; right: string }> =>
     Option.fromNullishOr(pairingPattern.exec(line)).pipe(
@@ -154,7 +156,7 @@ const parsePairing = (line: string): Option.Option<{ match: RegExpExecArray; lef
             left: cleanTeam((match[1] ?? '').split(':').at(-1) ?? ''),
             right: cleanTeam(match[2] ?? '')
         })),
-        Option.filter(({ left, right }) => hasLetter(left) && hasLetter(right))
+        Option.filter(({ left, right }) => isTeamName(left) && isTeamName(right))
     );
 
 const pairingOf = (line: string, isOurs: (side: string) => boolean): Option.Option<Pairing> =>
@@ -167,7 +169,7 @@ const pairingOf = (line: string, isOurs: (side: string) => boolean): Option.Opti
     );
 
 const untilNextPairing = (following: readonly string[]): readonly string[] => {
-    const next = following.findIndex(line => Option.isSome(parsePairing(line)));
+    const next = following.findIndex(line => !scoreLabel.test(line) && Option.isSome(parsePairing(line)));
 
     return next === -1 ? following : following.slice(0, next);
 };
