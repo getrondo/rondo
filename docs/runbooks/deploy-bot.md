@@ -40,9 +40,24 @@ isec run getrondo prod -- sh -c 'RONDO_WEBHOOK_URL=https://<production-domain>/a
 1. In @BotFather: `/setprivacy` → **Disable** for the bot, so it sees every group message.
 2. Add the bot to the group as an admin: Telegram sends reliable join and leave updates only to admin bots.
    Bots cannot list existing members, so people appear once they write, vote or join.
-3. An owner sends `/link <community-slug>` in the group (the slug from the import config).
+   Give it the right to pin messages: without it the polls are posted but not pinned.
+3. An owner sends `/link <community-slug>` (the slug from the import config) in the topic where games are organized.
+   The bot posts there and reads games only there. In General, or in a group without topics, the whole
+   group outside other topics counts. Send `/link` again in another topic to move. Turning topics on can turn
+   a group into a supergroup with a new id: then link again.
+4. Set the language of the group and the poll template once (`isec`, production database, ask the owner first).
+   Placeholders: `{weekday}`, `{date}`, `{time}`, `{place}`, `{station}`, `{fields}`, `{places}`. One without a value
+   disappears with the separator beside it. Without a template the bot uses a generic one. The import keeps both.
 
-4. Make every organizer an admin through the assistant (they must have written in the group first). Polls, line-ups and cancellations posted by anyone else are ignored.
+   ```sql
+   update org.community
+   set default_locale = 'ru',
+       settings = settings || '{"poll": {"question": "{weekday}, {date}, {time} {place}, {station}!\n\n{fields}, {places}", "answers": ["+", "-"]}}'
+   where slug = '<community-slug>';
+   ```
+
+   Short names and stations of the places are set through the assistant.
+5. Make every organizer an admin through the assistant (they must have written in the group first). Polls, line-ups and cancellations posted by anyone else are ignored.
 
 From then on the bot keeps sessions, line-ups and cancellations current, and admins can talk to
 it privately. `/start` shows examples; `/reset` clears the conversation.
@@ -53,6 +68,9 @@ it privately. `/start` shows examples; `/reset` clears the conversation.
   with an Effect span (`Bot.*`, `Core.*`, `Assistant.*`).
 - **Webhook health:** `getWebhookInfo` shows pending updates and the last error.
 - **Pending proposals:** `select * from comms.pending_action order by created_at desc`.
+- **Uncertain polls:** a pending action with status `failed` and the reason "uncertain, check the group" means Telegram
+  did not answer in time. A new game was not stored, and nothing is sent again. If its poll is in the group, delete it,
+  then ask for the game again.
 - **Audit:** `select * from audit.log order by at desc`.
 - **Import again:** see [import-telegram-history](import-telegram-history.md); stop re-importing
   once the bot has run sign-ups on imported sessions.

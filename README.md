@@ -58,7 +58,7 @@ pnpm check                      # format, types, lint, dead code, duplication, t
 
 1. **Telegram-native.** Players never install anything. Rich views live in a Telegram Mini App.
 2. **Organizer stays in charge.** The bot proposes and automates; a human decides.
-3. **Speaks the players' language.** Ukrainian or Russian based on each user's Telegram language, falling back to Ukrainian.
+3. **Speaks the players' language.** The group in the language of the community, private chats in each user's Telegram language: Ukrainian or Russian, falling back to Ukrainian.
 4. **Private by default.** Skill ratings are admin-only. GDPR (Austria/EU) is built in, not bolted on.
 
 ## License
