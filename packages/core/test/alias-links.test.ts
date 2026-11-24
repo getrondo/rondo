@@ -5,9 +5,10 @@ import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { removeUnusedNicknames } from '@rondo/ingest-telegram/load/remove-unused-nicknames';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
+import * as Tracer from 'effect/Tracer';
 
 import { syncMember, upsertTelegramUser } from '../src/identity/telegram-user';
 import { ingestGroupMessage } from '../src/live/live-ingest';
@@ -17,6 +18,7 @@ import { createSession, updateSession, requireSession } from '../src/sessions/se
 import { signedUpByVotes } from '../src/signups/signed-up-by-votes';
 import { applyPollAnswer } from '../src/signups/signup.service';
 import { inactivePlayers, playerHistory, topAttendance } from '../src/stats/stats.service';
+import { publishTeams } from '../src/teams/team.service';
 import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -54,6 +56,53 @@ const seeded = Effect.fn('test.seeded')(function* (slug: string, orgId: bigint, 
 const gamesOf = Effect.fn('test.gamesOf')(function* (communityId: string) {
     return Object.fromEntries((yield* topAttendance(communityId, range, 50)).map(({ name, games }) => [name, games]));
 });
+
+const firstStatementOf = Effect.fn('test.firstStatementOf')(function* <Value, Failure, Requirements>(
+    effect: Effect.Effect<Value, Failure, Requirements>
+) {
+    const statements: string[] = [];
+    const tracer = Tracer.make({
+        span: options => {
+            const span = new Tracer.NativeSpan(options);
+            const record = span.attribute.bind(span);
+            span.attribute = (key, value) => {
+                if (key === 'db.query.text') {
+                    statements.push(String(value));
+                }
+
+                record(key, value);
+            };
+
+            return span;
+        }
+    });
+    yield* effect.pipe(Effect.withTracer(tracer));
+
+    return statements[0] ?? '';
+});
+
+const underLockGuard = <Value, Failure, Requirements>(slug: string, table: SQL, effect: Effect.Effect<Value, Failure, Requirements>) =>
+    Effect.gen(function* () {
+        const db = yield* Db;
+        yield* db.execute(sql`
+            create function play.require_lock() returns trigger language plpgsql as $$
+            begin
+                if not exists (
+                    select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() and granted
+                    and ((classid::bigint << 32) | objid::bigint) = hashtextextended(tg_argv[0], 0)
+                ) then
+                    raise exception 'no community lock';
+                end if;
+                return new;
+            end $$`);
+        yield* db.execute(
+            sql`create trigger require_lock before insert on ${table} for each row execute function play.require_lock(${sql.raw(`'rondo.community:${slug}'`)})`
+        );
+
+        return yield* Effect.exit(effect).pipe(
+            Effect.ensuring(db.execute(sql`drop function play.require_lock cascade`).pipe(Effect.orDie))
+        );
+    });
 
 const nameOf = Effect.fn('test.nameOf')(function* (personId: string) {
     const db = yield* Db;
@@ -289,25 +338,105 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
         })
     );
 
-    it.effect('stores a live line-up only under the community lock', () =>
+    it.effect('undoes a link after the guest was merged into the linked player', () =>
         Effect.gen(function* () {
             const db = yield* Db;
-            yield* db.execute(sql`
-                create function play.require_lock() returns trigger language plpgsql as $$
-                begin
-                    if not exists (select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() and granted) then
-                        raise exception 'no community lock';
-                    end if;
-                    return new;
-                end $$`);
-            yield* db.execute(
-                sql`create trigger require_lock before insert on play.team for each row execute function play.require_lock()`
+            const { communityId, account, aliasId } = yield* seeded('undo-merge-fc', 220n, '🟢Я, Гонзо\n🔵Олег, Семён');
+            const target = { communityId, aliasId: aliasId('гонзо'), actorPersonId: null };
+            const aliasNow = () => db.select().from(personAlias).where(eq(personAlias.id, target.aliasId));
+            const [before] = yield* aliasNow();
+            yield* linkAlias({ ...target, personId: account });
+            yield* mergePeople({ communityId, fromPersonId: before?.guestPersonId ?? '', intoPersonId: account, actorPersonId: null });
+            const [merged] = yield* aliasNow();
+            yield* unlinkAlias(target);
+            const [undone] = yield* aliasNow();
+
+            expect(merged?.personId).toBe(account);
+            expect(merged?.guestPersonId).not.toBe(account);
+            expect(undone?.personId).not.toBe(account);
+            expect(yield* playerHistory(communityId, account)).toMatchObject({ games: 0 });
+        })
+    );
+
+    it.effect('confirms both nicknames when two players without Telegram are merged', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, aliasId } = yield* seeded('merge-guests-fc', 230n, '🟢Я, Гонзо\n🔵Семён');
+            const [olegPerson] = yield* db.insert(person).values({ displayName: 'Олег', source: 'import' }).returning({ id: person.id });
+            const [oleg] = yield* db
+                .insert(personAlias)
+                .values({ communityId, personId: olegPerson?.id, guestPersonId: olegPerson?.id, alias: 'Олег', aliasNorm: 'олег' })
+                .returning();
+            const [gonzo] = yield* db
+                .select()
+                .from(personAlias)
+                .where(eq(personAlias.id, aliasId('гонзо')));
+            const survivor = gonzo?.personId ?? '';
+            yield* mergePeople({ communityId, fromPersonId: oleg?.personId ?? '', intoPersonId: survivor, actorPersonId: null });
+            const merged = yield* db.select().from(personAlias).where(eq(personAlias.personId, survivor));
+
+            expect(merged.map(({ aliasNorm, resolution }) => `${aliasNorm} ${resolution}`).toSorted()).toEqual([
+                'гонзо confirmed',
+                'олег confirmed'
+            ]);
+            expect(merged.every(({ guestPersonId }) => guestPersonId !== survivor)).toBe(true);
+        })
+    );
+
+    it.effect('takes the community lock before it reads, in every change of links, people and teams', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'lock-order-fc';
+            const { communityId, account, aliasId, sessionId } = yield* seeded(slug, 240n, '🟢Я, Гонзо\n🔵Олег, Семён');
+            const alias = { communityId, aliasId: aliasId('гонзо'), actorPersonId: null };
+            const [entry] = yield* db
+                .select()
+                .from(lineupEntry)
+                .where(and(eq(lineupEntry.aliasId, aliasId('олег')), eq(lineupEntry.sessionId, sessionId)));
+            const entryTarget = { communityId, entryId: entry?.id ?? '', actorPersonId: null };
+            const other = yield* syncMember(communityId, { id: 249n, firstName: 'Second' }, 'active');
+            const target = yield* requireSession(communityId, sessionId);
+            const firstStatements = [
+                yield* firstStatementOf(linkAlias({ ...alias, personId: account })),
+                yield* firstStatementOf(unlinkAlias(alias)),
+                yield* firstStatementOf(linkEntry({ ...entryTarget, personId: account })),
+                yield* firstStatementOf(unlinkEntry(entryTarget)),
+                yield* firstStatementOf(mergePeople({ communityId, fromPersonId: other, intoPersonId: account, actorPersonId: null })),
+                yield* firstStatementOf(publishTeams({ target, teams: [], chatId: -240n, locale: 'uk', actorPersonId: null }))
+            ];
+
+            expect(firstStatements.filter(statement => !statement.includes('pg_advisory_xact_lock'))).toEqual([]);
+        })
+    );
+
+    it.effect('refuses to link a nickname that an import removed', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, account } = yield* seeded('gone-alias-fc', 250n, '🟢Я, Гонзо\n🔵Олег, Семён');
+            const [unused] = yield* db.insert(personAlias).values({ communityId, alias: 'Лишний', aliasNorm: 'лишний' }).returning();
+            const link = linkAlias({ communityId, aliasId: unused?.id ?? '', personId: account, actorPersonId: null });
+            yield* db.transaction(transaction => removeUnusedNicknames({ transaction, communityId }));
+            const refused = yield* Effect.flip(link);
+
+            expect(refused._tag).toBe('ActionFailedError');
+        })
+    );
+
+    it.effect('stores a live line-up only under the community lock', () =>
+        Effect.gen(function* () {
+            const outcome = yield* underLockGuard(
+                'live-lock-fc',
+                sql`play.team`,
+                seeded('live-lock-fc', 210n, '🟢Я, Гонзо\n🔵Олег, Семён')
             );
-            const outcome = yield* Effect.exit(seeded('live-lock-fc', 210n, '🟢Я, Гонзо\n🔵Олег, Семён'));
-            yield* db.execute(sql`drop trigger require_lock on play.team`);
-            yield* db.execute(sql`drop function play.require_lock`);
+            const otherKey = yield* underLockGuard(
+                'another-fc',
+                sql`play.team`,
+                seeded('live-lock-2-fc', 260n, '🟢Я, Гонзо\n🔵Олег, Семён')
+            );
 
             expect(Exit.isSuccess(outcome)).toBe(true);
+            expect(Exit.isFailure(otherKey)).toBe(true);
         })
     );
 });

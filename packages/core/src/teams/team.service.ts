@@ -4,6 +4,7 @@ import { messageRef } from '@rondo/db/schema/platform.schema';
 import { rating, team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
+import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, asc, eq, inArray } from 'drizzle-orm';
@@ -11,8 +12,10 @@ import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
+import { ActionFailedError } from '../error/action-failed.error';
 import { formatSessionLabel, text } from '../i18n/messages';
-import { footballActivity } from '../sessions/session.service';
+import { arePeopleOf } from '../people/people.service';
+import { footballActivity, requireSession } from '../sessions/session.service';
 
 import { balanceTeams, type BalancedTeam, type BalancePlayer } from './balance-teams';
 
@@ -96,32 +99,37 @@ const lineupText = (locale: Locale, target: SessionView, teams: readonly Balance
     return [`<b>${text(locale, 'lineups')}: ${escapeHtml(formatSessionLabel(locale, target))}</b>`, ...lines].join('\n');
 };
 
-export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: {
+interface PublishInput {
     readonly target: SessionView;
     readonly teams: readonly BalancedTeam[];
     readonly chatId: bigint;
     readonly locale: Locale;
     readonly actorPersonId: string | null;
-}) {
+}
+
+const storeTeams = Effect.fn('Core.storeTeams')(function* ({ target, teams }: PublishInput, colorIds: readonly string[]) {
     const db = yield* Db;
-    const telegram = yield* Telegram;
-    const colors = yield* db
-        .select()
-        .from(teamColor)
-        .where(eq(teamColor.communityId, input.target.communityId))
-        .orderBy(asc(teamColor.name));
-    const emojis = colors.map(color => color.emoji ?? '');
+    yield* requireSession(target.communityId, target.id);
 
-    yield* db.delete(team).where(eq(team.sessionId, input.target.id));
+    if (
+        !(yield* arePeopleOf(
+            target.communityId,
+            teams.flatMap(({ players }) => players.map(({ personId }) => personId))
+        ))
+    ) {
+        return yield* ActionFailedError.make({ reason: 'player not found in this community' });
+    }
 
-    for (const entry of input.teams) {
-        const publishedAt = yield* DateTime.nowAsDate;
+    const publishedAt = yield* DateTime.nowAsDate;
+    yield* db.delete(team).where(eq(team.sessionId, target.id));
+
+    for (const entry of teams) {
         const [stored] = yield* db
             .insert(team)
             .values({
-                sessionId: input.target.id,
+                sessionId: target.id,
                 ordinal: entry.ordinal,
-                colorId: colors[entry.ordinal - 1]?.id,
+                colorId: colorIds[entry.ordinal - 1],
                 predictedStrength: entry.strength,
                 publishedAt
             })
@@ -131,7 +139,7 @@ export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: {
             yield* db.insert(teamMember).values(
                 entry.players.map(player => ({
                     teamId: stored?.id ?? '',
-                    sessionId: input.target.id,
+                    sessionId: target.id,
                     personId: player.personId,
                     isGk: player.isGk,
                     assignedBy: 'balancer' as const
@@ -140,6 +148,26 @@ export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: {
         }
     }
 
+    return target.id;
+});
+
+export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: PublishInput) {
+    const db = yield* Db;
+    const telegram = yield* Telegram;
+    const { communityId } = input.target;
+    const colors = yield* withCommunityLock(
+        { id: communityId },
+        Effect.gen(function* () {
+            const stored = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId)).orderBy(asc(teamColor.name));
+            yield* storeTeams(
+                input,
+                stored.map(color => color.id)
+            );
+
+            return stored;
+        })
+    );
+    const emojis = colors.map(color => color.emoji ?? '');
     const sent = yield* telegram.call('sendMessage', api =>
         api.sendMessage(Number(input.chatId), lineupText(input.locale, input.target, input.teams, emojis), { parse_mode: 'HTML' })
     );
@@ -148,7 +176,7 @@ export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: {
         .values({ chatId: input.chatId, messageId: sent.message_id, purpose: 'lineup', entityType: 'session', entityId: input.target.id })
         .onConflictDoNothing();
     yield* recordAudit({
-        communityId: input.target.communityId,
+        communityId,
         actorPersonId: input.actorPersonId,
         action: 'teams.publish',
         entityType: 'session',

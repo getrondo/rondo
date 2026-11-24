@@ -7,6 +7,7 @@ import { assignAlias, guestPersonOf } from '@rondo/ingest-telegram/identity/assi
 import { refreshNames } from '@rondo/ingest-telegram/identity/refresh-names';
 import { aliasResolution } from '@rondo/ingest-telegram/identity/resolve-member';
 import { rankedLinks } from '@rondo/ingest-telegram/identity/vote-links';
+import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import { alignGuests } from '@rondo/ingest-telegram/roster/align-guests';
 import { syncSessionRoster } from '@rondo/ingest-telegram/roster/sync-session-roster';
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
@@ -44,32 +45,42 @@ export const requireAlias = Effect.fn('Core.requireAlias')(function* (communityI
     return isDefined(alias) ? alias : yield* ActionFailedError.make({ reason: 'nickname not found in this community' });
 });
 
-export const linkAlias = Effect.fn('Core.linkAlias')(function* (input: AliasTarget & { readonly personId: string }) {
-    const db = yield* Db;
-    const alias = yield* requireAlias(input.communityId, input.aliasId);
-
-    if (alias.kind === 'placeholder') {
-        return yield* ActionFailedError.make({ reason: 'several players share this nickname, link it per game' });
+const requirePerson = Effect.fn('Core.requirePerson')(function* (communityId: string, personId: string) {
+    if (!(yield* arePeopleOf(communityId, [personId]))) {
+        return yield* ActionFailedError.make({ reason: 'player not found in this community' });
     }
 
-    const [conflict] = yield* db
-        .select({ id: lineupEntry.id })
-        .from(lineupEntry)
-        .where(
-            and(
-                eq(lineupEntry.personId, input.personId),
-                sql`${lineupEntry.aliasId} is distinct from ${alias.id}::uuid`,
-                sql`exists (select 1 from play.lineup_entry named where named.session_id = ${lineupEntry.sessionId} and named.alias_id = ${alias.id}::uuid and not named.is_guest)`
-            )
-        )
-        .limit(1);
+    return personId;
+});
 
-    if (isDefined(conflict)) {
-        return yield* ActionFailedError.make({ reason: 'this player and this nickname are in the same line-up' });
-    }
-
-    yield* db.transaction(() =>
+export const linkAlias = Effect.fn('Core.linkAlias')((input: AliasTarget & { readonly personId: string }) =>
+    withCommunityLock(
+        { id: input.communityId },
         Effect.gen(function* () {
+            const db = yield* Db;
+            const alias = yield* requireAlias(input.communityId, input.aliasId);
+
+            if (alias.kind === 'placeholder') {
+                return yield* ActionFailedError.make({ reason: 'several players share this nickname, link it per game' });
+            }
+
+            yield* requirePerson(input.communityId, input.personId);
+            const [conflict] = yield* db
+                .select({ id: lineupEntry.id })
+                .from(lineupEntry)
+                .where(
+                    and(
+                        eq(lineupEntry.personId, input.personId),
+                        sql`${lineupEntry.aliasId} is distinct from ${alias.id}::uuid`,
+                        sql`exists (select 1 from play.lineup_entry named where named.session_id = ${lineupEntry.sessionId} and named.alias_id = ${alias.id}::uuid and not named.is_guest)`
+                    )
+                )
+                .limit(1);
+
+            if (isDefined(conflict)) {
+                return yield* ActionFailedError.make({ reason: 'this player and this nickname are in the same line-up' });
+            }
+
             yield* guestPersonOf(alias);
             yield* assignAlias({ alias, personId: input.personId, resolution: 'confirmed', resolvedBy: 'alias' });
             yield* recordAudit({
@@ -79,18 +90,17 @@ export const linkAlias = Effect.fn('Core.linkAlias')(function* (input: AliasTarg
                 entityId: alias.id,
                 diff: { from: alias.personId, to: input.personId }
             });
+
+            return input.personId;
         })
-    );
+    )
+);
 
-    return input.personId;
-});
-
-export const unlinkAlias = Effect.fn('Core.unlinkAlias')(function* (input: AliasTarget) {
-    const db = yield* Db;
-    const alias = yield* requireAlias(input.communityId, input.aliasId);
-
-    yield* db.transaction(() =>
+export const unlinkAlias = Effect.fn('Core.unlinkAlias')((input: AliasTarget) =>
+    withCommunityLock(
+        { id: input.communityId },
         Effect.gen(function* () {
+            const alias = yield* requireAlias(input.communityId, input.aliasId);
             const personId = alias.kind === 'placeholder' ? null : yield* guestPersonOf(alias);
             yield* assignAlias({ alias, personId, resolution: 'guest', resolvedBy: 'guest' });
             yield* recordAudit({
@@ -100,11 +110,11 @@ export const unlinkAlias = Effect.fn('Core.unlinkAlias')(function* (input: Alias
                 entityId: alias.id,
                 diff: { from: alias.personId, to: personId }
             });
-        })
-    );
 
-    return alias.id;
-});
+            return alias.id;
+        })
+    )
+);
 
 const requireEntry = Effect.fn('Core.requireEntry')(function* ({ communityId, entryId }: EntryTarget) {
     const db = yield* Db;
@@ -140,57 +150,60 @@ const assignEntry = Effect.fn('Core.assignEntry')(function* (
     const db = yield* Db;
     const { action, ...values } = change;
 
-    yield* db.transaction(() =>
-        Effect.gen(function* () {
-            yield* db.update(lineupEntry).set(values).where(eq(lineupEntry.id, entry.id));
-            yield* alignGuests(target.communityId);
-            yield* syncSessionRoster([entry.sessionId]);
-            yield* refreshNames([entry.personId, change.personId].filter(personId => isDefined(personId)));
-            yield* recordAudit({
-                ...target,
-                action,
-                entityType: 'lineup_entry',
-                entityId: entry.id,
-                diff: { from: entry.personId, to: change.personId }
-            });
-        })
-    );
+    yield* db.update(lineupEntry).set(values).where(eq(lineupEntry.id, entry.id));
+    yield* alignGuests(target.communityId);
+    yield* syncSessionRoster([entry.sessionId]);
+    yield* refreshNames([entry.personId, change.personId].filter(personId => isDefined(personId)));
+    yield* recordAudit({
+        ...target,
+        action,
+        entityType: 'lineup_entry',
+        entityId: entry.id,
+        diff: { from: entry.personId, to: change.personId }
+    });
 
     return entry.id;
 });
 
-export const linkEntry = Effect.fn('Core.linkEntry')(function* (input: EntryTarget & { readonly personId: string }) {
-    const { entry } = yield* requireEntry(input);
+export const linkEntry = Effect.fn('Core.linkEntry')((input: EntryTarget & { readonly personId: string }) =>
+    withCommunityLock(
+        { id: input.communityId },
+        Effect.gen(function* () {
+            const { entry } = yield* requireEntry(input);
+            yield* requirePerson(input.communityId, input.personId);
 
-    if (!(yield* arePeopleOf(input.communityId, [input.personId]))) {
-        return yield* ActionFailedError.make({ reason: 'player not found in this community' });
-    }
+            if (yield* isInLineup(entry, input.personId)) {
+                return yield* ActionFailedError.make({ reason: 'this player is already in the same line-up' });
+            }
 
-    if (yield* isInLineup(entry, input.personId)) {
-        return yield* ActionFailedError.make({ reason: 'this player is already in the same line-up' });
-    }
+            return yield* assignEntry(input, entry, { personId: input.personId, resolvedBy: 'manual', action: 'entry.link' });
+        })
+    )
+);
 
-    return yield* assignEntry(input, entry, { personId: input.personId, resolvedBy: 'manual', action: 'entry.link' });
-});
+export const unlinkEntry = Effect.fn('Core.unlinkEntry')((input: EntryTarget) =>
+    withCommunityLock(
+        { id: input.communityId },
+        Effect.gen(function* () {
+            const { entry, alias } = yield* requireEntry(input);
 
-export const unlinkEntry = Effect.fn('Core.unlinkEntry')(function* (input: EntryTarget) {
-    const { entry, alias } = yield* requireEntry(input);
+            if (entry.resolvedBy !== 'manual' && entry.resolvedBy !== 'vote') {
+                return yield* ActionFailedError.make({ reason: 'this line-up entry is not linked' });
+            }
 
-    if (entry.resolvedBy !== 'manual' && entry.resolvedBy !== 'vote') {
-        return yield* ActionFailedError.make({ reason: 'this line-up entry is not linked' });
-    }
+            const automatic = entry.resolvedBy === 'vote' ? alias?.guestPersonId : alias?.personId;
+            const personId = alias?.kind === 'placeholder' ? null : (automatic ?? null);
+            const isTaken = isDefined(personId) && (yield* isInLineup(entry, personId));
+            const automaticResolution = isDefined(alias) ? aliasResolution(alias) : 'guest';
 
-    const automatic = entry.resolvedBy === 'vote' ? alias?.guestPersonId : alias?.personId;
-    const personId = alias?.kind === 'placeholder' ? null : (automatic ?? null);
-    const isTaken = isDefined(personId) && (yield* isInLineup(entry, personId));
-    const automaticResolution = isDefined(alias) ? aliasResolution(alias) : 'guest';
-
-    return yield* assignEntry(input, entry, {
-        personId: isTaken ? null : personId,
-        resolvedBy: entry.resolvedBy === 'vote' ? 'manual' : automaticResolution,
-        action: 'entry.unlink'
-    });
-});
+            return yield* assignEntry(input, entry, {
+                personId: isTaken ? null : personId,
+                resolvedBy: entry.resolvedBy === 'vote' ? 'manual' : automaticResolution,
+                action: 'entry.unlink'
+            });
+        })
+    )
+);
 
 export const reviewEntries = Effect.fn('Core.reviewEntries')(function* (communityId: string, limit: number) {
     const db = yield* Db;

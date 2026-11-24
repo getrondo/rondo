@@ -7,7 +7,7 @@ import { Db } from '@rondo/db/service/db.service';
 import { extractLineup } from '@rondo/ingest-telegram/extract/extract-lineup';
 import { extractPoll, makeVenueMatcher } from '@rondo/ingest-telegram/extract/extract-poll';
 import { extractCancellation } from '@rondo/ingest-telegram/extract/extract-signals';
-import { lockCommunity } from '@rondo/ingest-telegram/load/lock-community';
+import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import { storeLineup } from '@rondo/ingest-telegram/roster/store-lineup';
 import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
@@ -190,7 +190,6 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
     importedConfig: CommunityConfig,
     message: GroupMessage
 ) {
-    const db = yield* Db;
     yield* recordAuthor(communityId, message);
 
     const telegramMessage: TelegramMessage = {
@@ -230,9 +229,7 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
     }
 
     if (Option.isSome(lineup)) {
-        yield* db.transaction(() =>
-            lockCommunity(config.slug).pipe(Effect.andThen(applyLineup(communityId, config, lineup.value, message)))
-        );
+        yield* withCommunityLock({ id: communityId }, applyLineup(communityId, config, lineup.value, message));
     }
 
     const [target, ...others] = Option.isSome(cancellation) ? yield* gamesOn(communityId, cancellation.value.localDate) : [];

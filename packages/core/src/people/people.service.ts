@@ -5,7 +5,8 @@ import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { normalizeAlias } from '@rondo/ingest-telegram/extract/normalize';
 import { refreshNames } from '@rondo/ingest-telegram/identity/refresh-names';
-import { and, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
+import { and, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
@@ -87,21 +88,53 @@ export const unresolvedAliases = Effect.fn('Core.unresolvedAliases')(function* (
         .limit(limit);
 });
 
-export const mergePeople = Effect.fn('Core.mergePeople')(function* (input: {
+interface MergeInput {
     readonly communityId: string;
     readonly fromPersonId: string;
     readonly intoPersonId: string;
     readonly actorPersonId: string | null;
-}) {
+}
+
+const confirmMergedNicknames = Effect.fn('Core.confirmMergedNicknames')(function* (
+    { communityId, intoPersonId }: MergeInput,
+    aliasIds: readonly string[]
+) {
     const db = yield* Db;
 
-    yield* db.transaction(transaction =>
+    yield* db
+        .update(personAlias)
+        .set({ resolution: 'confirmed', confidence: 1 })
+        .where(and(inArray(personAlias.id, [...aliasIds]), ne(personAlias.kind, 'placeholder')));
+    yield* db
+        .update(personAlias)
+        .set({ guestPersonId: null })
+        .where(
+            and(
+                eq(personAlias.communityId, communityId),
+                eq(personAlias.personId, intoPersonId),
+                eq(personAlias.guestPersonId, intoPersonId),
+                inArray(personAlias.resolution, ['confirmed', 'vote'])
+            )
+        );
+});
+
+export const mergePeople = Effect.fn('Core.mergePeople')((input: MergeInput) =>
+    withCommunityLock(
+        { id: input.communityId },
         Effect.gen(function* () {
-            const merged = yield* transaction
+            const db = yield* Db;
+            const people = [input.fromPersonId, input.intoPersonId];
+            const accounts = yield* db.select().from(telegramAccount).where(inArray(telegramAccount.personId, people));
+            const confirmed = yield* db
                 .select({ id: personAlias.id })
                 .from(personAlias)
-                .where(and(eq(personAlias.communityId, input.communityId), eq(personAlias.personId, input.fromPersonId)));
-            yield* transaction.execute(sql`select identity.merge_person(${input.fromPersonId}::uuid, ${input.intoPersonId}::uuid)`).pipe(
+                .where(
+                    and(
+                        eq(personAlias.communityId, input.communityId),
+                        inArray(personAlias.personId, isNotEmptyArray(accounts) ? [input.fromPersonId] : people)
+                    )
+                );
+            yield* db.execute(sql`select identity.merge_person(${input.fromPersonId}::uuid, ${input.intoPersonId}::uuid)`).pipe(
                 Effect.tapError(error => Effect.logWarning('[merge] refused', error)),
                 Effect.mapError(() =>
                     ActionFailedError.make({
@@ -109,31 +142,22 @@ export const mergePeople = Effect.fn('Core.mergePeople')(function* (input: {
                     })
                 )
             );
-            yield* transaction
-                .update(personAlias)
-                .set({
-                    resolution: 'confirmed',
-                    confidence: 1,
-                    guestPersonId: sql`nullif(${personAlias.guestPersonId}, ${input.intoPersonId}::uuid)`
-                })
-                .where(
-                    inArray(
-                        personAlias.id,
-                        merged.map(({ id }) => id)
-                    )
-                );
+            yield* confirmMergedNicknames(
+                input,
+                confirmed.map(({ id }) => id)
+            );
             yield* refreshNames([input.intoPersonId]);
+            yield* recordAudit({
+                communityId: input.communityId,
+                actorPersonId: input.actorPersonId,
+                action: 'person.merge',
+                entityType: 'person',
+                entityId: input.intoPersonId,
+                diff: { from: input.fromPersonId }
+            });
         })
-    );
-    yield* recordAudit({
-        communityId: input.communityId,
-        actorPersonId: input.actorPersonId,
-        action: 'person.merge',
-        entityType: 'person',
-        entityId: input.intoPersonId,
-        diff: { from: input.fromPersonId }
-    });
-});
+    )
+);
 
 export const createPerson = Effect.fn('Core.createPerson')(function* (input: {
     readonly communityId: string;
