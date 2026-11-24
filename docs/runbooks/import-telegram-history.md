@@ -55,11 +55,14 @@ psql "$DATABASE_URL" -c "select analytics.refresh_all()"
 
 The import runs in one transaction and can be repeated. Sessions are matched by their messages, then by local date and sport,
 and updated in place. Games an admin changed keep their date, time, venue and status. Imported sessions that are gone are
-deleted unless they carry sign-ups, manual attendance, admin changes or messages the bot handled.
+deleted unless they carry sign-ups, manual attendance, manual entries, admin changes or messages the bot handled.
 Fixtures, price rules and provenance of the import are replaced. Venues are upserted by `(community_id, name)`, aliases by
 `(community_id, alias_norm)`. Messages in `comms.message_ref` are skipped, and a line-up the bot took live is left alone.
 Confirmed and undone links, manual line-up entries and manual attendance survive. Vote links are recomputed
 ([ADR-0003](../adr/0003-identity.md)). A fresh snapshot overwrites account names, usernames and membership.
+
+Run it outside game hours. The import holds the community lock, so live line-ups wait until it ends. On a local copy of
+production (20,078 messages, 405 games) one import takes about 5 seconds; over the network to Neon expect longer.
 
 ### Rehearse first
 
