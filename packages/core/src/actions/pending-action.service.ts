@@ -77,9 +77,16 @@ const reportCutOff = Effect.fn('Core.reportCutOff')(function* (actionId: string,
         )
         .returning({ summary: pendingAction.summary });
 
-    return isDefined(cutOff)
-        ? ({ _tag: 'failed', summary: cutOff.summary, reason: uncertainReason } as const)
-        : ({ _tag: 'missing' } as const);
+    if (isDefined(cutOff)) {
+        return { _tag: 'failed', summary: cutOff.summary, reason: uncertainReason } as const;
+    }
+
+    const [row] = yield* db
+        .select({ status: pendingAction.status })
+        .from(pendingAction)
+        .where(and(eq(pendingAction.id, actionId), eq(pendingAction.requestedByTgUserId, tgUserId)));
+
+    return row?.status === 'expired' ? ({ _tag: 'expired' } as const) : ({ _tag: 'missing' } as const);
 });
 
 export const decideAction = Effect.fn('Core.decideAction')(function* (input: {

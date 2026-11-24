@@ -100,12 +100,13 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
                 context: contextFor(null),
                 now: new Date('2026-06-01T00:00:00Z')
             });
+            const lateTap = yield* decideAction({ actionId: stale, tgUserId: admin, confirm: true, context: contextFor(null) });
             const declined = yield* decideAction({ actionId: rejected, tgUserId: admin, confirm: false, context: contextFor(null) });
 
             expect(notCreated).toMatchObject({ _tag: 'failed', reason: 'no group is linked to this community yet' });
             expect(sessions).toEqual([]);
             expect(failed).toMatchObject({ _tag: 'failed' });
-            expect(expired._tag).toBe('expired');
+            expect([expired._tag, lateTap._tag]).toEqual(['expired', 'expired']);
             expect(declined._tag).toBe('rejected');
         })
     );

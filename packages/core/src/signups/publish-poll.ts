@@ -1,4 +1,4 @@
-// The poll is sent inside the transaction. No other network call is, and the Telegram client limits this one to 10 seconds
+// Only this poll and the line-up of publishTeams are sent inside a transaction. The Telegram client limits each call to 10 seconds
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
