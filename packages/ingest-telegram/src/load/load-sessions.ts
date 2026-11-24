@@ -1,8 +1,8 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { extraction, sourceRef } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
-import { attendance, session, sessionChange, signup } from '@rondo/db/schema/scheduling.schema';
-import { and, eq, inArray, notExists, sql } from 'drizzle-orm';
+import { session, sessionChange } from '@rondo/db/schema/scheduling.schema';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { zonedToInstant } from '../extract/zoned-time';
@@ -13,6 +13,7 @@ import { chunks } from '../utils/chunks.util';
 import { insertMany } from '../utils/insert-many.util';
 import { lookupId } from '../utils/lookup-id.util';
 
+import { deleteStaleSessions } from './delete-stale-sessions';
 import { liveMessages } from './live-messages';
 import { sessionEntity } from './load-provenance';
 
@@ -125,6 +126,7 @@ const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function
                 fieldsPlanned: item.fieldsPlanned,
                 format: item.format,
                 cancelReason: item.cancelReason,
+                reviewReason: item.reviewReason ?? null,
                 title: item.title,
                 source: 'import' as const,
                 confidence: item.confidence
@@ -150,6 +152,7 @@ const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function
                     fieldsPlanned: sql`excluded.fields_planned`,
                     format: sql`excluded.format`,
                     cancelReason: sql`excluded.cancel_reason`,
+                    reviewReason: sql`excluded.review_reason`,
                     title: sql`excluded.title`,
                     confidence: sql`excluded.confidence`
                 }
@@ -162,37 +165,6 @@ const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function
     }
 
     return planned.map(({ row }) => row.id ?? idByKey.get(`${row.localDate}|${row.activityId}`) ?? '');
-});
-
-const isManualIn = (sessionId: typeof session.id) => and(eq(lineupEntry.sessionId, sessionId), eq(lineupEntry.resolvedBy, 'manual'));
-
-const deleteStaleSessions = Effect.fn('IngestTelegram.deleteStaleSessions')(function* (
-    { transaction, communityId }: LoadContext,
-    currentIds: ReadonlySet<string>
-) {
-    const stored = yield* transaction
-        .select({ id: session.id })
-        .from(session)
-        .where(
-            and(
-                eq(session.communityId, communityId),
-                eq(session.source, 'import'),
-                notExists(transaction.select().from(lineupEntry).where(isManualIn(session.id))),
-                notExists(transaction.select().from(sessionChange).where(eq(sessionChange.sessionId, session.id))),
-                notExists(transaction.select().from(signup).where(eq(signup.sessionId, session.id))),
-                notExists(
-                    transaction
-                        .select()
-                        .from(attendance)
-                        .where(and(eq(attendance.sessionId, session.id), eq(attendance.source, 'manual')))
-                )
-            )
-        );
-    const stale = stored.map(({ id }) => id).filter(id => !currentIds.has(id));
-
-    if (isNotEmptyArray(stale)) {
-        yield* transaction.delete(session).where(inArray(session.id, stale));
-    }
 });
 
 interface SessionLineup {

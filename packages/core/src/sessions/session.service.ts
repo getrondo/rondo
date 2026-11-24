@@ -3,7 +3,7 @@ import { activity, community } from '@rondo/db/schema/org.schema';
 import { attendance, session, sessionChange } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db, type Database } from '@rondo/db/service/db.service';
-import { and, asc, between, eq, notInArray } from 'drizzle-orm';
+import { and, asc, between, eq, isNotNull, notInArray } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Predicate from 'effect/Predicate';
@@ -196,6 +196,16 @@ export const cancelSession = Effect.fn('Core.cancelSession')(function* (
             });
         })
     );
+});
+
+export const gamesToReview = Effect.fn('Core.gamesToReview')(function* (communityId: string) {
+    const db = yield* Db;
+
+    return yield* db
+        .select({ sessionId: session.id, localDate: session.localDate, reviewReason: session.reviewReason })
+        .from(session)
+        .where(and(eq(session.communityId, communityId), isNotNull(session.reviewReason)))
+        .orderBy(asc(session.localDate));
 });
 
 export const listVenues = Effect.fn('Core.listVenues')(function* (communityId: string) {

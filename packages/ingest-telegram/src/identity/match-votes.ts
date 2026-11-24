@@ -171,12 +171,6 @@ const judgeTimeline = (index: VoteIndex, aliasId: string, timeline: readonly Ali
     };
 };
 
-export const judge = (index: VoteIndex, aliasId: string): Option.Option<VoteMatch> => {
-    const timeline = index.evidence.timelines.get(aliasId) ?? [];
-
-    return judgeTimeline(index, aliasId, timeline)({ start: 0, end: timeline.length });
-};
-
 const isCertain = ({ games, shared, margin, mutual, conflict }: VoteMatch): boolean =>
     games >= minGames && shared / games >= minShare && mutual && margin >= minMargin && !conflict;
 

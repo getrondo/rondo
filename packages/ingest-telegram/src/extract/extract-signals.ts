@@ -1,7 +1,7 @@
-import { isDefined, isNotEmptyString } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
 import * as Option from 'effect/Option';
 
-import { resolveGameDate } from './game-date';
+import { resolveGameDate, statedDateConfidence } from './game-date';
 import { compile, matchesAny, normalizeAlias } from './normalize';
 import { addDays, instantToLocalDate, isCalendarDate } from './zoned-time';
 
@@ -45,19 +45,50 @@ const organizerPost = (message: TelegramMessage, organizers: ReadonlySet<string>
         Option.map(({ text, sentAt }) => ({ text, sentAt }))
     );
 
+const day = /сегодня|сьогодні|завтра|понедельник|вторник|сред|четверг|пятниц|суббот|воскресень/iu;
+const notACancellation =
+    /[?⁉]|(?:^|\P{L})(?:если|якщо|чтобы|щоб)(?!\p{L})|не\s+(?:вздумай|отмен|скасов)|никто\s+не|кто(?:\s+то)?\s+отмен|как\s+(?:отмен|скасув)|за перенос/iu;
+const cancelled = /(?:^|\P{L})(?:отмена(?!\s+(?:участия|платн))|отбой|отменяется|отменяем|отменили|скасовано)(?!\p{L})/iu;
+const noGame = /(?:футбола?|игры?|гри) не будет|не будет (?:футбола?|игры?)|(?:^|\P{L})перенос(?:им|ится)(?!\p{L})|перенос на/iu;
+const notPlaying = /не играем|играть (?:[^.!?]* )?не будем/iu;
+const movedTo = /(?:переносим|переносится|перенос)[^.!?\n]*/iu;
+
+const sentencesOf = (text: string): string[] => text.split(/(?<=[.!?\n])/u);
+
+const maybe = /(?:^|\P{L})(?:возможно|наверно|может)(?!\p{L})/iu;
+
+const isExplicitCancel = (sentence: string): boolean =>
+    !maybe.test(sentence) && (cancelled.test(sentence) || noGame.test(sentence) || (notPlaying.test(sentence) && day.test(sentence)));
+
+const cancelDate = (text: string, sentences: readonly string[], postedDate: string): string => {
+    const dates = [...sentences, text].map(part => resolveGameDate(part.replace(movedTo, ''), postedDate));
+
+    return dates.find(({ confidence }) => confidence >= statedDateConfidence)?.date ?? postedDate;
+};
+
 export const extractCancellation = (
     message: TelegramMessage,
     config: CommunityConfig,
     organizers: ReadonlySet<string>
 ): CancellationFact | undefined =>
     organizerPost(message, organizers).pipe(
-        Option.filter(({ text }) => cancelSignal.test(text) && !/\?\s*$/u.test(text) && text.length <= maxMessageLength),
-        Option.map(({ text, sentAt }) => ({
-            messageId: message.id,
-            postedAt: sentAt,
-            localDate: resolveGameDate(text, instantToLocalDate(sentAt, config.timeZone)).date,
-            reason: reasons.find(([, regex]) => regex.test(text))?.[0] ?? 'organizer'
-        })),
+        Option.filter(({ text }) => text.length <= maxMessageLength),
+        Option.flatMap(({ text, sentAt }) => {
+            const candidates = sentencesOf(text).filter(
+                sentence => (cancelSignal.test(sentence) || noGame.test(sentence)) && !notACancellation.test(sentence)
+            );
+            const explicit = candidates.filter(sentence => isExplicitCancel(sentence));
+
+            return isNotEmptyArray(candidates)
+                ? Option.some({
+                      messageId: message.id,
+                      postedAt: sentAt,
+                      localDate: cancelDate(text, explicit, instantToLocalDate(sentAt, config.timeZone)),
+                      reason: reasons.find(([, regex]) => regex.test(text))?.[0] ?? 'organizer',
+                      isExplicit: isNotEmptyArray(explicit)
+                  })
+                : Option.none();
+        }),
         Option.getOrUndefined
     );
 

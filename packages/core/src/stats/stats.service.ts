@@ -7,7 +7,7 @@ import { Db, type Database } from '@rondo/db/service/db.service';
 import { and, between, count, countDistinct, desc, eq, inArray, isNull, max, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { latestVotes } from '../signups/latest-votes';
+import { personStatistics } from './participation.service';
 
 export interface DateRange {
     readonly from: string;
@@ -23,24 +23,13 @@ const playedGames = (db: Database) =>
         .innerJoin(session, eq(session.id, attendance.sessionId))
         .innerJoin(person, eq(person.id, attendance.personId));
 
-const signedUpGames = Effect.fn('Core.signedUpGames')(function* (communityId: string, personId: string) {
-    const db = yield* Db;
-    const vote = latestVotes(db);
-    const [row] = yield* db
-        .select({ games: count() })
-        .from(vote)
-        .innerJoin(session, eq(session.id, vote.sessionId))
-        .where(and(eq(session.communityId, communityId), eq(vote.personId, personId), eq(vote.choice, 'yes')));
-
-    return row?.games ?? 0;
-});
-
 export const attendanceCoverage = Effect.fn('Core.attendanceCoverage')(function* (communityId: string, range?: DateRange) {
     const db = yield* Db;
     const [row] = yield* db
         .select({
             playedGames: count(),
-            gamesWithKnownPlayers: sql<number>`count(*) filter (where exists (select 1 from play.team_member known where known.session_id = ${session.id}))::int`
+            gamesWithSquad: sql<number>`count(*) filter (where exists (select 1 from play.lineup_entry known where known.session_id = scheduling.session.id and known.team_ordinal > 0) or exists (select 1 from play.team_member known where known.session_id = scheduling.session.id))::int`,
+            gamesWithPoll: sql<number>`count(*) filter (where exists (select 1 from comms.imported_poll poll where poll.session_id = scheduling.session.id and poll.kind = 'participation') or exists (select 1 from comms.telegram_poll poll where poll.session_id = scheduling.session.id))::int`
         })
         .from(session)
         .where(
@@ -51,26 +40,7 @@ export const attendanceCoverage = Effect.fn('Core.attendanceCoverage')(function*
             )
         );
 
-    return row ?? { playedGames: 0, gamesWithKnownPlayers: 0 };
-});
-
-export const topAttendance = Effect.fn('Core.topAttendance')(function* (communityId: string, range: DateRange, limit: number) {
-    const db = yield* Db;
-
-    const rows = yield* playedGames(db)
-        .where(
-            and(
-                eq(session.communityId, communityId),
-                between(session.localDate, range.from, range.to),
-                inArray(attendance.outcome, playedOutcomes),
-                eq(session.status, 'played')
-            )
-        )
-        .groupBy(person.id, person.displayName)
-        .orderBy(desc(count()))
-        .limit(limit);
-
-    return rows.map(({ personId, name, games }) => ({ personId, name, games }));
+    return row ?? { playedGames: 0, gamesWithSquad: 0, gamesWithPoll: 0 };
 });
 
 export const inactivePlayers = Effect.fn('Core.inactivePlayers')(function* (
@@ -147,28 +117,13 @@ export const communitySummary = Effect.fn('Core.communitySummary')(function* (co
 
 export const playerHistory = Effect.fn('Core.playerHistory')(function* (communityId: string, personId: string) {
     const db = yield* Db;
-    const [summary] = yield* db
-        .select({
-            games: count(),
-            first: sql<string | null>`min(${session.localDate})`,
-            last: sql<string | null>`max(${session.localDate})`
-        })
-        .from(attendance)
-        .innerJoin(session, eq(session.id, attendance.sessionId))
-        .where(
-            and(
-                eq(session.communityId, communityId),
-                eq(attendance.personId, personId),
-                inArray(attendance.outcome, playedOutcomes),
-                eq(session.status, 'played')
-            )
-        );
+    const [known] = yield* db.select({ name: person.displayName }).from(person).where(eq(person.id, personId));
     const aliases = yield* db
         .select({ alias: personAlias.alias, occurrences: personAlias.occurrences })
         .from(personAlias)
-        .where(and(eq(personAlias.communityId, communityId), eq(personAlias.personId, personId)));
+        .where(and(eq(personAlias.communityId, communityId), eq(personAlias.personId, personId)))
+        .orderBy(desc(personAlias.occurrences));
+    const statistics = yield* personStatistics(communityId, personId);
 
-    const signedUp = yield* signedUpGames(communityId, personId);
-
-    return { ...summary, signedUp, aliases };
+    return { name: known?.name ?? null, aliases, ...statistics };
 });

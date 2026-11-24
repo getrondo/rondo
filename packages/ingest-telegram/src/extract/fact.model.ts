@@ -13,7 +13,9 @@ export interface PollFact {
     readonly isReserve: boolean;
     readonly isChoice: boolean;
     readonly isGame: boolean;
-    readonly joinsGame: boolean;
+    readonly isDateChoice: boolean;
+    readonly joinDates: readonly string[];
+    readonly yesVoters: number;
     readonly title: string;
     readonly confidence: number;
 }
@@ -46,6 +48,7 @@ export interface LineupFact {
     readonly messageId: number;
     readonly authorId?: number;
     readonly postedAt: Date;
+    readonly postedDate: string;
     readonly localDate: string;
     readonly localTime?: string;
     readonly venueKey?: string;
@@ -66,6 +69,7 @@ export interface CancellationFact {
     readonly postedAt: Date;
     readonly localDate: string;
     readonly reason: 'weather' | 'low_turnout' | 'venue' | 'holiday' | 'organizer' | 'other';
+    readonly isExplicit: boolean;
 }
 
 export interface FixtureFact {
@@ -101,6 +105,13 @@ export interface GuestRequestFact {
     readonly guests: number;
 }
 
+export interface PollPostFact {
+    readonly messageId: number;
+    readonly postedAt: Date;
+    readonly answers: number;
+    readonly isReserve: boolean;
+}
+
 export interface ExtractedFacts {
     readonly polls: readonly PollFact[];
     readonly lineups: readonly LineupFact[];
@@ -110,4 +121,5 @@ export interface ExtractedFacts {
     readonly authors: readonly AuthorFact[];
     readonly accounts: readonly AccountFact[];
     readonly guestRequests: readonly GuestRequestFact[];
+    readonly pollPosts: readonly PollPostFact[];
 }

@@ -2,13 +2,16 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { expect, layer } from '@effect/vitest';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 
 import { account, ledgerEntry, ledgerTxn, priceRule } from '../src/schema/finance.schema';
-import { telegramAccount } from '../src/schema/identity.schema';
-import { community } from '../src/schema/org.schema';
+import { aliasLink, person, personAlias, telegramAccount } from '../src/schema/identity.schema';
+import { activity, community } from '../src/schema/org.schema';
+import { auditLog } from '../src/schema/platform.schema';
+import { lineupEntry } from '../src/schema/play.schema';
+import { session } from '../src/schema/scheduling.schema';
 import { booking, field, venue } from '../src/schema/venue.schema';
 import { Db } from '../src/service/db.service';
 import { testDbLayer } from '../src/testing/test-db.layer';
@@ -160,6 +163,83 @@ layer(testDbLayer, { timeout: 60_000 })('database invariants', it => {
 
             expect(Exit.isSuccess(outcome)).toBe(true);
             expect(rows.map(({ username }) => username)).toEqual([null, null, 'STRIKER', 'keeper']);
+        })
+    );
+
+    it.effect('turns existing links into decisions and forbids overlapping ones', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const communityId = yield* seedCommunity('decisions');
+            const people = yield* db
+                .insert(person)
+                .values(['Guest', 'Linked', 'Undone', 'Voted'].map(displayName => ({ displayName })))
+                .returning({ id: person.id });
+            const [guest = '', linked = '', undone = '', voted = ''] = people.map(({ id }) => id);
+            const aliases = yield* db
+                .insert(personAlias)
+                .values([
+                    { communityId, alias: 'A', aliasNorm: 'a', personId: linked, resolution: 'confirmed' },
+                    { communityId, alias: 'B', aliasNorm: 'b', personId: guest, guestPersonId: guest, resolution: 'guest' },
+                    { communityId, alias: 'C', aliasNorm: 'c', personId: guest, guestPersonId: guest, resolution: 'unresolved' },
+                    { communityId, alias: 'Я', aliasNorm: 'я', kind: 'self', personId: linked, resolution: 'confirmed' }
+                ])
+                .returning({ id: personAlias.id });
+            const [confirmedId = '', undoneId = '', votedId = ''] = aliases.map(({ id }) => id);
+            yield* db.insert(auditLog).values({
+                communityId,
+                actorKind: 'user',
+                action: 'alias.unlink',
+                entityType: 'alias',
+                entityId: undoneId,
+                diff: { from: undone, to: guest }
+            });
+            const [sport] = yield* db.insert(activity).values({ communityId, sport: 'football', name: 'football' }).returning();
+            const [game] = yield* db
+                .insert(session)
+                .values({ communityId, activityId: sport?.id ?? '', localDate: '2025-05-05', startsAt: new Date('2025-05-05T17:00:00Z') })
+                .returning();
+            yield* db.insert(lineupEntry).values({
+                sessionId: game?.id ?? '',
+                messageId: 1,
+                teamOrdinal: 1,
+                position: 1,
+                raw: 'C',
+                aliasId: votedId,
+                personId: voted,
+                resolvedBy: 'vote'
+            });
+            const file = fileURLToPath(new URL('../drizzle/20261124210359_alias_link_rules/migration.sql', import.meta.url));
+            const backfill = readFileSync(file, 'utf8')
+                .split('--> statement-breakpoint')
+                .filter(statement => statement.trim().startsWith('INSERT INTO "identity"."alias_link"'));
+            yield* Effect.all(backfill.map(statement => db.execute(sql.raw(statement))));
+            const links = yield* db
+                .select({
+                    aliasId: aliasLink.aliasId,
+                    personId: aliasLink.personId,
+                    during: sql<string>`${aliasLink.during}::text`,
+                    status: aliasLink.status
+                })
+                .from(aliasLink)
+                .where(eq(aliasLink.communityId, communityId))
+                .orderBy(aliasLink.status);
+            const overlapping = yield* Effect.exit(
+                db.insert(aliasLink).values({
+                    communityId,
+                    aliasId: confirmedId,
+                    personId: linked,
+                    during: '[2025-01-01,2025-02-01)',
+                    method: 'admin',
+                    status: 'rejected'
+                })
+            );
+
+            expect(links).toEqual([
+                { aliasId: votedId, personId: voted, during: '[2025-05-05,2025-05-06)', status: 'auto' },
+                { aliasId: confirmedId, personId: linked, during: '(,)', status: 'approved' },
+                { aliasId: undoneId, personId: undone, during: '(,)', status: 'rejected' }
+            ]);
+            expect(Exit.isFailure(overlapping)).toBe(true);
         })
     );
 });

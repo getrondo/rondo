@@ -2,7 +2,7 @@ import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
-import { isSignupPair, noAnswer, yesAnswer } from '../extract/poll-answers';
+import { answerChoice } from '../extract/poll-answers';
 import {
     SnapshotMessageSchema,
     SnapshotUserSchema,
@@ -21,28 +21,15 @@ interface SnapshotFiles {
 
 type Answers = NonNullable<(typeof SnapshotMessageSchema.Type)['poll']>['answers'];
 
-const answerChoice = (answers: Answers, option: string): VoteChoice => {
-    const index = answers.findIndex(answer => answer.option === option);
-
-    if (answers.length === 2 && isSignupPair(answers.map(answer => answer.text))) {
-        return index === 0 ? 'yes' : 'no';
-    }
-
-    if (answers.length === 2) {
-        return 'other';
-    }
-
-    const text = (answers[index]?.text ?? '').trim();
-
-    if (yesAnswer.test(text)) {
-        return 'yes';
-    }
-
-    return noAnswer.test(text) ? 'no' : 'other';
-};
-
 const voteChoice = (answers: Answers, options: readonly string[]): VoteChoice => {
-    const choices = new Set(options.map(option => answerChoice(answers, option)));
+    const choices = new Set(
+        options.map(option =>
+            answerChoice(
+                answers.map(answer => answer.text),
+                answers.findIndex(answer => answer.option === option)
+            )
+        )
+    );
 
     if (choices.has('yes')) {
         return 'yes';
@@ -107,6 +94,7 @@ export const parseSnapshot = Effect.fn('IngestTelegram.parseSnapshot')(function*
     return {
         users: mergeUsers(users.flat()),
         pollIdByMessage: new Map([...pollByMessage].map(([messageId, poll]) => [messageId, poll.id])),
+        topicByMessage: new Map(messages.flatMap(({ id, topic }) => (isDefined(topic) ? [[id, topic] as const] : []))),
         votes: [...votes.values()]
     } satisfies TelegramSnapshot;
 });

@@ -30,7 +30,7 @@ export const syncSessionRoster = Effect.fn('IngestTelegram.syncSessionRoster')(f
         from ${lineupEntry}
         join ${team} on ${team.sessionId} = ${lineupEntry.sessionId} and ${team.ordinal} = ${lineupEntry.teamOrdinal}
         join ${session} on ${session.id} = ${lineupEntry.sessionId}
-        where ${players} and not ${isPublished(lineupEntry.sessionId)}
+        where ${players} and not ${lineupEntry.isTeamUndecided} and not ${isPublished(lineupEntry.sessionId)}
         order by ${lineupEntry.sessionId}, ${lineupEntry.personId}, ${lineupEntry.teamOrdinal}, ${lineupEntry.position}
     `);
     yield* db.delete(attendance).where(and(inArray(attendance.sessionId, [...sessionIds]), ne(attendance.source, 'manual')));

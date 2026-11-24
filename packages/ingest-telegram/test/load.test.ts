@@ -82,7 +82,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading an import plan', it => {
     it.effect('writes sessions, teams, attendance, aliases, prices and fixtures', () =>
         Effect.gen(function* () {
             const config = { ...testConfig, slug: 'writes-fc' };
-            const stats = yield* loadPlan(config, plan, 'sha');
+            const stats = yield* loadPlan(config, plan, { fileSha256: 'sha', allowRemoval: true });
             const db = yield* Db;
             const communityId = yield* loadedCommunity(config.slug);
             const cancelled = yield* db
@@ -101,7 +101,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading an import plan', it => {
             const db = yield* Db;
             const config = { ...testConfig, slug: 'idempotent-fc' };
 
-            yield* loadPlan(config, plan, 'sha');
+            yield* loadPlan(config, plan, { fileSha256: 'sha', allowRemoval: true });
             const communityId = yield* loadedCommunity(config.slug);
             const [curated] = yield* db.insert(person).values({ displayName: 'Curated', source: 'manual' }).returning({ id: person.id });
             const curatedId = curated?.id ?? '';
@@ -120,7 +120,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading an import plan', it => {
             });
             const before = yield* countsOf(communityId);
 
-            yield* loadPlan(config, plan, 'sha');
+            yield* loadPlan(config, plan, { fileSha256: 'sha', allowRemoval: true });
             const [alias] = yield* db
                 .select()
                 .from(personAlias)
@@ -144,7 +144,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading an import plan', it => {
                 extractAll(messages.filter(entry => isDefined(entry.poll)).slice(0, 1), testConfig),
                 '2025-06-30'
             );
-            const stats = yield* loadPlan({ ...testConfig, slug: 'poll-only-fc' }, pollOnly, 'sha');
+            const stats = yield* loadPlan({ ...testConfig, slug: 'poll-only-fc' }, pollOnly, { fileSha256: 'sha', allowRemoval: true });
 
             expect(stats).toMatchObject({ sessions: 1, teams: 0, entries: 0, aliases: 0, priceRules: 0, fixtures: 0 });
         })
@@ -168,7 +168,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading an import plan', it => {
                 '2025-06-30'
             );
 
-            yield* loadPlan(config, withoutSelf, 'sha');
+            yield* loadPlan(config, withoutSelf, { fileSha256: 'sha', allowRemoval: true });
             const communityId = yield* loadedCommunity(config.slug);
             const authorOf = () =>
                 db
@@ -177,7 +177,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading an import plan', it => {
                     .where(and(eq(telegramAuthor.communityId, communityId), eq(telegramAuthor.displayName, 'Org')));
             const [early] = yield* authorOf();
 
-            yield* loadPlan(config, plan, 'sha');
+            yield* loadPlan(config, plan, { fileSha256: 'sha', allowRemoval: true });
             const [late] = yield* authorOf();
 
             expect(early?.personId).toBeNull();
@@ -195,7 +195,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading an import plan', it => {
                     { key: 'park', name: 'Same Name', kind: 'training' as const, patterns: [] }
                 ]
             };
-            const error = yield* Effect.flip(loadPlan(config, plan, 'sha'));
+            const error = yield* Effect.flip(loadPlan(config, plan, { fileSha256: 'sha', allowRemoval: true }));
 
             expect(error).toBeInstanceOf(DuplicateVenueNameError);
             expect(error).toMatchObject({ venueName: 'Same Name', keys: ['north', 'park'] });

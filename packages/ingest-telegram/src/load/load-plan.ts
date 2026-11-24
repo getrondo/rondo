@@ -1,11 +1,13 @@
 import { Db } from '@rondo/db/service/db.service';
 import * as Effect from 'effect/Effect';
 
+import { applyApproved } from '../identity/apply-approved';
 import { countOccurrences } from '../identity/count-occurrences';
 import { loadDirectory } from '../identity/load-directory';
 import { refreshNames } from '../identity/refresh-names';
 import { linkByVotes, releaseVoteLinks } from '../identity/vote-links';
 import { alignGuests } from '../roster/align-guests';
+import { markUndecidedTeams } from '../roster/mark-undecided-teams';
 
 import { loadAccounts } from './load-accounts';
 import { assertUniqueVenueNames, purgePreviousImport, upsertCommunity, upsertReference } from './load-community';
@@ -20,11 +22,16 @@ import type { CommunityConfig } from '../config/community-config';
 import type { ImportPlan } from '../extract/assemble-plan';
 import type { TelegramSnapshot } from '../model/telegram-snapshot.model';
 
+interface LoadOptions {
+    readonly fileSha256: string;
+    readonly snapshot?: TelegramSnapshot;
+    readonly allowRemoval?: boolean;
+}
+
 export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
     config: CommunityConfig,
     plan: ImportPlan,
-    fileSha256: string,
-    snapshot?: TelegramSnapshot
+    { fileSha256, snapshot, allowRemoval }: LoadOptions
 ) {
     const db = yield* Db;
 
@@ -33,7 +40,7 @@ export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
     return yield* db.transaction(transaction =>
         Effect.gen(function* () {
             const communityId = yield* upsertCommunity(transaction, config);
-            const context = { transaction, communityId, config, plan, snapshot };
+            const context = { transaction, communityId, config, plan, snapshot, allowRemoval };
             yield* purgePreviousImport(transaction, communityId);
             const reference = yield* upsertReference(context);
             const accounts = yield* loadAccounts(context);
@@ -44,7 +51,9 @@ export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
             const sessions = yield* loadSessions(context, reference, directory);
             const votes = yield* insertVotes(context, directory, sessions.sessionIds);
             yield* countOccurrences(communityId);
+            const approved = yield* applyApproved(communityId);
             const links = yield* linkByVotes(communityId);
+            yield* markUndecidedTeams(communityId);
             yield* alignGuests(communityId);
             yield* removeUnusedNicknames(context);
             yield* refreshNames(released);
@@ -56,6 +65,7 @@ export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
                 unassignedGuestRequests: sessions.unassignedGuestRequests,
                 accounts,
                 votes,
+                approvedEntries: approved,
                 aliasLinks: links.aliases,
                 segmentLinks: links.segments,
                 sharedEntries: links.sharedEntries,

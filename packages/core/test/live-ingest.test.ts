@@ -162,4 +162,32 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             expect(after.map(row => row.status)).toEqual(['played', 'played']);
         })
     );
+
+    it.effect('uses the import rules: squads by structure and no cancellation from questions', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const scoped = seedConfig('same-rules-fc');
+            const { communityId } = yield* seedCommunity(scoped);
+            const personId = yield* upsertTelegramUser({ id: 77n, firstName: 'Org' });
+            const post = (messageId: number, text: string) =>
+                ingestGroupMessage(communityId, scoped, {
+                    chatId: -177n,
+                    messageId,
+                    sentAt: new Date('2026-05-08T12:00:00Z'),
+                    senderPersonId: personId,
+                    senderTgUserId: 77n,
+                    senderName: 'Org',
+                    isTrusted: true,
+                    text
+                });
+            const squad = yield* post(1, '🟢Я, Иван, Пётр, Олег\n🔵Семён, Павел, Глеб, Ян');
+            const asked = yield* post(2, 'Все приходят сегодня? Никто не отменяется?');
+            const unclear = yield* post(3, 'Он отменился');
+            const games = yield* db.select().from(session).where(eq(session.communityId, communityId));
+
+            expect(squad.lineup).toBe(true);
+            expect([asked.cancellation, unclear.cancellation]).toEqual([undefined, undefined]);
+            expect(games).toHaveLength(1);
+        })
+    );
 });

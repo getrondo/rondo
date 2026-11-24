@@ -83,6 +83,22 @@ export const resolveGameDate = (text: string, postedDate: string): { date: strin
     return { date: postedDate, confidence: 0.4 };
 };
 
+const weekdayDate = (text: string, postedDate: string): Option.Option<string> =>
+    Option.fromNullishOr(findWeekday(text)).pipe(Option.map(weekday => addDays(postedDate, (weekday - weekdayOf(postedDate) + 7) % 7)));
+
+export const withoutNumericDates = (text: string): string => text.replaceAll(/(?<!\d)\d{1,2}\.\d{1,2}(?=\D*\p{L})/gu, '');
+
+export const resolvePollDate = (text: string, postedDate: string): { date: string; confidence: number } => {
+    const resolved = resolveGameDate(text, postedDate);
+
+    return resolved.date < postedDate
+        ? weekdayDate(text, postedDate).pipe(
+              Option.map(date => ({ date, confidence: statedDateConfidence })),
+              Option.getOrElse(() => resolved)
+          )
+        : resolved;
+};
+
 export const findLocalTime = (text: string): string | undefined =>
     text
         .matchAll(localTimePattern)

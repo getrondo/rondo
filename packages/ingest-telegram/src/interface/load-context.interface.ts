@@ -9,6 +9,7 @@ export interface LoadContext {
     readonly config: CommunityConfig;
     readonly plan: ImportPlan;
     readonly snapshot?: TelegramSnapshot;
+    readonly allowRemoval?: boolean;
 }
 
 export interface ReferenceIds {

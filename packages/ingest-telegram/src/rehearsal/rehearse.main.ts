@@ -7,19 +7,19 @@ import * as Config from 'effect/Config';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 
+import { importSettings } from '../import-settings';
 import { ingest } from '../ingest.effect';
 
 import { assertLocal } from './assert-local';
 import { takeCounts, takeCountsBeforeMigration } from './take-counts';
 
 const rehearsal = Effect.gen(function* () {
-    const exportDir = yield* Config.String('RONDO_EXPORT_DIR');
-    const configPath = yield* Config.String('RONDO_COMMUNITY_CONFIG');
+    const { exportDir, configPath, allowRemoval } = yield* importSettings;
     const before = yield* takeCountsBeforeMigration();
     yield* runMigrations();
-    yield* ingest(exportDir, configPath);
+    yield* ingest(exportDir, configPath, allowRemoval);
     const first = yield* takeCounts();
-    yield* ingest(exportDir, configPath);
+    yield* ingest(exportDir, configPath, allowRemoval);
     const second = yield* takeCounts();
 
     for (const [name, value] of first) {

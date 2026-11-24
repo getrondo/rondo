@@ -1,10 +1,9 @@
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { membership } from '@rondo/db/schema/org.schema';
-import { and, inArray, not, sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { releaseUsernames } from '../identity/release-usernames';
 import { chunks } from '../utils/chunks.util';
 import { insertMany } from '../utils/insert-many.util';
 
@@ -40,23 +39,35 @@ export const loadAccounts = Effect.fn('IngestTelegram.loadAccounts')(function* (
     const { transaction, communityId, snapshot } = context;
     const accounts = collectAccounts(context);
 
-    yield* releaseUsernames(accounts.flatMap(({ username }) => (isDefined(username) ? [username] : [])));
+    const owners = yield* transaction
+        .select({ tgUserId: telegramAccount.tgUserId, username: telegramAccount.username })
+        .from(telegramAccount);
+    const ownerOf = new Map(
+        owners.flatMap(({ tgUserId, username }) => (isDefined(username) ? [[username.toLowerCase(), tgUserId] as const] : []))
+    );
+
+    for (const { tgUserId, username } of accounts) {
+        if (isDefined(username) && !ownerOf.has(username.toLowerCase())) {
+            ownerOf.set(username.toLowerCase(), tgUserId);
+        }
+    }
+
     yield* insertMany(accounts, batch =>
         transaction
             .insert(telegramAccount)
-            .values(batch.map(({ member, ...account }) => account))
+            .values(
+                batch.map(({ member, username, ...account }) =>
+                    Object.assign(account, { username: ownerOf.get(username?.toLowerCase() ?? '') === account.tgUserId ? username : null })
+                )
+            )
             .onConflictDoUpdate({
                 target: telegramAccount.tgUserId,
                 set: {
                     firstSeenAt: sql`least(${telegramAccount.firstSeenAt}, excluded.first_seen_at)`,
                     lastSeenAt: sql`greatest(${telegramAccount.lastSeenAt}, excluded.last_seen_at)`,
-                    ...(isDefined(snapshot)
-                        ? {
-                              firstName: sql`excluded.first_name`,
-                              lastName: sql`excluded.last_name`,
-                              username: sql`excluded.username`
-                          }
-                        : {})
+                    firstName: sql`case when ${telegramAccount.firstName} in ('', ${unnamed}) then excluded.first_name else ${telegramAccount.firstName} end`,
+                    lastName: sql`coalesce(${telegramAccount.lastName}, excluded.last_name)`,
+                    username: sql`coalesce(${telegramAccount.username}, excluded.username)`
                 }
             })
     );
@@ -107,11 +118,7 @@ export const loadAccounts = Effect.fn('IngestTelegram.loadAccounts')(function* (
                 .values(
                     batch.map(([personId, active]) => ({ communityId, personId, status: active ? ('active' as const) : ('left' as const) }))
                 )
-                .onConflictDoUpdate({
-                    target: [membership.communityId, membership.personId],
-                    set: { status: sql`excluded.status` },
-                    setWhere: not(and(sql`${membership.status} = 'removed'`, sql`excluded.status = 'left'`) ?? sql`false`)
-                })
+                .onConflictDoNothing()
         );
     }
 

@@ -1,4 +1,4 @@
-import { bigint, boolean, index, integer, jsonb, numeric, pgSchema, primaryKey, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigint, boolean, index, integer, jsonb, numeric, pgSchema, primaryKey, smallint, text, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import { createdAt, id, instant, ref, requiredRef } from './columns';
 import { person, telegramAccount } from './identity.schema';
@@ -10,6 +10,7 @@ export const ingest = pgSchema('ingest');
 export const audit = pgSchema('audit');
 
 export const messagePurposeEnum = comms.enum('message_purpose', ['game_card', 'lineup', 'announcement', 'reminder', 'poll']);
+export const importedPollKindEnum = comms.enum('imported_poll_kind', ['participation', 'reserve', 'other']);
 export const channelEnum = comms.enum('channel', ['dm', 'group']);
 export const ingestSourceEnum = ingest.enum('ingest_source', ['telegram_html', 'telegram_json']);
 export const sourceRefKindEnum = ingest.enum('source_ref_kind', ['poll', 'lineup', 'cancel', 'result', 'price', 'service', 'message']);
@@ -68,6 +69,20 @@ export const telegramPoll = comms.table(
         createdAt: createdAt()
     },
     t => [index('telegram_poll_session_idx').on(t.sessionId)]
+);
+
+export const importedPoll = comms.table(
+    'imported_poll',
+    {
+        pollId: text('poll_id').primaryKey(),
+        communityId: requiredRef('community_id', () => community.id),
+        sessionId: ref('session_id').references(() => session.id, { onDelete: 'set null' }),
+        messageId: bigint('message_id', { mode: 'number' }).notNull(),
+        postedAt: instant('posted_at').notNull(),
+        kind: importedPollKindEnum('kind').notNull(),
+        answers: smallint('answers').notNull()
+    },
+    t => [index('imported_poll_session_idx').on(t.sessionId), index('imported_poll_community_idx').on(t.communityId)]
 );
 
 export const pollVote = comms.table(

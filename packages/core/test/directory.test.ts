@@ -126,8 +126,8 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('players and venues learned 
             const all = yield* attendanceCoverage(communityId);
             const october = yield* attendanceCoverage(communityId, { from: '2026-10-01', to: '2026-10-31' });
 
-            expect(all).toEqual({ playedGames: 3, gamesWithKnownPlayers: 1 });
-            expect(october).toEqual({ playedGames: 2, gamesWithKnownPlayers: 1 });
+            expect(all).toEqual({ playedGames: 3, gamesWithSquad: 1, gamesWithPoll: 0 });
+            expect(october).toEqual({ playedGames: 2, gamesWithSquad: 1, gamesWithPoll: 0 });
         })
     );
 });

@@ -4,6 +4,7 @@ import * as Option from 'effect/Option';
 
 import { isCertainSet, matchSet } from '../src/identity/match-set';
 import { indexVotes, matchSegments, type AliasGame, type Squad } from '../src/identity/match-votes';
+import { suggestLinks } from '../src/identity/suggest-links';
 
 const accountsOf = (found: ReturnType<typeof matchSet>): readonly string[] =>
     found.pipe(
@@ -213,6 +214,35 @@ describe('several players in one period', () => {
 
     it('keeps a period unlinked when only a part of it has a clear player', () => {
         expect(everyone(40, day => (day < 20 ? 'p1' : null))('gonzo')).toEqual([]);
+    });
+});
+
+describe('suggestions', () => {
+    const squads = squadsOf(range(0, 12), day => (day === 3 ? ['p2'] : ['p1', 'p2']));
+    const players = (day: number) => (day < 3 ? ['p2'] : ['p1', 'p2']);
+    const evidence = {
+        squads,
+        timelines: new Map([
+            ['early', squadsOf(range(0, 6), day => (day === 3 ? ['p2'] : ['p1', 'p2'])).map(squad => Object.assign(squad, { players: 1 }))]
+        ]),
+        gamesUnderOtherName: (personId: string) =>
+            new Set(
+                range(0, 12)
+                    .filter(day => players(day).includes(personId))
+                    .map(day => `g${day}`)
+            )
+    };
+
+    it('finds a player under another nickname before their own nickname starts', () => {
+        expect(
+            suggestLinks(evidence, new Map([['p1', { first: dayOf(3), last: dayOf(11) }]])).map(
+                ({ aliasId, personId, games, shared, from, to }) => [aliasId, personId, games, shared, from, to]
+            )
+        ).toEqual([['early', 'p1', 3, 3, dayOf(0), dayOf(2)]]);
+    });
+
+    it('suggests nobody who is already in those squads', () => {
+        expect(suggestLinks(evidence, new Map())).toEqual([]);
     });
 });
 

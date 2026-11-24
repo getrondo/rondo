@@ -1,18 +1,21 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
-import { person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
+import { aliasLink, person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { activity, community, membership, telegramChat } from '@rondo/db/schema/org.schema';
-import { messageRef, pollVote } from '@rondo/db/schema/platform.schema';
+import { importedPoll, messageRef, pollVote } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session, sessionChange } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { testDbLayer } from '@rondo/db/testing/test-db.layer';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 import * as Option from 'effect/Option';
 import * as Tracer from 'effect/Tracer';
 
+import { loadGameDecisions, parseGameDecisions } from '../src/approvals/game-decisions';
+import { compareApprovals, loadApprovals } from '../src/approvals/load-approvals';
+import { parseApprovals } from '../src/approvals/parse-approvals';
 import { assemblePlan } from '../src/extract/assemble-plan';
 import { extractAll } from '../src/extract/extract-all';
 import { loadEvidence } from '../src/identity/load-evidence';
@@ -24,6 +27,15 @@ import { message, testConfig } from './fixture';
 
 import type { TelegramMessage } from '../src/model/telegram-message.model';
 
+const linkColumns = {
+    status: aliasLink.status,
+    personId: aliasLink.personId,
+    during: sql<string>`${aliasLink.during}::text`,
+    method: aliasLink.method,
+    decidedBy: aliasLink.decidedBy,
+    decidedAt: aliasLink.decidedAt
+};
+
 const games = 12;
 const base = 900_000;
 const ids = { org: base, striker: base + 1, left: base + 2, bot: base + 3, gone: base + 4, other: base + 5 };
@@ -34,7 +46,7 @@ const messages: TelegramMessage[] = Array.from({ length: games }, (_, index) => 
     message(pollMessage(index), `2025-05-${dayOf(index)}T08:00:00Z`, '', {
         text: undefined,
         authorId: ids.org,
-        poll: { question: 'Сегодня футбол 19.00 North', answers: ['+', '-'] }
+        poll: { question: 'Сегодня, 19.00 North', answers: ['+', '-'] }
     }),
     ...(index === games - 1
         ? []
@@ -92,11 +104,21 @@ const snapshot = parseSnapshot({
     ]
 });
 
-const load = Effect.fn('test.load')(function* (slug: string, source: readonly TelegramMessage[] = [...messages, ...chat]) {
+const load = Effect.fn('test.load')(function* (
+    slug: string,
+    source: readonly TelegramMessage[] = [...messages, ...chat],
+    allowRemoval?: boolean
+) {
     const db = yield* Db;
     const config = { ...testConfig, slug };
     const content = yield* snapshot;
-    const stats = yield* importMessages({ config, messages: source, fileSha256: 'sha', snapshot: Option.fromNullishOr(content) });
+    const stats = yield* importMessages({
+        config,
+        messages: source,
+        fileSha256: 'sha',
+        snapshot: Option.fromNullishOr(content),
+        allowRemoval: allowRemoval ?? true
+    });
     const [row] = yield* db.select().from(community).where(eq(community.slug, slug));
     const communityId = row?.id ?? '';
     const entries = yield* db
@@ -306,7 +328,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
     it.effect('works without a snapshot', () =>
         Effect.gen(function* () {
             const config = { ...testConfig, slug: 'no-snapshot-fc' };
-            const stats = yield* loadPlan(config, assemblePlan(extractAll(messages, config), '2025-06-30'), 'sha');
+            const stats = yield* loadPlan(config, assemblePlan(extractAll(messages, config), '2025-06-30'), { fileSha256: 'sha' });
 
             expect(stats).toMatchObject({ sessions: games, accounts: 1, votes: 0, aliasLinks: 0 });
         })
@@ -548,6 +570,498 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
             expect(yield* membersOf()).toEqual(before);
             expect(played.map(({ personId }) => personId)).toContain(striker);
             expect(played.map(({ personId }) => personId)).not.toContain(other);
+        })
+    );
+
+    it.effect('stores auto links, pins approved ones and lets a rejection block new ones', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'approve-fc';
+            const first = yield* load(slug);
+            const striker = yield* accountPerson(ids.striker);
+            const other = yield* accountPerson(ids.other);
+            const alias = first.alias('гонзо');
+            const linksOf = () =>
+                db
+                    .select(linkColumns)
+                    .from(aliasLink)
+                    .where(eq(aliasLink.aliasId, alias?.id ?? ''));
+            const auto = yield* linksOf();
+            yield* db.delete(aliasLink).where(eq(aliasLink.aliasId, alias?.id ?? ''));
+            yield* db.insert(aliasLink).values([
+                {
+                    communityId: first.communityId,
+                    aliasId: alias?.id ?? '',
+                    personId: other,
+                    during: '[2025-05-01,2025-05-03)',
+                    method: 'owner_list',
+                    status: 'approved'
+                }
+            ]);
+            const pinned = yield* load(slug);
+            const gonzo = ({ entries }: typeof first) =>
+                entries
+                    .filter(({ entry }) => entry.aliasId === alias?.id && !entry.isGuest)
+                    .map(({ entry, localDate }) => [localDate, entry.personId]);
+            const kept = (yield* linksOf()).filter(({ status }) => status === 'approved');
+            yield* db.delete(aliasLink).where(eq(aliasLink.aliasId, alias?.id ?? ''));
+            yield* db.insert(aliasLink).values({
+                communityId: first.communityId,
+                aliasId: alias?.id ?? '',
+                personId: striker,
+                during: '(,)',
+                method: 'admin',
+                status: 'rejected'
+            });
+            const blocked = yield* load(slug);
+
+            expect(auto.map(({ status, personId, during, method }) => [status, personId, during, method])).toEqual([
+                ['auto', striker, '[2025-05-01,2025-05-12)', 'vote']
+            ]);
+            expect(gonzo(pinned).slice(0, 3)).toEqual([
+                ['2025-05-01', other],
+                ['2025-05-02', other],
+                ['2025-05-03', striker]
+            ]);
+            expect(kept).toHaveLength(1);
+            expect(pinned.alias('гонзо')).toMatchObject({ resolution: 'unresolved' });
+            expect(gonzo(blocked).some(([, personId]) => personId === striker)).toBe(false);
+            expect(blocked.stats.aliasLinks).toBe(0);
+        })
+    );
+
+    it.effect('loads a private list of approvals once and compares it after an import', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'list-fc';
+            const first = yield* load(slug);
+            const other = yield* accountPerson(ids.other);
+            const line = (raw: string, id: number, index: number) => `${raw}|${id}|${pollMessage(index) + 1}|2025-05-${dayOf(index)}`;
+            const list = [
+                line('Гонзо', ids.striker, 0),
+                line('Гонзо', ids.striker, 1),
+                line('Олег', ids.other, 4),
+                line('Зорро', ids.other, 1)
+            ];
+            const rows = yield* parseApprovals([...list, line('Никого', ids.other, 1)].join('\n'), testConfig);
+            const decidedAt = new Date('2026-11-24T00:00:00Z');
+            const loaded = yield* loadApprovals({ slug, rows, decidedAt });
+            const again = yield* loadApprovals({ slug, rows, decidedAt });
+            yield* load(slug);
+            const compared = yield* compareApprovals(slug, rows);
+            const links = yield* db
+                .select(linkColumns)
+                .from(aliasLink)
+                .where(and(eq(aliasLink.communityId, first.communityId), eq(aliasLink.status, 'approved')));
+            const shared = yield* db
+                .select()
+                .from(lineupEntry)
+                .innerJoin(session, eq(session.id, lineupEntry.sessionId))
+                .where(and(eq(session.communityId, first.communityId), eq(lineupEntry.raw, 'Зорро'), eq(lineupEntry.personId, other)));
+
+            expect(loaded).toMatchObject({ rows: 5, stored: 5 });
+            expect(again.stored).toBe(0);
+            expect(links.every(link => link.decidedAt?.getTime() === decidedAt.getTime() && link.method === 'owner_list')).toBe(true);
+            const pinned = yield* db
+                .select({ resolvedBy: lineupEntry.resolvedBy })
+                .from(lineupEntry)
+                .innerJoin(session, eq(session.id, lineupEntry.sessionId))
+                .where(
+                    and(
+                        eq(session.communityId, first.communityId),
+                        eq(session.localDate, '2025-05-01'),
+                        eq(lineupEntry.raw, 'Гонзо'),
+                        eq(lineupEntry.isGuest, false)
+                    )
+                );
+            yield* db
+                .update(lineupEntry)
+                .set({ personId: null })
+                .where(and(eq(lineupEntry.raw, 'Олег'), eq(lineupEntry.personId, other)));
+            const broken = yield* compareApprovals(slug, rows);
+
+            expect(pinned).toEqual([{ resolvedBy: 'alias' }]);
+            expect(broken).toMatchObject({ kept: 3, nicknameGone: 1, linkedToOther: 1 });
+            expect(compared).toMatchObject({ rows: 5, kept: 4, nicknameGone: 1, linkedToOther: 0, otherMessage: 0 });
+            expect(shared).toHaveLength(1);
+            expect(shared[0]?.lineup_entry.isTeamUndecided).toBe(true);
+        })
+    );
+
+    it.effect('gives no team to a player whose team is undecided, but keeps the attendance', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'undecided-fc';
+            const first = yield* load(slug);
+            const other = yield* accountPerson(ids.other);
+            const rows = yield* parseApprovals(`Зорро|${ids.other}|12|2025-05-02`, testConfig);
+            yield* loadApprovals({ slug, rows, decidedAt: new Date('2026-11-24T00:00:00Z') });
+            const game = first.entries.find(({ localDate }) => localDate === '2025-05-02');
+            const ofGame = { sessionId: game?.entry.sessionId ?? '' };
+            const teams = yield* db.select().from(teamMember).where(eq(teamMember.sessionId, ofGame.sessionId));
+            const played = yield* db.select().from(attendance).where(eq(attendance.sessionId, ofGame.sessionId));
+
+            expect(teams.map(({ personId }) => personId)).not.toContain(other);
+            expect(played.map(({ personId }) => personId)).toContain(other);
+        })
+    );
+
+    it.effect('fills only what is missing from a snapshot and skips a handle that another account holds', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'fill-fc';
+            const { communityId } = yield* load(slug);
+            const accountOf = (id: number) =>
+                db
+                    .select()
+                    .from(telegramAccount)
+                    .where(eq(telegramAccount.tgUserId, BigInt(id)));
+            const striker = yield* accountPerson(ids.striker);
+            yield* db
+                .update(telegramAccount)
+                .set({ firstName: 'Live', username: 'live_name' })
+                .where(eq(telegramAccount.tgUserId, BigInt(ids.striker)));
+            yield* db.insert(telegramAccount).values({ tgUserId: 990_001n, firstName: 'Holder', username: 'STRIKER' });
+            yield* db
+                .update(telegramAccount)
+                .set({ username: null })
+                .where(eq(telegramAccount.tgUserId, BigInt(ids.striker)));
+            yield* db
+                .update(membership)
+                .set({ status: 'left' })
+                .where(and(eq(membership.communityId, communityId), eq(membership.personId, striker)));
+            yield* load(slug);
+            const [kept] = yield* accountOf(ids.striker);
+            const [holder] = yield* accountOf(990_001);
+            const [member] = yield* db
+                .select()
+                .from(membership)
+                .where(and(eq(membership.communityId, communityId), eq(membership.personId, striker)));
+            yield* db.delete(telegramAccount).where(eq(telegramAccount.tgUserId, 990_001n));
+            yield* db
+                .update(telegramAccount)
+                .set({ firstName: `U${ids.striker}`, username: 'Striker' })
+                .where(eq(telegramAccount.tgUserId, BigInt(ids.striker)));
+
+            expect(kept).toMatchObject({ firstName: 'Live', username: null });
+            expect(holder?.username).toBe('STRIKER');
+            expect(member?.status).toBe('left');
+        })
+    );
+
+    it.effect('refuses to remove many imported games without a flag and never removes a game with published teams', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'removal-fc';
+            const first = yield* load(slug);
+            const few = messages.slice(0, 4);
+            const refused = yield* Effect.flip(load(slug, few, false));
+            const kept = first.entries.find(({ localDate }) => localDate === '2025-05-07')?.entry.sessionId ?? '';
+            yield* db.update(teamMember).set({ assignedBy: 'balancer' }).where(eq(teamMember.sessionId, kept));
+            yield* load(slug, few, true);
+            const left = yield* db.select({ id: session.id }).from(session).where(eq(session.communityId, first.communityId));
+
+            expect(refused).toMatchObject({ _tag: 'TooManyRemovedGamesError', imported: games });
+            expect(refused).toHaveProperty('sessionIds.length', games - 2);
+            expect(left.map(({ id }) => id)).toContain(kept);
+            expect(left).toHaveLength(3);
+        })
+    );
+
+    it.effect('loads lists before the first import, day by day, in any order and only once', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const decidedAt = new Date('2026-11-24T00:00:00Z');
+            const line = (raw: string, id: number, index: number) => `${raw}|${id}|${pollMessage(index) + 1}|2025-05-${dayOf(index)}`;
+            const first = yield* parseApprovals([line('Гонзо', ids.other, 0), line('Гонзо', ids.other, 5)].join('\n'), testConfig);
+            const second = yield* parseApprovals([line('Гонзо', ids.striker, 2), line('Олег', 777_001, 4)].join('\n'), testConfig);
+            const outcome = Effect.fn('test.outcome')(function* (slug: string, lists: readonly (typeof first)[]) {
+                yield* db.insert(community).values({ slug, name: slug });
+                const loads = yield* Effect.all(lists.map(rows => loadApprovals({ slug, rows, decidedAt })));
+                const { communityId, entries, alias } = yield* load(slug);
+                const compared = yield* compareApprovals(slug, [...first, ...second]);
+                const links = yield* db
+                    .select(linkColumns)
+                    .from(aliasLink)
+                    .where(and(eq(aliasLink.communityId, communityId), eq(aliasLink.status, 'approved')));
+                const gonzo = entries
+                    .filter(({ entry }) => entry.aliasId === alias('гонзо')?.id && !entry.isGuest)
+                    .map(({ entry, localDate }) => `${localDate} ${entry.resolvedBy} ${entry.personId}`);
+
+                return { loads, gonzo, compared, days: links.map(({ during }) => during).toSorted() };
+            });
+            const forward = yield* outcome('before-a-fc', [first, second, first, second]);
+            const backward = yield* outcome('before-b-fc', [second, first]);
+            const other = yield* accountPerson(ids.other);
+            const [unseen] = yield* db.select().from(telegramAccount).where(eq(telegramAccount.tgUserId, 777_001n));
+
+            expect(forward.loads.map(({ stored }) => stored)).toEqual([2, 2, 0, 0]);
+            expect(forward.days).toEqual([
+                '[2025-05-01,2025-05-02)',
+                '[2025-05-03,2025-05-04)',
+                '[2025-05-05,2025-05-06)',
+                '[2025-05-06,2025-05-07)'
+            ]);
+            expect(backward.days).toEqual(forward.days);
+            expect(backward.gonzo).toEqual(forward.gonzo);
+            expect(forward.gonzo.filter(entry => entry.includes('alias'))).toHaveLength(3);
+            expect(forward.gonzo[1]).not.toContain(other);
+            expect(forward.compared).toMatchObject({ rows: 4, kept: 4 });
+            expect(unseen?.personId).not.toBeNull();
+        })
+    );
+
+    it.effect('keeps a decided game after an import that says otherwise', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'decided-fc';
+            const unclear = [
+                message(950, '2025-05-12T09:00:00Z', '', {
+                    text: undefined,
+                    poll: { question: 'Сегодня, 19.00 North', answers: ['+', '-'], voters: [12, 1] }
+                }),
+                message(951, '2025-05-12T12:00:00Z', 'Он отменился')
+            ];
+            const source = [...messages.filter(({ id }) => id !== pollMessage(games - 1)), ...unclear];
+            const first = yield* load(slug, source);
+            const gameOn = Effect.fn('test.gameOn')(function* (localDate: string) {
+                const [game] = yield* db
+                    .select()
+                    .from(session)
+                    .where(and(eq(session.communityId, first.communityId), eq(session.localDate, localDate)));
+
+                return game;
+            });
+            const inReview = yield* gameOn('2025-05-12');
+            const decisions = yield* parseGameDecisions(
+                '2025-05-12|football|played\n2025-05-02|football|cancelled\n1999-01-01|football|played'
+            );
+            const decidedAt = new Date('2026-11-24T00:00:00Z');
+            const loaded = yield* loadGameDecisions({ slug, decisions, decidedAt });
+            const withoutAttendance = yield* db
+                .select()
+                .from(attendance)
+                .innerJoin(session, eq(session.id, attendance.sessionId))
+                .where(and(eq(session.communityId, first.communityId), eq(session.localDate, '2025-05-02')));
+            const again = yield* loadGameDecisions({ slug, decisions, decidedAt });
+            const second = yield* load(slug, source);
+            const played = yield* gameOn('2025-05-12');
+            const cancelled = yield* gameOn('2025-05-02');
+            const attended = yield* db
+                .select()
+                .from(attendance)
+                .where(eq(attendance.sessionId, cancelled?.id ?? ''));
+            const changes = yield* db
+                .select()
+                .from(sessionChange)
+                .where(eq(sessionChange.sessionId, played?.id ?? ''));
+
+            expect(inReview).toMatchObject({ status: 'cancelled', reviewReason: 'unclear_cancellation' });
+            expect(loaded).toEqual({ decisions: 3, changed: 2, missing: ['1999-01-01|football'] });
+            expect(again).toMatchObject({ changed: 0 });
+            expect(played).toMatchObject({ id: inReview?.id, status: 'played', cancelReason: null, reviewReason: null });
+            expect(cancelled).toMatchObject({ status: 'cancelled', cancelReason: 'organizer' });
+            expect(withoutAttendance).toEqual([]);
+            expect(attended).toEqual([]);
+            expect(changes).toHaveLength(1);
+            expect(second.stats.sessions).toBe(first.stats.sessions);
+        })
+    );
+
+    it.effect('rejects a game decision it does not understand', () =>
+        Effect.gen(function* () {
+            const outcomes = yield* Effect.all(
+                ['2025-05-12|football|maybe', '12.05.2025|football|played', '2025-05-12|chess|played'].map(line =>
+                    Effect.exit(parseGameDecisions(line))
+                )
+            );
+
+            expect(outcomes.map(outcome => Exit.isFailure(outcome))).toEqual([true, true, true]);
+        })
+    );
+
+    it.effect('lets manual entries and players already listed win over an approval', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'pin-limits-fc';
+            const first = yield* load(slug);
+            const organizer = yield* accountPerson(ids.org);
+            const striker = yield* accountPerson(ids.striker);
+            const other = yield* accountPerson(ids.other);
+            const entryOn = (found: typeof first, date: string, raw: string) =>
+                found.entries.find(({ entry, localDate }) => localDate === date && entry.raw === raw)?.entry;
+            yield* db
+                .update(lineupEntry)
+                .set({ personId: other, resolvedBy: 'manual' })
+                .where(eq(lineupEntry.id, entryOn(first, '2025-05-01', 'Олег')?.id ?? ''));
+            const row = { communityId: first.communityId, method: 'owner_list' as const, status: 'approved' as const };
+            yield* db.insert(aliasLink).values([
+                { ...row, aliasId: first.alias('олег')?.id ?? '', personId: striker, during: '[2025-05-01,2025-05-02)' },
+                { ...row, aliasId: first.alias('семен')?.id ?? '', personId: organizer, during: '[2025-05-02,2025-05-03)' }
+            ]);
+            const again = yield* load(slug);
+
+            expect(entryOn(again, '2025-05-01', 'Олег')).toMatchObject({ personId: other, resolvedBy: 'manual' });
+            expect(entryOn(again, '2025-05-02', 'Семён')?.personId).not.toBe(organizer);
+            expect(entryOn(again, '2025-05-02', 'Я')?.personId).toBe(organizer);
+        })
+    );
+
+    it.effect('gives a player with an approved nickname no second automatic one and keeps decided nicknames', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'one-name-fc';
+            const first = yield* load(slug);
+            const striker = yield* accountPerson(ids.striker);
+            const [unused] = yield* db
+                .insert(personAlias)
+                .values({ communityId: first.communityId, alias: 'Забытый', aliasNorm: 'забытый' })
+                .returning();
+            const row = { communityId: first.communityId, method: 'admin' as const };
+            yield* db.delete(aliasLink).where(eq(aliasLink.communityId, first.communityId));
+            yield* db.insert(aliasLink).values([
+                {
+                    ...row,
+                    aliasId: first.alias('олег')?.id ?? '',
+                    personId: striker,
+                    during: '[2030-01-01,2030-02-01)',
+                    status: 'approved'
+                },
+                { ...row, aliasId: unused?.id ?? '', personId: striker, during: '(,)', status: 'rejected' }
+            ]);
+            const again = yield* load(slug);
+
+            expect(first.stats.aliasLinks).toBe(1);
+            expect(again.stats.aliasLinks).toBe(0);
+            expect(again.alias('забытый')?.id).toBe(unused?.id);
+        })
+    );
+
+    it.effect('links a shared nickname by votes unless the player was rejected for it', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'shared-votes-fc';
+            const isDouble = (index: number): boolean => index % 3 === 0;
+            const voters = (index: number): number[] =>
+                isDouble(index) ? [ids.striker, ids.other] : [index % 2 === 0 ? ids.striker : ids.other];
+            const squads = messages.map(item =>
+                item.id % 10 === 2
+                    ? message(
+                          item.id,
+                          `2025-05-${dayOf((item.id - 2) / 10)}T12:00:00Z`,
+                          `Составы на сегодня, North:\n🟢Я, Вихрь\n🔵Олег${isDouble((item.id - 2) / 10) ? ', Вихрь' : ''}`,
+                          { authorId: ids.org }
+                      )
+                    : item
+            );
+            const content = yield* snapshot;
+            const votes = Array.from({ length: games }, (_, index) =>
+                voters(index).map(userId => ({
+                    pollId: pollId(index),
+                    userId,
+                    choice: 'yes' as const,
+                    votedAt: new Date('2025-05-01T09:00:00Z')
+                }))
+            ).flat();
+            const run = importMessages({
+                config: { ...testConfig, slug },
+                messages: squads,
+                fileSha256: 'sha',
+                snapshot: Option.fromNullishOr({ ...content, votes }),
+                allowRemoval: true
+            });
+            const linked = yield* run;
+            const [alias] = yield* db.select().from(personAlias).where(eq(personAlias.aliasNorm, 'вихрь'));
+            yield* db.insert(aliasLink).values({
+                communityId: alias?.communityId ?? '',
+                aliasId: alias?.id ?? '',
+                personId: yield* accountPerson(ids.other),
+                during: '[2025-05-30,2025-06-01)',
+                method: 'admin',
+                status: 'rejected'
+            });
+            const outside = yield* run;
+            yield* db.delete(aliasLink).where(and(eq(aliasLink.aliasId, alias?.id ?? ''), eq(aliasLink.status, 'auto')));
+            yield* db
+                .update(aliasLink)
+                .set({ during: '[2025-05-04,2025-05-05)' })
+                .where(and(eq(aliasLink.aliasId, alias?.id ?? ''), eq(aliasLink.status, 'rejected')));
+            const rejected = yield* run;
+
+            expect(linked.sharedEntries).toBe(15);
+            expect(outside.sharedEntries).toBe(15);
+            expect(rejected.sharedEntries).toBe(0);
+        })
+    );
+
+    it.effect('stores reserve and other polls without turning their votes into participation', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'poll-kinds-fc';
+            const content = yield* snapshot;
+            const posts = [
+                message(970, '2025-05-02T09:00:00Z', '', {
+                    text: undefined,
+                    poll: { question: 'Сегодня, 19.00 North, резерв', answers: ['+', '-'] }
+                }),
+                message(971, '2025-05-02T09:30:00Z', '', {
+                    text: undefined,
+                    poll: { question: 'За кого болеем?', answers: ['За красных', 'За синих'] }
+                })
+            ];
+            const extra = [970, 971].map(id => ({
+                pollId: `kind-${id}`,
+                userId: ids.other,
+                choice: 'yes' as const,
+                votedAt: new Date('2025-05-02T10:00:00Z')
+            }));
+            yield* importMessages({
+                config: { ...testConfig, slug },
+                messages: [...messages, ...posts],
+                fileSha256: 'sha',
+                snapshot: Option.fromNullishOr({
+                    ...content,
+                    pollIdByMessage: new Map([...content.pollIdByMessage, [970, 'kind-970'], [971, 'kind-971']]),
+                    votes: [...content.votes, ...extra]
+                }),
+                allowRemoval: true
+            });
+            const stored = yield* db
+                .select({
+                    pollId: importedPoll.pollId,
+                    kind: importedPoll.kind,
+                    gameOn: session.localDate,
+                    votedFor: pollVote.sessionId
+                })
+                .from(importedPoll)
+                .innerJoin(pollVote, eq(pollVote.pollId, importedPoll.pollId))
+                .leftJoin(session, eq(session.id, importedPoll.sessionId))
+                .where(inArray(importedPoll.pollId, ['kind-970', 'kind-971']))
+                .orderBy(asc(importedPoll.pollId));
+
+            expect(stored).toEqual([
+                { pollId: 'kind-970', kind: 'reserve', gameOn: '2025-05-02', votedFor: null },
+                { pollId: 'kind-971', kind: 'other', gameOn: null, votedFor: null }
+            ]);
+        })
+    );
+
+    it.effect('does not let an unreadable answer hide a yes vote from the evidence', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, entries } = yield* load('readable-fc');
+            const striker = yield* accountPerson(ids.striker);
+            const sessionId = entries.find(({ localDate }) => localDate === '2025-05-04')?.entry.sessionId ?? '';
+            yield* db.insert(pollVote).values({
+                pollId: 'readable-later',
+                tgUserId: BigInt(ids.striker),
+                sessionId,
+                choice: 'other',
+                votedAt: new Date('2025-06-01T09:00:00Z')
+            });
+            const { squads } = yield* loadEvidence(communityId);
+
+            expect(squads.find(squad => squad.sessionId === sessionId)?.yes?.has(striker)).toBe(true);
         })
     );
 });

@@ -4,7 +4,7 @@ import { pollVote } from '@rondo/db/schema/platform.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, desc, eq, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import type { AliasGame, Squad, VoteEvidence } from './match-votes';
@@ -14,7 +14,7 @@ export interface LinkEvidence extends VoteEvidence {
     readonly entries: readonly EvidenceEntry[];
 }
 
-interface EvidenceEntry {
+export interface EvidenceEntry {
     readonly id: string;
     readonly sessionId: string;
     readonly aliasId: string | null;
@@ -82,7 +82,7 @@ export const loadEvidence = Effect.fn('IngestTelegram.loadEvidence')(function* (
         .from(pollVote)
         .innerJoin(session, eq(session.id, pollVote.sessionId))
         .innerJoin(telegramAccount, eq(telegramAccount.tgUserId, pollVote.tgUserId))
-        .where(eq(session.communityId, communityId))
+        .where(and(eq(session.communityId, communityId), inArray(pollVote.choice, ['yes', 'no'])))
         .orderBy(pollVote.sessionId, telegramAccount.personId, desc(pollVote.votedAt));
     const entries: EvidenceEntry[] = yield* db
         .select({

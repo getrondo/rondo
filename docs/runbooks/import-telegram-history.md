@@ -38,6 +38,7 @@ A JSON file validated by `CommunityConfigSchema` (`packages/ingest-telegram/src/
 - `organizers`: authors whose messages count as authoritative (cancellations, prices, results).
 - `selfAliases`: how the organizer lists himself in line-ups ("Я" = "me").
 - `venues[].patterns` and `squads[].patterns`: case-insensitive regexes, tried in order.
+- `gamesTopicId` (optional): the forum topic that games are posted in; without it only posts outside any topic (General) count. Needs the snapshot, which carries the topics.
 - `guestPatterns` (optional): case-insensitive regexes for tokens that describe a one-game guest instead of naming a player; the named groups `host` and `count` are read. It replaces the generic default in `community-config.ts`.
 - `squads[].contextPatterns`: message-level hints (league level) that pick the squad.
 
@@ -59,13 +60,35 @@ deleted unless they carry sign-ups, manual attendance, manual entries, admin cha
 Fixtures, price rules and provenance of the import are replaced. Venues are upserted by `(community_id, name)`, aliases by
 `(community_id, alias_norm)`. Messages in `comms.message_ref` are skipped, and a line-up the bot took live is left alone.
 Confirmed and undone links, manual line-up entries and manual attendance survive. Vote links are recomputed
-([ADR-0003](../adr/0003-identity.md)). A fresh snapshot overwrites account names, usernames and membership.
+([ADR-0003](../adr/0003-identity.md)). A snapshot only fills what is missing.
 
 Run it outside game hours. The import holds the community lock, so live line-ups and admin changes wait until it ends. On a local copy of
 production (20,078 messages, 405 games) one import takes about 5 seconds; over the network to Neon expect longer.
 
 The lock test needs two real sessions and is skipped without a local Postgres:
 `RONDO_TEST_DATABASE_URL=postgres://… pnpm -F @rondo/core test`.
+
+An import that would remove more than 5% of the imported games stops and prints their ids. Check them, then run it with
+`RONDO_ALLOW_REMOVAL=true`.
+
+### Owner decisions
+
+Both kinds live in private files outside the repository, readable by their owner only. Load them after the migration and **before**
+the import, so the import already follows them. Loading again changes nothing, and several lists can be loaded in a row.
+
+- Nicknames: `nickname|Telegram id|line-up message id|date`, one per line. Each line is stored as an approved day in
+  `identity.alias_link`. A missing account or nickname is created.
+- Games: `date|sport|played` or `date|sport|cancelled`. The game gets the status and a `scheduling.session_change` row, which is what
+  makes every later import keep it. The game must exist already; the output lists the missing ones.
+
+```bash
+export RONDO_COMMUNITY_CONFIG=/path/to/community.json RONDO_APPROVALS_DECIDED_AT=2026-11-24 RONDO_APPROVALS_MODE=load
+RONDO_APPROVALS_FILE=/path/to/approved-links.txt pnpm -F @rondo/ingest-telegram approvals
+RONDO_APPROVALS_CONTENT=games RONDO_APPROVALS_FILE=/path/to/game-decisions.txt pnpm -F @rondo/ingest-telegram approvals
+```
+
+After the import, run the same commands with `RONDO_APPROVALS_MODE=compare`: it only reads and prints counts and message ids, no
+names.
 
 ### Rehearse first
 
@@ -83,6 +106,7 @@ import must report that it changed nothing.
 ## 4. Review
 
 - **Aliases:** `identity.person_alias` holds every line-up name. `vote` links are automatic: check them and unlink wrong ones. Ask the assistant for link suggestions. Shared nicknames (`placeholder`) are linked per line-up entry. `reviewEntries`, `linkEntry` and `unlinkEntry` in `@rondo/core` list and fix entries (no UI yet).
+- **Games to review:** `session.review_reason` marks games whose cancellation is unclear.
 - **Guest messages:** `unassignedGuestRequests` counts chat messages "+N" that reply to no game poll; they are not stored.
 - **Sessions without a line-up** are marked `played` with confidence ≤ 0.6 and have no attendance, only sign-ups from votes; cancelled ones carry `cancel_reason`.
 - **Prices** are the monthly mode of "€N on the field" messages, scoped per venue when the message names one.
@@ -92,6 +116,8 @@ import must report that it changed nothing.
 | Signal | Source | Rule |
 |---|---|---|
 | Session | game polls (not reserve polls) and posted line-ups | merged by local date and sport; date from the poll text (explicit date, today/tomorrow, weekday) |
+| Poll days | poll text | explicit date first, the weekday when that date has passed; a poll that offers several days joins the day that was played |
+| Votes | snapshot | one poll counts once, whatever its forwards; with three or more answers a time, a format or plain participation is yes, a refusal is no, a preference is neither |
 | Status | line-up → played; organizer cancel message → cancelled with reason (weather, low turnout, venue, holiday) | |
 | Teams and attendance | line-ups split by team-colour emoji | GK and newcomer markers, organizer self-alias |
 | Price rules | organizer "по N евро" lines | monthly mode, venue-scoped, GK detected on the same line |

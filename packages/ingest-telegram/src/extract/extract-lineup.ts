@@ -40,11 +40,13 @@ const stripParentheses = (text: string): string => {
 
 const stripTrailingPunctuation = (text: string): string => (/[.!:]$/u.test(text) ? stripTrailingPunctuation(text.slice(0, -1)) : text);
 
+const maxNameLength = 32;
+
 const splitMembers = (segment: string): string[] =>
     segment
         .split(/[,\n/;]|\.\s|\sи\s|\sі\s/u)
         .map(part => stripParentheses(part).trim())
-        .filter(part => isNotEmptyString(part) && part.length <= 32 && !noise.test(part) && !/^\d+$/u.test(part));
+        .filter(part => isNotEmptyString(part) && part.length <= maxNameLength && !noise.test(part) && !/^\d+$/u.test(part));
 
 const guestSuffix = /\+ ?(\d{1,2})$/u;
 
@@ -135,6 +137,16 @@ const toMember = (token: string, { selfAliases, mentions, guestPatterns }: Roste
     );
 };
 
+export const nicknameOf = (raw: string, config: CommunityConfig): { readonly nickname: string; readonly aliasNorm: string } => {
+    const member = toMember(raw, {
+        selfAliases: new Set(config.selfAliases.map(normalizeAlias)),
+        guestPatterns: [],
+        mentions: []
+    });
+
+    return { nickname: member?.alias ?? raw, aliasNorm: member?.aliasNorm ?? normalizeAlias(raw) };
+};
+
 const escapeEmoji = (emoji: string): string => emoji.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
 const parseTeam = (rawSegment: string, context: RosterContext): LineupMember[] => {
@@ -146,13 +158,69 @@ const parseTeam = (rawSegment: string, context: RosterContext): LineupMember[] =
         .filter(member => isDefined(member));
 };
 
+const minNamesPerTeam = 4;
+const minNamesForUnknownEmoji = 3;
+const maxWordsInName = 4;
+const teamLine = /^[ \t]*(\p{Extended_Pictographic})(.*)$/u;
+
+const clockTime = /\d{1,2}[.:]\d{2}/u;
+
+interface TeamLine {
+    readonly emoji: string;
+    readonly names: readonly string[];
+}
+
+const isNameList = (names: readonly string[], least: number): boolean =>
+    names.length >= least &&
+    names.every(name => !clockTime.test(name) && name.trim().split(/\s+/u).length <= maxWordsInName && name.trim().length <= maxNameLength);
+
+const teamLinesOf = (text: string): TeamLine[] =>
+    text.split('\n').flatMap(line => {
+        const [, emoji, rest = ''] = teamLine.exec(line) ?? [];
+        const names = rest
+            .split(/[,;]/u)
+            .map(part => stripParentheses(part))
+            .filter(part => /\p{L}|\+\s?\d/u.test(part));
+
+        return isDefined(emoji) ? [{ emoji, names }] : [];
+    });
+
+const teamEmojis = (lines: readonly TeamLine[], config: CommunityConfig): string[] => {
+    const known = config.teamColors.map(color => color.emoji);
+    const isSquad = lines.some(({ emoji, names }) => known.includes(emoji) && isNameList(names, 1));
+    const unknown = lines.filter(({ emoji, names }) => isSquad && !known.includes(emoji) && isNameList(names, minNamesForUnknownEmoji));
+
+    return [...known, ...new Set(unknown.map(({ emoji }) => emoji))];
+};
+
+const isSquadByStructure = (lines: readonly TeamLine[], config: CommunityConfig): boolean => {
+    const known = new Set(config.teamColors.map(color => color.emoji));
+    const squads = lines.filter(({ emoji, names }) => known.has(emoji) && isNameList(names, minNamesPerTeam));
+
+    return new Set(squads.map(({ emoji }) => emoji)).size >= 2;
+};
+
+const withoutSecondList = (teams: readonly LineupTeam[]): LineupTeam[] => {
+    const repeated = teams.findIndex((team, index) => {
+        const before = teams.slice(0, index);
+        const listed = new Set(before.flatMap(({ members }) => members.map(({ aliasNorm }) => aliasNorm)));
+        const again = team.members.filter(({ aliasNorm }) => listed.has(aliasNorm));
+
+        return before.some(({ emoji }) => emoji === team.emoji) && again.length * 2 > team.members.length;
+    });
+
+    return repeated === -1 ? [...teams] : teams.slice(0, repeated);
+};
+
+const isCaptainsOnly = (teams: readonly LineupTeam[]): boolean => teams.every(({ members }) => members.length === 1);
+
 const buildTeams = (
     text: string,
     config: CommunityConfig,
     mentions: RosterContext['mentions']
 ): { header: string; teams: LineupTeam[] } => {
-    const splitter = new RegExp(`(${config.teamColors.map(color => escapeEmoji(color.emoji)).join('|')})`, 'u');
-    const parts = markMentions(text, mentions).split(splitter);
+    const emojis = teamEmojis(teamLinesOf(text), config).map(emoji => escapeEmoji(emoji));
+    const parts = markMentions(text, mentions).split(new RegExp(`(?<!\\d ?)(${emojis.join('|')})`, 'u'));
     const context = {
         selfAliases: new Set(config.selfAliases.map(normalizeAlias)),
         guestPatterns: compile(config.guestPatterns ?? defaultGuestPatterns),
@@ -168,7 +236,7 @@ const buildTeams = (
         }
     }
 
-    return { header: parts[0] ?? '', teams };
+    return { header: parts[0] ?? '', teams: withoutSecondList(teams) };
 };
 
 export const extractLineup = (
@@ -177,18 +245,19 @@ export const extractLineup = (
     venueOf: (text: string) => string | undefined
 ): LineupFact | undefined =>
     Option.all({ text: Option.fromNullishOr(message.text), sentAt: Option.fromNullishOr(message.sentAt) }).pipe(
-        Option.filter(({ text }) => /состав|склад/iu.test(text)),
+        Option.filter(({ text }) => /состав|склад/iu.test(text) || isSquadByStructure(teamLinesOf(text), config)),
         Option.flatMap(({ text, sentAt }) => {
             const { header, teams } = buildTeams(text, config, message.mentions ?? []);
             const postedDate = instantToLocalDate(sentAt, config.timeZone);
             const headerDate = resolveGameDate(header, postedDate);
 
-            return teams.length < 2
+            return teams.length < 2 || isCaptainsOnly(teams)
                 ? Option.none()
                 : Option.some({
                       messageId: message.id,
                       ...(isDefined(message.forwardedFrom) ? {} : { authorId: message.authorId }),
                       postedAt: sentAt,
+                      postedDate,
                       localDate: headerDate.confidence >= statedDateConfidence ? headerDate.date : postedDate,
                       localTime: findLocalTime(header),
                       venueKey: venueOf(header),

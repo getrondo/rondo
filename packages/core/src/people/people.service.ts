@@ -1,5 +1,5 @@
 import { isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
-import { person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
+import { aliasLink, person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { membership } from '@rondo/db/schema/org.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -12,6 +12,8 @@ import * as Effect from 'effect/Effect';
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 import { ensureMembership } from '../identity/telegram-user';
+
+import { recordDecision } from './alias-decisions';
 
 interface PersonMatch {
     readonly personId: string;
@@ -96,15 +98,20 @@ interface MergeInput {
 }
 
 const confirmMergedNicknames = Effect.fn('Core.confirmMergedNicknames')(function* (
-    { communityId, intoPersonId }: MergeInput,
+    { communityId, intoPersonId, actorPersonId }: MergeInput,
     aliasIds: readonly string[]
 ) {
     const db = yield* Db;
-
-    yield* db
+    const confirmed = yield* db
         .update(personAlias)
-        .set({ resolution: 'confirmed', confidence: 1 })
-        .where(and(inArray(personAlias.id, [...aliasIds]), ne(personAlias.kind, 'placeholder')));
+        .set({ resolution: 'confirmed' })
+        .where(and(inArray(personAlias.id, [...aliasIds]), ne(personAlias.kind, 'placeholder')))
+        .returning();
+
+    for (const alias of confirmed) {
+        yield* recordDecision({ alias, personId: intoPersonId, status: 'approved', actorPersonId });
+    }
+
     yield* db
         .update(personAlias)
         .set({ guestPersonId: null })
@@ -134,6 +141,24 @@ export const mergePeople = Effect.fn('Core.mergePeople')((input: MergeInput) =>
                         inArray(personAlias.personId, isNotEmptyArray(accounts) ? [input.fromPersonId] : people)
                     )
                 );
+            const rejected = yield* db
+                .select({ id: aliasLink.id })
+                .from(aliasLink)
+                .where(
+                    and(
+                        inArray(
+                            aliasLink.aliasId,
+                            confirmed.map(({ id }) => id)
+                        ),
+                        inArray(aliasLink.personId, people),
+                        eq(aliasLink.status, 'rejected')
+                    )
+                );
+
+            if (isNotEmptyArray(rejected)) {
+                return yield* ActionFailedError.make({ reason: 'one of these nicknames was rejected for this player' });
+            }
+
             yield* db.execute(sql`select identity.merge_person(${input.fromPersonId}::uuid, ${input.intoPersonId}::uuid)`).pipe(
                 Effect.tapError(error => Effect.logWarning('[merge] refused', error)),
                 Effect.mapError(() =>
@@ -155,6 +180,8 @@ export const mergePeople = Effect.fn('Core.mergePeople')((input: MergeInput) =>
                 entityId: input.intoPersonId,
                 diff: { from: input.fromPersonId }
             });
+
+            return input.intoPersonId;
         })
     )
 );

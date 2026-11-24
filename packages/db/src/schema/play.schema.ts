@@ -94,7 +94,8 @@ export const lineupEntry = play.table(
         resolvedBy: entryResolutionEnum('resolved_by').notNull(),
         isGk: boolean('is_gk').notNull().default(false),
         isNewcomer: boolean('is_newcomer').notNull().default(false),
-        isGuest: boolean('is_guest').notNull().default(false)
+        isGuest: boolean('is_guest').notNull().default(false),
+        isTeamUndecided: boolean('is_team_undecided').notNull().default(false)
     },
     t => [
         uniqueIndex('lineup_entry_position_uq').on(t.sessionId, t.teamOrdinal, t.position),
