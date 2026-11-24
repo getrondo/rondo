@@ -90,7 +90,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading an import plan', it => {
                 .from(session)
                 .where(and(eq(session.communityId, communityId), eq(session.status, 'cancelled')));
 
-            expect(stats).toMatchObject({ sessions: 2, teams: 2, attendances: 6, aliases: 6, priceRules: 1, fixtures: 1 });
+            expect(stats).toMatchObject({ sessions: 2, teams: 2, entries: 6, aliases: 6, priceRules: 1, fixtures: 1 });
             expect(cancelled.map(row => row.cancelReason)).toEqual(['weather']);
             expect(yield* countsOf(communityId)).toMatchObject({ attendances: 6, teamMembers: 6, priceRules: 1, fixtures: 1 });
         })
@@ -146,7 +146,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading an import plan', it => {
             );
             const stats = yield* loadPlan({ ...testConfig, slug: 'poll-only-fc' }, pollOnly, 'sha');
 
-            expect(stats).toMatchObject({ sessions: 1, teams: 0, attendances: 0, aliases: 0, priceRules: 0, fixtures: 0 });
+            expect(stats).toMatchObject({ sessions: 1, teams: 0, entries: 0, aliases: 0, priceRules: 0, fixtures: 0 });
         })
     );
     it.effect('links an organizer author once a later run has the self alias', () =>

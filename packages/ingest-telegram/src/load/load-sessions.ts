@@ -1,17 +1,25 @@
-import { isDefined } from '@rnw-community/shared';
-import { team, teamMember } from '@rondo/db/schema/play.schema';
-import { attendance, session } from '@rondo/db/schema/scheduling.schema';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { lineupEntry, team } from '@rondo/db/schema/play.schema';
+import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
+import { and, eq, inArray, notExists, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { zonedToInstant } from '../extract/zoned-time';
+import { entriesOf } from '../roster/entries-of';
+import { syncSessionRoster } from '../roster/sync-session-roster';
 import { chunks } from '../utils/chunks.util';
 import { insertMany } from '../utils/insert-many.util';
 import { lookupId } from '../utils/lookup-id.util';
 
+import { liveMessages } from './live-messages';
+
 import type { PlannedSession } from '../extract/assemble-plan';
+import type { LineupFact } from '../extract/fact.model';
+import type { Directory, EntryRow } from '../interface/directory.interface';
 import type { LoadContext, ReferenceIds, SessionLoadResult } from '../interface/load-context.interface';
 
 const sessionMinutes = 90;
+const unassignedTeam = 0;
 
 const startOf = (planned: PlannedSession, timeZone: string): Date => {
     const [year = 0, month = 1, day = 1] = planned.localDate.split('-').map(Number);
@@ -20,117 +28,241 @@ const startOf = (planned: PlannedSession, timeZone: string): Date => {
     return zonedToInstant({ year, month, day, hour, minute }, timeZone);
 };
 
-const insertSessionRows = Effect.fn('IngestTelegram.insertSessionRows')(function* (
-    { transaction, communityId, config, plan }: LoadContext,
-    reference: ReferenceIds
-) {
-    const sessionIds: string[] = [];
+const existingSessions = Effect.fn('IngestTelegram.existingSessions')(function* ({ transaction, communityId }: LoadContext) {
+    const rows = yield* transaction
+        .select({ id: session.id, localDate: session.localDate, activityId: session.activityId, source: session.source })
+        .from(session)
+        .where(eq(session.communityId, communityId));
+    const byKey = new Map<string, typeof rows>();
 
-    for (const batch of chunks(plan.sessions)) {
-        const rows = yield* transaction
-            .insert(session)
-            .values(
-                batch.map(planned => {
-                    const startsAt = startOf(planned, config.timeZone);
-
-                    return {
-                        communityId,
-                        activityId: reference.activityIdBySport.get(planned.sport) ?? '',
-                        venueId: lookupId(reference.venueIdByKey, planned.venueKey),
-                        localDate: planned.localDate,
-                        startsAt,
-                        endsAt: new Date(startsAt.getTime() + sessionMinutes * 60_000),
-                        status: planned.status,
-                        capacityMax: planned.capacityMax,
-                        fieldsPlanned: planned.fieldsPlanned,
-                        format: planned.format,
-                        cancelReason: planned.cancelReason,
-                        title: planned.title,
-                        source: 'import' as const,
-                        confidence: planned.confidence
-                    };
-                })
-            )
-            .returning({ id: session.id });
-        sessionIds.push(...rows.map(row => row.id));
+    for (const row of rows) {
+        const key = `${row.localDate}|${row.activityId}`;
+        byKey.set(key, [...(byKey.get(key) ?? []), row]);
     }
 
-    return sessionIds;
+    return (key: string) => {
+        const sameDay = byKey.get(key) ?? [];
+
+        const [only, ...others] = sameDay;
+
+        return sameDay.find(row => row.source === 'import') ?? (isNotEmptyArray(others) ? null : only);
+    };
 });
 
-const insertTeams = Effect.fn('IngestTelegram.insertTeams')(function* (
-    { transaction, plan }: LoadContext,
-    reference: ReferenceIds,
-    sessionIds: readonly string[]
-) {
-    const withLineups = plan.sessions.flatMap((planned, index) =>
-        isDefined(planned.lineup) ? [{ lineup: planned.lineup, sessionId: sessionIds[index] ?? '' }] : []
-    );
-    const teamRows = withLineups.flatMap(({ lineup, sessionId }) =>
-        lineup.teams.map(lineupTeam => ({
-            sessionId,
-            ordinal: lineupTeam.ordinal,
-            colorId: reference.colorIdByEmoji.get(lineupTeam.emoji),
-            members: lineupTeam.members
-        }))
-    );
-    const teamIds: string[] = [];
-
-    for (const batch of chunks(teamRows)) {
-        const rows = yield* transaction
-            .insert(team)
-            .values(batch.map(({ sessionId, ordinal, colorId }) => ({ sessionId, ordinal, colorId })))
-            .returning({ id: team.id });
-        teamIds.push(...rows.map(row => row.id));
-    }
-
-    return { teamRows, teamIds };
-});
-
-export const insertSessions = Effect.fn('IngestTelegram.insertSessions')(function* (
+const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function* (
     context: LoadContext,
     reference: ReferenceIds,
-    personIdByAlias: ReadonlyMap<string, string>
+    liveSessionIds: ReadonlySet<string>
 ) {
-    const { transaction } = context;
-    const sessionIds = yield* insertSessionRows(context, reference);
-    const { teamRows, teamIds } = yield* insertTeams(context, reference, sessionIds);
-    const seen = new Set<string>();
-    const memberRows = teamRows.flatMap((teamRow, index) =>
-        teamRow.members.flatMap(member => {
-            const personId = personIdByAlias.get(member.aliasNorm);
-            const key = `${teamRow.sessionId}|${personId}`;
+    const { transaction, communityId, config, plan } = context;
+    const find = yield* existingSessions(context);
+    const planned = plan.sessions.map(item => {
+        const startsAt = startOf(item, config.timeZone);
+        const activityId = reference.activityIdBySport.get(item.sport) ?? '';
+        const existing = find(`${item.localDate}|${activityId}`);
 
-            if (!isDefined(personId) || seen.has(key)) {
-                return [];
+        return {
+            keep: isDefined(existing) && (existing.source !== 'import' || liveSessionIds.has(existing.id)),
+            row: {
+                id: existing?.id,
+                communityId,
+                activityId,
+                venueId: lookupId(reference.venueIdByKey, item.venueKey) ?? null,
+                localDate: item.localDate,
+                startsAt,
+                endsAt: new Date(startsAt.getTime() + sessionMinutes * 60_000),
+                status: item.status,
+                capacityMax: item.capacityMax,
+                fieldsPlanned: item.fieldsPlanned,
+                format: item.format,
+                cancelReason: item.cancelReason,
+                title: item.title,
+                source: 'import' as const,
+                confidence: item.confidence
             }
+        };
+    });
+    const idByKey = new Map<string, string>();
 
-            seen.add(key);
-
-            return [
-                {
-                    teamId: teamIds[index] ?? '',
-                    sessionId: teamRow.sessionId,
-                    personId,
-                    isGk: member.isGk,
-                    isNewcomer: member.isNewcomer,
-                    assignedBy: 'import' as const
+    for (const batch of chunks(planned.filter(({ keep }) => !keep))) {
+        const rows = yield* transaction
+            .insert(session)
+            .values(batch.map(({ row }) => row))
+            .onConflictDoUpdate({
+                target: session.id,
+                set: {
+                    venueId: sql`excluded.venue_id`,
+                    startsAt: sql`excluded.starts_at`,
+                    endsAt: sql`excluded.ends_at`,
+                    status: sql`excluded.status`,
+                    capacityMax: sql`excluded.capacity_max`,
+                    fieldsPlanned: sql`excluded.fields_planned`,
+                    format: sql`excluded.format`,
+                    cancelReason: sql`excluded.cancel_reason`,
+                    title: sql`excluded.title`,
+                    confidence: sql`excluded.confidence`
                 }
-            ];
-        })
+            })
+            .returning({ id: session.id, localDate: session.localDate, activityId: session.activityId });
+
+        for (const row of rows) {
+            idByKey.set(`${row.localDate}|${row.activityId}`, row.id);
+        }
+    }
+
+    return planned.map(({ row }) => row.id ?? idByKey.get(`${row.localDate}|${row.activityId}`) ?? '');
+});
+
+const deleteStaleSessions = Effect.fn('IngestTelegram.deleteStaleSessions')(function* (
+    { transaction, communityId }: LoadContext,
+    currentIds: ReadonlySet<string>
+) {
+    const stored = yield* transaction
+        .select({ id: session.id })
+        .from(session)
+        .where(
+            and(
+                eq(session.communityId, communityId),
+                eq(session.source, 'import'),
+                notExists(transaction.select().from(signup).where(eq(signup.sessionId, session.id))),
+                notExists(
+                    transaction
+                        .select()
+                        .from(attendance)
+                        .where(and(eq(attendance.sessionId, session.id), eq(attendance.source, 'manual')))
+                )
+            )
+        );
+    const stale = stored.map(({ id }) => id).filter(id => !currentIds.has(id));
+
+    if (isNotEmptyArray(stale)) {
+        yield* transaction.delete(session).where(inArray(session.id, stale));
+    }
+});
+
+interface SessionLineup {
+    readonly sessionId: string;
+    readonly lineup?: LineupFact;
+    readonly pollMessageIds: readonly number[];
+}
+
+const upsertTeams = Effect.fn('IngestTelegram.upsertTeams')(function* (
+    { transaction }: LoadContext,
+    reference: ReferenceIds,
+    games: readonly SessionLineup[]
+) {
+    const rows = games.flatMap(({ sessionId, lineup }) =>
+        (lineup?.teams ?? []).map(({ ordinal, emoji }) => ({ sessionId, ordinal, colorId: reference.colorIdByEmoji.get(emoji) ?? null }))
     );
 
-    yield* insertMany(memberRows, batch => transaction.insert(teamMember).values(batch));
-    yield* insertMany(memberRows, batch =>
-        transaction.insert(attendance).values(
-            batch.map(row => ({
-                sessionId: row.sessionId,
-                personId: row.personId,
-                outcome: 'attended' as const,
-                source: 'import' as const
-            }))
+    yield* insertMany(games, batch =>
+        transaction.execute(
+            sql`delete from ${team} where ${team.ordinal} > case ${team.sessionId} ${sql.join(
+                batch.map(({ sessionId, lineup }) => sql`when ${sessionId}::uuid then ${lineup?.teams.length ?? 0}::int`),
+                sql` `
+            )} else 32767 end`
         )
     );
+    yield* insertMany(rows, batch =>
+        transaction
+            .insert(team)
+            .values(batch)
+            .onConflictDoUpdate({ target: [team.sessionId, team.ordinal], set: { colorId: sql`excluded.color_id` } })
+    );
 
-    return { sessionIds, teams: teamRows.length, members: memberRows.length } satisfies SessionLoadResult;
+    return rows.length;
+});
+
+const guestRequestEntries = ({ plan }: LoadContext, directory: Directory, games: readonly SessionLineup[]) => {
+    const gameByPoll = new Map(games.flatMap(game => game.pollMessageIds.map(messageId => [messageId, game] as const)));
+    const positions = new Map<string, number>();
+    const entries: EntryRow[] = [];
+    let unassigned = 0;
+
+    for (const { messageId, userId, replyTo, guests } of plan.facts.guestRequests) {
+        const game = gameByPoll.get(replyTo ?? -1);
+        const guestOfPersonId = directory.personIdByAccount.get(BigInt(userId));
+
+        if (!isDefined(game) || !isDefined(guestOfPersonId)) {
+            unassigned += 1;
+        } else if (!isDefined(game.lineup)) {
+            const first = positions.get(game.sessionId) ?? 0;
+            positions.set(game.sessionId, first + guests);
+            entries.push(
+                ...Array.from({ length: guests }, (_, index) => ({
+                    sessionId: game.sessionId,
+                    messageId,
+                    teamOrdinal: unassignedTeam,
+                    position: first + index + 1,
+                    tgUserId: BigInt(userId),
+                    guestOfPersonId,
+                    resolvedBy: 'guest' as const
+                }))
+            );
+        }
+    }
+
+    return { entries, unassigned };
+};
+
+const replaceEntries = Effect.fn('IngestTelegram.replaceEntries')(function* (
+    context: LoadContext,
+    directory: Directory,
+    games: readonly SessionLineup[]
+) {
+    const { transaction } = context;
+    const previous: EntryRow[] = [];
+
+    for (const batch of chunks(games)) {
+        previous.push(
+            ...(yield* transaction
+                .delete(lineupEntry)
+                .where(
+                    inArray(
+                        lineupEntry.sessionId,
+                        batch.map(({ sessionId }) => sessionId)
+                    )
+                )
+                .returning())
+        );
+    }
+
+    const manual = previous.filter(entry => entry.resolvedBy === 'manual');
+    const requests = guestRequestEntries(context, directory, games);
+    const entries = games.flatMap(({ sessionId, lineup }) =>
+        isDefined(lineup)
+            ? entriesOf(
+                  sessionId,
+                  lineup,
+                  directory,
+                  manual.filter(entry => entry.sessionId === sessionId)
+              )
+            : []
+    );
+
+    yield* insertMany([...entries, ...requests.entries], batch => transaction.insert(lineupEntry).values(batch));
+    yield* syncSessionRoster([...new Set([...previous, ...entries].map(entry => entry.sessionId))]);
+
+    return { entries: entries.length, unassigned: requests.unassigned };
+});
+
+export const loadSessions = Effect.fn('IngestTelegram.loadSessions')(function* (
+    context: LoadContext,
+    reference: ReferenceIds,
+    directory: Directory
+) {
+    const live = yield* liveMessages(context.config.slug);
+    const liveSessionIds = new Set(live.map(({ sessionId }) => sessionId));
+    const liveLineups = new Set(live.filter(({ purpose }) => purpose === 'lineup').map(({ sessionId }) => sessionId));
+    const sessionIds = yield* upsertSessionRows(context, reference, liveSessionIds);
+
+    yield* deleteStaleSessions(context, new Set([...sessionIds, ...liveSessionIds]));
+
+    const games = context.plan.sessions
+        .map(({ lineup, pollMessageIds }, index) => ({ sessionId: sessionIds[index] ?? '', lineup, pollMessageIds }))
+        .filter(({ sessionId }) => !liveLineups.has(sessionId));
+    const teams = yield* upsertTeams(context, reference, games);
+    const { entries, unassigned } = yield* replaceEntries(context, directory, games);
+
+    return { sessionIds, teams, entries, unassignedGuestRequests: unassigned } satisfies SessionLoadResult;
 });

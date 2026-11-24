@@ -1,6 +1,7 @@
+import { isDefined } from '@rnw-community/shared';
 import { describe, expect, it } from 'vitest';
 
-import { assemblePlan } from '../src/extract/assemble-plan';
+import { assemblePlan, type ImportPlan } from '../src/extract/assemble-plan';
 import { extractAll } from '../src/extract/extract-all';
 import { extractLineup } from '../src/extract/extract-lineup';
 import { makeVenueMatcher } from '../src/extract/extract-poll';
@@ -8,8 +9,16 @@ import { makeFixtureExtractor } from '../src/extract/extract-signals';
 import { findLocalTime, resolveGameDate } from '../src/extract/game-date';
 import { normalizeAlias } from '../src/extract/normalize';
 import { zonedToInstant } from '../src/extract/zoned-time';
+import { aliasesIn } from '../src/identity/aliases-in';
 
 import { message, testConfig } from './fixture';
+
+const aliasesOf = (plan: ImportPlan) =>
+    aliasesIn(
+        plan.sessions.map(({ lineup }) => lineup).filter(lineup => isDefined(lineup)),
+        { personIdByAccount: new Map(), accountByHandle: new Map(), aliasByNorm: new Map() },
+        'Org'
+    );
 
 const venueOf = makeVenueMatcher(testConfig);
 
@@ -201,7 +210,7 @@ describe('plan assembly', () => {
     });
 
     it('aggregates aliases across line-ups', () => {
-        expect(plan.aliases.find(alias => alias.aliasNorm === 'иван')?.occurrences).toBe(2);
+        expect(aliasesOf(plan).find(alias => alias.aliasNorm === 'иван')?.occurrences).toBe(2);
     });
 
     it('compresses prices into validity ranges', () => {
@@ -248,7 +257,6 @@ describe('plan assembly edge cases', () => {
         expect(plan.sessions.map(session => [session.localDate, session.status, session.lineup])).toEqual([
             ['2025-05-21', 'cancelled', undefined]
         ]);
-        expect(plan.aliases).toEqual([]);
     });
 
     it('counts aliases once per session when a line-up is reposted', () => {
@@ -260,7 +268,7 @@ describe('plan assembly edge cases', () => {
             '2025-06-30'
         );
 
-        expect(plan.aliases.find(alias => alias.aliasNorm === 'иван')?.occurrences).toBe(1);
+        expect(aliasesOf(plan).find(alias => alias.aliasNorm === 'иван')?.occurrences).toBe(1);
     });
 
     it('does not read a team line with a configured colour as a goalkeeper price', () => {

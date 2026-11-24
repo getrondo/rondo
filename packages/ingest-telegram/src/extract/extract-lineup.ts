@@ -10,6 +10,11 @@ import type { CommunityConfig } from '../config/community-config';
 import type { TelegramMessage } from '../model/telegram-message.model';
 import type { LineupFact, LineupMember, LineupTeam } from './fact.model';
 
+interface RosterContext {
+    readonly selfAliases: ReadonlySet<string>;
+    readonly mentions: NonNullable<TelegramMessage['mentions']>;
+}
+
 const gkPattern = 'вратарь|воротар|на воротах';
 const newcomerPattern = 'новый|новенький|новий|новичок';
 const gkMarker = new RegExp(gkPattern, 'giu');
@@ -68,12 +73,34 @@ const attachLooseGuests = (segments: readonly string[]): string[] => {
     return attached;
 };
 
-const toMember = (raw: string, selfAliases: ReadonlySet<string>): LineupMember | undefined => {
+const mentionMarker = /\p{Co}/u;
+const firstMentionMarker = 0xe0_00;
+
+const markMentions = (text: string, mentions: NonNullable<TelegramMessage['mentions']>): string =>
+    mentions.reduceRight(
+        (marked, mention, index) =>
+            isDefined(mention.userId)
+                ? `${marked.slice(0, mention.offset + mention.text.length)}${String.fromCodePoint(firstMentionMarker + index)}${marked.slice(mention.offset + mention.text.length)}`
+                : marked,
+        text
+    );
+
+const mentionedUserId = (token: string, mentions: NonNullable<TelegramMessage['mentions']>): number | undefined =>
+    Option.fromNullishOr(mentionMarker.exec(token)?.[0].codePointAt(0)).pipe(
+        Option.flatMapNullishOr(code => mentions[code - firstMentionMarker]?.userId),
+        Option.getOrUndefined
+    );
+
+const toMember = (token: string, { selfAliases, mentions }: RosterContext): LineupMember | undefined => {
+    const raw = token.replace(mentionMarker, '');
     const named = stripTrailingPunctuation(removeMarker(removeMarker(raw, gkMarker), newcomerMarker).trim());
     const alias = playerName(named);
     const aliasNorm = normalizeAlias(alias);
 
     return Option.some({
+        raw,
+        userId: mentionedUserId(token, mentions),
+        handle: /^@(\w+)$/u.exec(alias)?.[1],
         alias,
         aliasNorm,
         isGk: isGkText.test(raw),
@@ -88,23 +115,27 @@ const toMember = (raw: string, selfAliases: ReadonlySet<string>): LineupMember |
 
 const escapeEmoji = (emoji: string): string => emoji.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
-const parseTeam = (rawSegment: string, selfAliases: ReadonlySet<string>): LineupMember[] => {
+const parseTeam = (rawSegment: string, context: RosterContext): LineupMember[] => {
     const segment = rawSegment.split(/\n\s*\n/u)[0] ?? '';
     const firstLine = segment.replace(/^[^:\n]*?(?:ые|ие|і|i)\s*:/iu, '').split('\n')[0] ?? '';
 
     return attachLooseGuests(splitMembers(firstLine))
-        .map(raw => toMember(raw, selfAliases))
+        .map(token => toMember(token, context))
         .filter(member => isDefined(member));
 };
 
-const buildTeams = (text: string, config: CommunityConfig): { header: string; teams: LineupTeam[] } => {
+const buildTeams = (
+    text: string,
+    config: CommunityConfig,
+    mentions: RosterContext['mentions']
+): { header: string; teams: LineupTeam[] } => {
     const splitter = new RegExp(`(${config.teamColors.map(color => escapeEmoji(color.emoji)).join('|')})`, 'u');
-    const parts = text.split(splitter);
-    const selfAliases = new Set(config.selfAliases.map(normalizeAlias));
+    const parts = markMentions(text, mentions).split(splitter);
+    const context = { selfAliases: new Set(config.selfAliases.map(normalizeAlias)), mentions };
     const teams: LineupTeam[] = [];
 
     for (let index = 1; index < parts.length; index += 2) {
-        const members = parseTeam(parts[index + 1] ?? '', selfAliases);
+        const members = parseTeam(parts[index + 1] ?? '', context);
 
         if (isNotEmptyArray(members)) {
             teams.push({ ordinal: teams.length + 1, emoji: parts[index] ?? '', members });
@@ -122,7 +153,7 @@ export const extractLineup = (
     Option.all({ text: Option.fromNullishOr(message.text), sentAt: Option.fromNullishOr(message.sentAt) }).pipe(
         Option.filter(({ text }) => /состав|склад/iu.test(text)),
         Option.flatMap(({ text, sentAt }) => {
-            const { header, teams } = buildTeams(text, config);
+            const { header, teams } = buildTeams(text, config, message.mentions ?? []);
             const postedDate = instantToLocalDate(sentAt, config.timeZone);
             const headerDate = resolveGameDate(header, postedDate);
 
@@ -130,6 +161,7 @@ export const extractLineup = (
                 ? Option.none()
                 : Option.some({
                       messageId: message.id,
+                      ...(isDefined(message.forwardedFrom) ? {} : { authorId: message.authorId }),
                       postedAt: sentAt,
                       localDate: headerDate.confidence >= statedDateConfidence ? headerDate.date : postedDate,
                       localTime: findLocalTime(header),

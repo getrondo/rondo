@@ -71,4 +71,20 @@ describe('Telegram JSON export parsing', () => {
             [2, 3, 0]
         ]);
     });
+
+    it('reads the mentioned user id at its token', () => {
+        const text = 'Составы на сегодня:\n🟢Саша, Саша, @striker\n🔵Олег, Семён';
+        const second = text.indexOf('Саша', text.indexOf('Саша') + 1);
+        const lineup = extractLineup(
+            message(1, '2025-05-05T15:00:00Z', text, { mentions: [{ offset: second, text: 'Саша', userId: 42 }] }),
+            testConfig,
+            makeVenueMatcher(testConfig)
+        );
+
+        expect(lineup?.teams[0]?.members.map(({ raw, userId, handle }) => [raw, userId ?? null, handle ?? null])).toEqual([
+            ['Саша', null, null],
+            ['Саша', 42, null],
+            ['@striker', null, 'striker']
+        ]);
+    });
 });

@@ -1,7 +1,7 @@
 import { isDefined } from '@rnw-community/shared';
 import * as Option from 'effect/Option';
 
-import type { CancellationFact, ExtractedFacts, FixtureFact, LineupFact, LineupMember, PollFact, PriceFact, Sport } from './fact.model';
+import type { CancellationFact, ExtractedFacts, FixtureFact, LineupFact, PollFact, PriceFact, Sport } from './fact.model';
 
 export interface PlannedSession {
     readonly key: string;
@@ -21,16 +21,6 @@ export interface PlannedSession {
     readonly cancellationMessageId?: number;
 }
 
-interface PlannedAlias {
-    readonly aliasNorm: string;
-    readonly alias: string;
-    readonly occurrences: number;
-    readonly firstSeen: string;
-    readonly lastSeen: string;
-    readonly isSelf: boolean;
-    readonly gkShare: number;
-}
-
 interface PlannedPrice {
     readonly appliesTo: PriceFact['appliesTo'];
     readonly venueKey?: string;
@@ -41,7 +31,6 @@ interface PlannedPrice {
 
 export interface ImportPlan {
     readonly sessions: readonly PlannedSession[];
-    readonly aliases: readonly PlannedAlias[];
     readonly prices: readonly PlannedPrice[];
     readonly fixtures: readonly FixtureFact[];
     readonly facts: ExtractedFacts;
@@ -118,27 +107,6 @@ const buildSession = (inputs: SessionInputs): PlannedSession => {
     };
 };
 
-const planAliases = (lineups: readonly LineupFact[]): PlannedAlias[] => {
-    const entries = lineups.flatMap(lineup =>
-        lineup.teams.flatMap(team => team.members.map(member => ({ member, date: lineup.localDate })))
-    );
-
-    return [...groupBy(entries, entry => entry.member.aliasNorm)].map(([aliasNorm, group]) => {
-        const members: LineupMember[] = group.map(entry => entry.member);
-        const dates = group.map(entry => entry.date).toSorted();
-
-        return {
-            aliasNorm,
-            alias: members[0]?.alias ?? aliasNorm,
-            occurrences: group.length,
-            firstSeen: dates[0] ?? '',
-            lastSeen: dates.at(-1) ?? '',
-            isSelf: members.some(member => member.isSelf),
-            gkShare: members.filter(member => member.isGk).length / members.length
-        };
-    });
-};
-
 const monthlyMode = (prices: readonly PriceFact[]): { month: string; amountCents: number }[] =>
     [...groupBy(prices, price => price.localDate.slice(0, 7))]
         .map(([month, group]) => {
@@ -203,7 +171,6 @@ export const assemblePlan = (facts: ExtractedFacts, asOf: string): ImportPlan =>
 
     return {
         sessions,
-        aliases: planAliases([...lineupsByKey.values()]),
         prices: planPrices(facts.prices),
         fixtures: facts.fixtures,
         facts
