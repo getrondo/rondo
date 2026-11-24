@@ -10,6 +10,7 @@ import { testDbLayer } from '@rondo/db/testing/test-db.layer';
 import { makeRecorder, recordingTelegramLayer } from '@rondo/telegram/testing/recording-telegram.layer';
 import { MockLanguageModelV4 } from 'ai/test';
 import { eq } from 'drizzle-orm';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 
@@ -161,6 +162,20 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
             expect(exits.map(exit => exit._tag)).toEqual(['Failure', 'Failure', 'Failure', 'Success']);
             expect(stored).toMatchObject({ attempts: 3, doneAt: null });
             expect(recorder.calls.filter(call => call.method === 'editMessageText')).toHaveLength(edits);
+        })
+    );
+
+    it.effect('does not run an update that another attempt is still handling', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const update = message(player, { id: player.id, type: 'private' }, 'привет');
+            const at = yield* DateTime.nowAsDate;
+            yield* db.insert(processedUpdate).values({ updateId: update.update_id, at });
+            const calls = recorder.calls.length;
+            const error = yield* Effect.flip(handleUpdate(update));
+
+            expect(error).toMatchObject({ _tag: 'UpdateInProgressError' });
+            expect(recorder.calls).toHaveLength(calls);
         })
     );
 });

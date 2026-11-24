@@ -41,8 +41,7 @@ isec run getrondo prod -- sh -c 'RONDO_WEBHOOK_URL=https://<production-domain>/a
 2. Add the bot to the group (as admin if it should pin polls later).
 3. An owner sends `/link <community-slug>` in the group (the slug from the import config).
 
-4. Make every organizer an admin through the assistant (they must have written in the group or to the bot
-   first). Polls, line-ups and cancellations posted by anyone else are ignored.
+4. Make every organizer an admin through the assistant (they must have written in the group first). Polls, line-ups and cancellations posted by anyone else are ignored.
 
 From then on the bot keeps sessions, line-ups and cancellations current, and admins can talk to
 it privately. `/start` shows examples; `/reset` clears the conversation.

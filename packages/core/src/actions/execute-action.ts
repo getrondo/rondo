@@ -141,15 +141,13 @@ const peopleIn = (action: Action): readonly string[] => {
     }
 };
 
-export const runAdminAction = Effect.fn('Core.runAdminAction')(function* (tgUserId: bigint, action: Action, context: ActionContext) {
-    const { communityId } = context;
-
-    if (!(yield* isAdminOf(tgUserId, communityId))) {
-        return yield* ActionFailedError.make({ reason: 'not an admin any more' });
-    }
-
+export const requireActionScope = Effect.fn('Core.requireActionScope')(function* (action: Action, communityId: string) {
     if (!(yield* arePeopleOf(communityId, peopleIn(action)))) {
         return yield* ActionFailedError.make({ reason: 'player not found in this community' });
+    }
+
+    if ('sessionId' in action) {
+        yield* requireSession(communityId, action.sessionId);
     }
 
     if ('venueId' in action && isDefined(action.venueId)) {
@@ -159,6 +157,16 @@ export const runAdminAction = Effect.fn('Core.runAdminAction')(function* (tgUser
             return yield* ActionFailedError.make({ reason: 'venue not found in this community' });
         }
     }
+
+    return action;
+});
+
+export const runAdminAction = Effect.fn('Core.runAdminAction')(function* (tgUserId: bigint, action: Action, context: ActionContext) {
+    if (!(yield* isAdminOf(tgUserId, context.communityId))) {
+        return yield* ActionFailedError.make({ reason: 'not an admin any more' });
+    }
+
+    yield* requireActionScope(action, context.communityId);
 
     return yield* executeAction(action, context);
 });

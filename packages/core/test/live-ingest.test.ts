@@ -124,4 +124,35 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             expect(kept?.status).toBe('open');
         })
     );
+
+    it.effect('keeps two games on one day apart and never reopens a played one', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const scoped = seedConfig('two-games-fc');
+            const { communityId } = yield* seedCommunity(scoped);
+            const personId = yield* upsertTelegramUser({ id: 9n, firstName: 'Org' });
+            const base = { chatId: -103n, senderPersonId: personId, senderTgUserId: 9n, senderName: 'Org', senderIsAdmin: true };
+            const pollAt = (messageId: number, time: string) =>
+                ingestGroupMessage(communityId, scoped, {
+                    ...base,
+                    messageId,
+                    sentAt: new Date('2026-05-08T08:00:00Z'),
+                    poll: { question: `Пятница, 8 мая, ${time} Park`, answers: ['+', '-'] }
+                });
+            yield* pollAt(1, '19.00');
+            yield* pollAt(2, '21.00');
+            const games = yield* db.select().from(session).where(eq(session.communityId, communityId)).orderBy(session.startsAt);
+            yield* db.update(session).set({ status: 'played' }).where(eq(session.communityId, communityId));
+            yield* ingestGroupMessage(communityId, scoped, {
+                ...base,
+                messageId: 3,
+                sentAt: new Date('2026-05-08T21:30:00Z'),
+                text: 'Составы на сегодня, 19.00 Park:\n🟢Иван, Пётр\n🔵Олег, Семён'
+            });
+            const after = yield* db.select({ status: session.status }).from(session).where(eq(session.communityId, communityId));
+
+            expect(games).toHaveLength(2);
+            expect(after.map(row => row.status)).toEqual(['played', 'played']);
+        })
+    );
 });

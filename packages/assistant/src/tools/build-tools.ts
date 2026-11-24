@@ -1,5 +1,6 @@
 import { isDefined } from '@rnw-community/shared';
 import { describeAction } from '@rondo/core/actions/describe-action';
+import { requireActionScope } from '@rondo/core/actions/execute-action';
 import { proposeAction } from '@rondo/core/actions/pending-action.service';
 import { searchPeople, unresolvedAliases } from '@rondo/core/people/people.service';
 import { listSessions, listVenues, requireSession } from '@rondo/core/sessions/session.service';
@@ -36,6 +37,7 @@ const CancelReason = Schema.Literals(['weather', 'low_turnout', 'venue', 'holida
 
 const propose = (scope: ToolScope, action: Action) =>
     Effect.gen(function* () {
+        yield* requireActionScope(action, scope.communityId);
         const summary = yield* describeAction(action, scope.locale);
         const actionId = yield* proposeAction({ communityId: scope.communityId, tgUserId: scope.tgUserId, action, summary });
         scope.proposals.push({ actionId, summary });

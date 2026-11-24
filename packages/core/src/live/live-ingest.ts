@@ -8,7 +8,7 @@ import { Db } from '@rondo/db/service/db.service';
 import { extractLineup } from '@rondo/ingest-telegram/extract/extract-lineup';
 import { extractPoll, makeVenueMatcher } from '@rondo/ingest-telegram/extract/extract-poll';
 import { extractCancellation } from '@rondo/ingest-telegram/extract/extract-signals';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -80,6 +80,16 @@ const venueIdFor = Effect.fn('Core.venueIdFor')(function* (communityId: string, 
     return row?.id ?? null;
 });
 
+const gameMinutes = 90;
+
+const minutesOf = (time: string): number => {
+    const [hour = 0, minute = 0] = time.split(':').map(Number);
+
+    return hour * 60 + minute;
+};
+
+const minutesApart = (left: string, right: string): number => Math.abs(minutesOf(left) - minutesOf(right));
+
 const rescheduleSignal = /перенос|перенес/iu;
 
 const gamesOn = Effect.fn('Core.gamesOn')(function* (communityId: string, localDate: string) {
@@ -97,7 +107,9 @@ const ensureSession = Effect.fn('Core.ensureSession')(function* (
     const countConflicts = (game: SessionView): number =>
         Number(isDefined(venueId) && isDefined(game.venueId) && venueId !== game.venueId) +
         Number(isDefined(fact.localTime) && fact.localTime !== game.localTime);
-    const possible = (yield* gamesOn(communityId, fact.localDate)).filter(game => countConflicts(game) < 2);
+    const isOtherGame = (game: SessionView): boolean =>
+        countConflicts(game) > 1 || (isDefined(fact.localTime) && minutesApart(fact.localTime, game.localTime) >= gameMinutes);
+    const possible = (yield* gamesOn(communityId, fact.localDate)).filter(game => !isOtherGame(game));
     const exact = possible.filter(game => countConflicts(game) === 0);
     const [match, ...others] = isNotEmptyArray(exact) ? exact : possible;
 
@@ -221,7 +233,10 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
     }
 
     const status = fact.localDate < todayIn(config.timeZone, message.sentAt) ? 'played' : 'locked';
-    yield* db.update(session).set({ status }).where(eq(session.id, sessionId));
+    yield* db
+        .update(session)
+        .set({ status })
+        .where(and(eq(session.id, sessionId), ne(session.status, 'played')));
     yield* rememberMessage(message, 'lineup', sessionId);
 });
 
