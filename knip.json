@@ -13,6 +13,10 @@
         "tests/test-kit": {
             "entry": ["src/**/*.ts"],
             "includeEntryExports": true
+        },
+        "apps/*": {
+            "entry": ["src/app/**/{page,layout,route}.{ts,tsx}"],
+            "project": ["src/**/*.{ts,tsx}"]
         }
     }
 }

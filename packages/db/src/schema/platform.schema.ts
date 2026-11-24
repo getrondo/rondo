@@ -3,6 +3,7 @@ import { bigint, boolean, index, integer, jsonb, numeric, pgSchema, primaryKey, 
 import { createdAt, id, instant, ref, requiredRef } from './columns';
 import { person } from './identity.schema';
 import { community } from './org.schema';
+import { session } from './scheduling.schema';
 
 export const comms = pgSchema('comms');
 export const ingest = pgSchema('ingest');
@@ -13,6 +14,8 @@ export const channelEnum = comms.enum('channel', ['dm', 'group']);
 export const ingestSourceEnum = ingest.enum('ingest_source', ['telegram_html', 'telegram_json']);
 export const sourceRefKindEnum = ingest.enum('source_ref_kind', ['poll', 'lineup', 'cancel', 'result', 'price', 'service', 'message']);
 export const actorKindEnum = audit.enum('actor_kind', ['user', 'bot', 'system']);
+export const assistantRoleEnum = comms.enum('assistant_role', ['user', 'assistant']);
+export const pendingActionStatusEnum = comms.enum('pending_action_status', ['proposed', 'confirmed', 'rejected', 'expired', 'failed']);
 
 export const messageRef = comms.table(
     'message_ref',
@@ -51,6 +54,55 @@ export const outbox = comms.table(
         attempts: integer('attempts').notNull().default(0)
     },
     t => [index('outbox_pending_idx').on(t.createdAt)]
+);
+
+export const telegramPoll = comms.table(
+    'telegram_poll',
+    {
+        pollId: text('poll_id').primaryKey(),
+        chatId: bigint('chat_id', { mode: 'bigint' }).notNull(),
+        messageId: bigint('message_id', { mode: 'number' }).notNull(),
+        sessionId: requiredRef('session_id', () => session.id),
+        options: jsonb('options').$type<readonly string[]>().notNull(),
+        closedAt: instant('closed_at'),
+        createdAt: createdAt()
+    },
+    t => [index('telegram_poll_session_idx').on(t.sessionId)]
+);
+
+export const processedUpdate = comms.table('processed_update', {
+    updateId: bigint('update_id', { mode: 'number' }).primaryKey(),
+    at: instant('at').notNull().defaultNow()
+});
+
+export const assistantMessage = comms.table(
+    'assistant_message',
+    {
+        id: id(),
+        tgUserId: bigint('tg_user_id', { mode: 'bigint' }).notNull(),
+        role: assistantRoleEnum('role').notNull(),
+        content: text('content').notNull(),
+        at: instant('at').notNull().defaultNow()
+    },
+    t => [index('assistant_message_user_idx').on(t.tgUserId, t.at)]
+);
+
+export const pendingAction = comms.table(
+    'pending_action',
+    {
+        id: id(),
+        communityId: requiredRef('community_id', () => community.id),
+        requestedByTgUserId: bigint('requested_by_tg_user_id', { mode: 'bigint' }).notNull(),
+        kind: text('kind').notNull(),
+        payload: jsonb('payload').notNull(),
+        summary: text('summary').notNull(),
+        status: pendingActionStatusEnum('status').notNull().default('proposed'),
+        result: jsonb('result'),
+        createdAt: createdAt(),
+        expiresAt: instant('expires_at').notNull(),
+        decidedAt: instant('decided_at')
+    },
+    t => [index('pending_action_status_idx').on(t.status, t.expiresAt)]
 );
 
 export const ingestRun = ingest.table('run', {

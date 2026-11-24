@@ -1,0 +1,31 @@
+{
+    "name": "@rondo/web",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "ts": "tsrs -p ."
+    },
+    "dependencies": {
+        "@rnw-community/shared": "3.0.5",
+        "@rondo/assistant": "workspace:*",
+        "@rondo/bot": "workspace:*",
+        "@rondo/core": "workspace:*",
+        "@rondo/db": "workspace:*",
+        "@rondo/telegram": "workspace:*",
+        "effect": "4.1.5",
+        "grammy": "1.48.0",
+        "next": "16.4.5",
+        "react": "19.3.1",
+        "react-dom": "19.3.1",
+        "server-only": "0.0.1"
+    },
+    "devDependencies": {
+        "@types/node": "26.6.6",
+        "@types/react": "19.3.0",
+        "@types/react-dom": "19.3.0"
+    }
+}

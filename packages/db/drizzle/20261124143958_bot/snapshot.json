@@ -1,0 +1,840 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "8e2e78bd-054f-4cf8-9ebf-c5a9ce9c473d",
+    "prevIds": ["b64490fd-5958-4976-a463-91b3fb346a2d"],
+    "footprints": [
+        {
+            "statementType": "create_enum",
+            "statementTarget": ["enum", "comms", "assistant_role"],
+            "writes": [
+                "s|enum|comms.assistant_role",
+                "n|enum|comms.assistant_role",
+                "e|enum|comms.assistant_role",
+                "n|type|comms.assistant_role"
+            ],
+            "reads": ["n|sch|comms"]
+        },
+        {
+            "statementType": "create_enum",
+            "statementTarget": ["enum", "comms", "pending_action_status"],
+            "writes": [
+                "s|enum|comms.pending_action_status",
+                "n|enum|comms.pending_action_status",
+                "e|enum|comms.pending_action_status",
+                "n|type|comms.pending_action_status"
+            ],
+            "reads": ["n|sch|comms"]
+        },
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "comms", "assistant_message"],
+            "writes": [
+                "s|tbl|comms.assistant_message",
+                "n|tbl|comms.assistant_message",
+                "e|tbl|comms.assistant_message",
+                "n|rel|comms.assistant_message",
+                "n|type|comms.assistant_message",
+                "n|rel|comms.assistant_message_pkey"
+            ],
+            "reads": ["n|sch|comms", "n|enum|comms.assistant_role"]
+        },
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "comms", "pending_action"],
+            "writes": [
+                "s|tbl|comms.pending_action",
+                "n|tbl|comms.pending_action",
+                "e|tbl|comms.pending_action",
+                "n|rel|comms.pending_action",
+                "n|type|comms.pending_action",
+                "n|rel|comms.pending_action_pkey"
+            ],
+            "reads": ["n|sch|comms", "n|enum|comms.pending_action_status"]
+        },
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "comms", "processed_update"],
+            "writes": [
+                "s|tbl|comms.processed_update",
+                "n|tbl|comms.processed_update",
+                "e|tbl|comms.processed_update",
+                "n|rel|comms.processed_update",
+                "n|type|comms.processed_update",
+                "n|rel|comms.processed_update_pkey"
+            ],
+            "reads": ["n|sch|comms"]
+        },
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "comms", "telegram_poll"],
+            "writes": [
+                "s|tbl|comms.telegram_poll",
+                "n|tbl|comms.telegram_poll",
+                "e|tbl|comms.telegram_poll",
+                "n|rel|comms.telegram_poll",
+                "n|type|comms.telegram_poll",
+                "n|rel|comms.telegram_poll_pkey"
+            ],
+            "reads": ["n|sch|comms"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "identity", "person", "merged_into_person_id"],
+            "writes": [
+                "s|col|identity.person.merged_into_person_id",
+                "n|col|identity.person.merged_into_person_id",
+                "e|col|identity.person.merged_into_person_id"
+            ],
+            "reads": ["n|tbl|identity.person", "n|sch|identity"]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": ["index", "comms", "assistant_message", "assistant_message_user_idx"],
+            "writes": [
+                "s|idx|comms.assistant_message_user_idx",
+                "n|idx|comms.assistant_message_user_idx",
+                "e|idx|comms.assistant_message_user_idx",
+                "n|rel|comms.assistant_message_user_idx"
+            ],
+            "reads": [
+                "n|tbl|comms.assistant_message",
+                "n|sch|comms",
+                "n|col|comms.assistant_message.tg_user_id",
+                "n|col|comms.assistant_message.at"
+            ]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": ["index", "comms", "pending_action", "pending_action_status_idx"],
+            "writes": [
+                "s|idx|comms.pending_action_status_idx",
+                "n|idx|comms.pending_action_status_idx",
+                "e|idx|comms.pending_action_status_idx",
+                "n|rel|comms.pending_action_status_idx"
+            ],
+            "reads": [
+                "n|tbl|comms.pending_action",
+                "n|sch|comms",
+                "n|col|comms.pending_action.status",
+                "n|col|comms.pending_action.expires_at"
+            ]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": ["index", "comms", "telegram_poll", "telegram_poll_session_idx"],
+            "writes": [
+                "s|idx|comms.telegram_poll_session_idx",
+                "n|idx|comms.telegram_poll_session_idx",
+                "e|idx|comms.telegram_poll_session_idx",
+                "n|rel|comms.telegram_poll_session_idx"
+            ],
+            "reads": ["n|tbl|comms.telegram_poll", "n|sch|comms", "n|col|comms.telegram_poll.session_id"]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "identity", "person"],
+            "writes": [
+                "s|fk|identity.person.person_merged_into_person_id_person_id_fkey",
+                "n|fk|identity.person.person_merged_into_person_id_person_id_fkey",
+                "e|fk|identity.person.person_merged_into_person_id_person_id_fkey",
+                "n|con|identity.person.person_merged_into_person_id_person_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|col|identity.person.merged_into_person_id",
+                "n|col|identity.person.id",
+                "e|uniqueness|identity.person.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "comms", "pending_action"],
+            "writes": [
+                "s|fk|comms.pending_action.pending_action_community_id_community_id_fkey",
+                "n|fk|comms.pending_action.pending_action_community_id_community_id_fkey",
+                "e|fk|comms.pending_action.pending_action_community_id_community_id_fkey",
+                "n|con|comms.pending_action.pending_action_community_id_community_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|comms.pending_action",
+                "n|sch|comms",
+                "n|tbl|org.community",
+                "n|sch|org",
+                "n|col|comms.pending_action.community_id",
+                "n|col|org.community.id",
+                "e|uniqueness|org.community.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "comms", "telegram_poll"],
+            "writes": [
+                "s|fk|comms.telegram_poll.telegram_poll_session_id_session_id_fkey",
+                "n|fk|comms.telegram_poll.telegram_poll_session_id_session_id_fkey",
+                "e|fk|comms.telegram_poll.telegram_poll_session_id_session_id_fkey",
+                "n|con|comms.telegram_poll.telegram_poll_session_id_session_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|comms.telegram_poll",
+                "n|sch|comms",
+                "n|tbl|scheduling.session",
+                "n|sch|scheduling",
+                "n|col|comms.telegram_poll.session_id",
+                "n|col|scheduling.session.id",
+                "e|uniqueness|scheduling.session.id"
+            ]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "name": "assistant_message",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "name": "pending_action",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "name": "processed_update",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "name": "telegram_poll",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "name": "assistant_role",
+                "values": ["user", "assistant"],
+                "entityType": "enums"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "name": "pending_action_status",
+                "values": ["proposed", "confirmed", "rejected", "expired", "failed"],
+                "entityType": "enums"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "person",
+                "name": "merged_into_person_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "assistant_message",
+                "name": "id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "assistant_message",
+                "name": "tg_user_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "assistant_message",
+                "name": "role",
+                "type": "assistant_role",
+                "typeSchema": "comms",
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "assistant_message",
+                "name": "content",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "assistant_message",
+                "name": "at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "now()",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "community_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "requested_by_tg_user_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "kind",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "payload",
+                "type": "jsonb",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "summary",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "status",
+                "type": "pending_action_status",
+                "typeSchema": "comms",
+                "notNull": true,
+                "dimensions": 0,
+                "default": "'proposed'",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "result",
+                "type": "jsonb",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "created_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "now()",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "expires_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "decided_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "processed_update",
+                "name": "update_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "processed_update",
+                "name": "at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "now()",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "telegram_poll",
+                "name": "poll_id",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "telegram_poll",
+                "name": "chat_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "telegram_poll",
+                "name": "message_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "telegram_poll",
+                "name": "session_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "telegram_poll",
+                "name": "options",
+                "type": "jsonb",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "telegram_poll",
+                "name": "closed_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "telegram_poll",
+                "name": "created_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "now()",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "assistant_message",
+                "name": "assistant_message_user_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "tg_user_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    },
+                    {
+                        "value": "at",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "pending_action_status_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "status",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    },
+                    {
+                        "value": "expires_at",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "telegram_poll",
+                "name": "telegram_poll_session_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "session_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "identity",
+                "table": "person",
+                "name": "person_merged_into_person_id_person_id_fkey",
+                "nameExplicit": false,
+                "columns": ["merged_into_person_id"],
+                "schemaTo": "identity",
+                "tableTo": "person",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "SET NULL",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "pending_action_community_id_community_id_fkey",
+                "nameExplicit": false,
+                "columns": ["community_id"],
+                "schemaTo": "org",
+                "tableTo": "community",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "telegram_poll",
+                "name": "telegram_poll_session_id_session_id_fkey",
+                "nameExplicit": false,
+                "columns": ["session_id"],
+                "schemaTo": "scheduling",
+                "tableTo": "session",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "assistant_message",
+                "name": "assistant_message_pkey",
+                "columns": ["id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "pending_action_pkey",
+                "columns": ["id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "processed_update",
+                "name": "processed_update_pkey",
+                "columns": ["update_id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "telegram_poll",
+                "name": "telegram_poll_pkey",
+                "columns": ["poll_id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        }
+    ]
+}

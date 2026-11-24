@@ -1,0 +1,27 @@
+import { describe, expect, it } from 'vitest';
+
+import { buildSystemPrompt } from '../src/prompt/system.prompt';
+
+describe('system prompt', () => {
+    const context = {
+        communityName: 'Vienna FC',
+        timezone: 'Europe/Vienna',
+        today: '2026-12-04',
+        weekday: 'Friday',
+        locale: 'uk',
+        adminName: 'Alex'
+    } as const;
+
+    it('carries the community, admin and date context', () => {
+        const prompt = buildSystemPrompt(context);
+
+        expect(prompt).toContain('"Vienna FC"');
+        expect(prompt).toContain('(Alex)');
+        expect(prompt).toContain('Friday 2026-12-04 (time zone Europe/Vienna)');
+    });
+
+    it('answers in the admin locale', () => {
+        expect(buildSystemPrompt(context)).toContain('Always answer in Ukrainian');
+        expect(buildSystemPrompt({ ...context, locale: 'ru' })).toContain('Always answer in Russian');
+    });
+});

@@ -1,4 +1,4 @@
-import { bigint, date, index, numeric, pgSchema, text, uniqueIndex, integer } from 'drizzle-orm/pg-core';
+import { bigint, date, index, numeric, pgSchema, text, uniqueIndex, integer, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 import { createdAt, id, instant, ref, updatedAt, requiredRef } from './columns';
 
@@ -18,7 +18,8 @@ export const person = identity.table('person', {
     source: recordSourceEnum('source').notNull().default('bot'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
-    anonymizedAt: instant('anonymized_at')
+    anonymizedAt: instant('anonymized_at'),
+    mergedIntoPersonId: ref('merged_into_person_id').references((): AnyPgColumn => person.id, { onDelete: 'set null' })
 });
 
 export const telegramAccount = identity.table(

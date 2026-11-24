@@ -14,7 +14,9 @@ Telegram group the community already lives in.
 🏗️ **Foundation.** The product is specified from a real community: three and a half years
 (Jun 2023 to Nov 2026) of history from a ~200-member Vienna group, covering about 18,000 messages,
 559 game polls and 210 posted line-ups. The relational core and the history importer are built;
-the bot itself comes next (milestone M1).
+the first bot release runs on Vercel: it keeps the database current from the group, runs sign-up
+polls with a waitlist, and gives admins a private AI assistant (with confirmations) for questions,
+rescheduling, cancellations, balanced line-ups and player clean-up.
 
 | Doc | What's inside |
 |---|---|
@@ -23,6 +25,8 @@ the bot itself comes next (milestone M1).
 | [Epics & roadmap](docs/epics/README.md) | 16 epics, milestones, priorities |
 | [Data model](docs/architecture/data-model.md) | 12 bounded-context schemas, invariants, roles, analytics |
 | [ADR-0001: Stack](docs/adr/0001-stack.md) | TypeScript + Effect v4, Postgres + Drizzle, tooling |
+| [ADR-0002: Bot runtime and assistant](docs/adr/0002-bot-runtime-and-assistant.md) | Vercel, webhook, AI Gateway, confirmed actions |
+| [Runbook: deploy the bot](docs/runbooks/deploy-bot.md) | Secrets, deploy, webhook, linking the group |
 | [Runbook: import history](docs/runbooks/import-telegram-history.md) | Load a Telegram export into the database |
 | [Glossary](docs/glossary.md) | Domain terms (EN / UK / RU) |
 
@@ -31,6 +35,11 @@ Epics are also tracked as GitHub issues with the `epic` label.
 ## Repository
 
 ```
+apps/web                  Next.js app on Vercel: Telegram webhook and cron routes
+packages/bot              Update router: group listener, admin chat, poll answers, confirmations, jobs
+packages/assistant        AI SDK assistant: tools over the domain, proposals instead of writes
+packages/core             Domain: sessions, sign-ups, teams, stats, people, live ingest, actions
+packages/telegram         Effect Telegram client (grammY Api), webhook secret, HTML helpers
 packages/db               Drizzle schema per bounded context, migrations, Effect Db service
 packages/ingest-telegram  Telegram export → database importer (Effect)
 tests/test-kit            Shared Vitest configuration
@@ -53,4 +62,4 @@ pnpm check                      # format, types, lint, dead code, duplication, t
 
 ## License
 
-[MIT](LICENSE)
+[O'SAASY](LICENSE)

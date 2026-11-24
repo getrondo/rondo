@@ -4,8 +4,9 @@
     "tasks": {
         "build": {
             "dependsOn": ["^build"],
-            "outputs": ["dist/**"],
-            "inputs": ["$TURBO_DEFAULT$", "!test/**", "!**/*.md", "!vitest.config.ts"]
+            "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+            "inputs": ["$TURBO_DEFAULT$", "!test/**", "!**/*.md", "!vitest.config.ts"],
+            "env": ["NODE_ENV", "VERCEL_ENV"]
         },
         "ts": {
             "dependsOn": ["transit"],

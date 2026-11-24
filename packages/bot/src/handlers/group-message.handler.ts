@@ -1,0 +1,95 @@
+import { isDefined } from '@rnw-community/shared';
+import { adminCommunityIds, isAdminOf } from '@rondo/core/access/admin-access';
+import { bindChat, communityProfile, findCommunityByChat, findCommunityBySlug } from '@rondo/core/community/community.repository';
+import { text } from '@rondo/core/i18n/messages';
+import { displayNameOf, ensureMembership, upsertTelegramUser } from '@rondo/core/identity/telegram-user';
+import { ingestGroupMessage } from '@rondo/core/live/live-ingest';
+import { Telegram } from '@rondo/telegram/service/telegram.service';
+import * as DateTime from 'effect/DateTime';
+import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
+
+import { toTelegramUser } from '../context/telegram-user.mapper';
+
+import type { Message } from 'grammy/types';
+
+const linkCommand = /^\/link(?:@\w+)?\s+(\S+)/u;
+
+const handleLink = Effect.fn('Bot.handleLink')(function* (message: Message, slug: string) {
+    const telegram = yield* Telegram;
+    const sender = message.from;
+    const reply = (body: string) =>
+        telegram.call('sendMessage', api =>
+            api.sendMessage(message.chat.id, body, { reply_parameters: { message_id: message.message_id } })
+        );
+    const communityId = yield* findCommunityBySlug(slug);
+
+    if (!isDefined(sender) || Option.isNone(communityId) || !(yield* adminCommunityIds(BigInt(sender.id))).includes(communityId.value)) {
+        yield* reply(text('uk', 'unknownCommunity'));
+
+        return;
+    }
+
+    if (message.chat.type !== 'group' && message.chat.type !== 'supergroup') {
+        return;
+    }
+
+    yield* bindChat({
+        communityId: communityId.value,
+        chatId: BigInt(message.chat.id),
+        kind: message.chat.type,
+        title: message.chat.title
+    });
+    yield* reply(`${text('uk', 'linked')}: ${slug}`);
+});
+
+export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* (message: Message) {
+    const sender = message.from;
+    const body = message.text ?? message.caption;
+
+    if (!isDefined(sender) || sender.is_bot) {
+        return;
+    }
+
+    const link = linkCommand.exec(body ?? '');
+
+    if (isDefined(link)) {
+        yield* handleLink(message, link[1] ?? '');
+
+        return;
+    }
+
+    const communityId = yield* findCommunityByChat(BigInt(message.chat.id));
+
+    if (Option.isNone(communityId)) {
+        return;
+    }
+
+    const user = toTelegramUser(sender);
+    const personId = yield* upsertTelegramUser(user);
+    yield* ensureMembership(communityId.value, personId);
+    const profile = yield* communityProfile(communityId.value);
+    const config = profile.pipe(Option.flatMap(value => value.config));
+
+    if (Option.isNone(config)) {
+        return;
+    }
+
+    const result = yield* ingestGroupMessage(communityId.value, config.value, {
+        chatId: BigInt(message.chat.id),
+        messageId: message.message_id,
+        sentAt: DateTime.toDate(DateTime.makeUnsafe(message.date * 1000)),
+        senderPersonId: personId,
+        senderTgUserId: user.id,
+        senderName: displayNameOf(user),
+        senderIsAdmin: yield* isAdminOf(user.id, communityId.value),
+        ...(isDefined(body) ? { text: body } : {}),
+        ...(isDefined(message.poll)
+            ? { poll: { question: message.poll.question, answers: message.poll.options.map(option => option.text) } }
+            : {})
+    });
+
+    if (result.poll || result.lineup || result.cancellation) {
+        yield* Effect.logInfo('[group] extracted', result);
+    }
+});
