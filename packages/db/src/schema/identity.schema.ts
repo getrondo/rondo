@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { bigint, date, index, numeric, pgSchema, text, uniqueIndex, integer, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 import { createdAt, id, instant, ref, updatedAt, requiredRef } from './columns';
@@ -34,7 +35,12 @@ export const telegramAccount = identity.table(
         firstSeenAt: instant('first_seen_at').notNull().defaultNow(),
         lastSeenAt: instant('last_seen_at').notNull().defaultNow()
     },
-    t => [uniqueIndex('telegram_account_person_uq').on(t.personId)]
+    t => [
+        index('telegram_account_person_idx').on(t.personId),
+        uniqueIndex('telegram_account_username_uq')
+            .on(sql`lower(${t.username})`)
+            .where(sql`${t.username} is not null`)
+    ]
 );
 
 export const telegramAuthor = identity.table(
