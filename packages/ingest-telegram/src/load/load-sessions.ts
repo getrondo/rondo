@@ -1,6 +1,6 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { extraction, sourceRef } from '@rondo/db/schema/platform.schema';
-import { lineupEntry, team } from '@rondo/db/schema/play.schema';
+import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session, sessionChange, signup } from '@rondo/db/schema/scheduling.schema';
 import { and, eq, inArray, notExists, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
@@ -312,7 +312,12 @@ export const loadSessions = Effect.fn('IngestTelegram.loadSessions')(function* (
     const liveSessionIds = new Set(live.map(({ sessionId }) => sessionId));
     const lineups = live.filter(({ isLineup }) => isLineup);
     const liveLineups = new Set(lineups.map(({ sessionId }) => sessionId));
-    const storedLineups = new Set(lineups.filter(({ isStored }) => isStored).map(({ sessionId }) => sessionId));
+    const published = yield* context.transaction
+        .selectDistinct({ sessionId: teamMember.sessionId })
+        .from(teamMember)
+        .innerJoin(session, eq(session.id, teamMember.sessionId))
+        .where(and(eq(session.communityId, context.communityId), eq(teamMember.assignedBy, 'balancer')));
+    const storedLineups = new Set([...lineups.filter(({ isStored }) => isStored), ...published].map(({ sessionId }) => sessionId));
     const sessionIds = yield* upsertSessionRows(context, reference, live);
 
     yield* deleteStaleSessions(context, new Set([...sessionIds, ...liveSessionIds]));

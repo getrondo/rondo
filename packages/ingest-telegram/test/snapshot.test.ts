@@ -10,12 +10,13 @@ import { testDbLayer } from '@rondo/db/testing/test-db.layer';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
+import * as Option from 'effect/Option';
 import * as Tracer from 'effect/Tracer';
 
 import { assemblePlan } from '../src/extract/assemble-plan';
 import { extractAll } from '../src/extract/extract-all';
 import { loadEvidence } from '../src/identity/load-evidence';
-import { withoutLiveMessages } from '../src/load/live-messages';
+import { importMessages } from '../src/ingest.effect';
 import { loadPlan } from '../src/load/load-plan';
 import { parseSnapshot } from '../src/parse/parse-snapshot';
 
@@ -94,8 +95,8 @@ const snapshot = parseSnapshot({
 const load = Effect.fn('test.load')(function* (slug: string, source: readonly TelegramMessage[] = [...messages, ...chat]) {
     const db = yield* Db;
     const config = { ...testConfig, slug };
-    const plan = assemblePlan(extractAll(yield* withoutLiveMessages(slug, source), config), '2025-06-30');
-    const stats = yield* loadPlan(config, plan, 'sha', yield* snapshot);
+    const content = yield* snapshot;
+    const stats = yield* importMessages({ config, messages: source, fileSha256: 'sha', snapshot: Option.fromNullishOr(content) });
     const [row] = yield* db.select().from(community).where(eq(community.slug, slug));
     const communityId = row?.id ?? '';
     const entries = yield* db
@@ -428,7 +429,10 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
             yield* db.execute(sql`
                 create function play.require_lock() returns trigger language plpgsql as $$
                 begin
-                    if not exists (select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() and granted) then
+                    if not exists (
+                        select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() and granted
+                        and ((classid::bigint << 32) | objid::bigint) = hashtextextended('rondo.community:locked-fc', 0)
+                    ) then
                         raise exception 'no community lock';
                     end if;
                     return new;
@@ -436,9 +440,9 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
             yield* db.execute(
                 sql`create trigger require_lock before insert on play.lineup_entry for each row execute function play.require_lock()`
             );
-            const outcome = yield* Effect.exit(load('locked-fc'));
-            yield* db.execute(sql`drop trigger require_lock on play.lineup_entry`);
-            yield* db.execute(sql`drop function play.require_lock`);
+            const outcome = yield* Effect.exit(load('locked-fc')).pipe(
+                Effect.ensuring(db.execute(sql`drop function play.require_lock cascade`).pipe(Effect.orDie))
+            );
 
             expect(Exit.isSuccess(outcome)).toBe(true);
         })
@@ -499,6 +503,51 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
             expect(before.length).toBeGreaterThan(0);
             expect(after).toEqual(before);
             expect(again.entries.filter(({ entry }) => entry.sessionId === sessionId)).toEqual([]);
+        })
+    );
+
+    it.effect('keeps published teams of a game that also has entries with vote links', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'balanced-fc';
+            const first = yield* load(slug);
+            const linked = first.entries.find(({ entry, localDate }) => entry.resolvedBy === 'vote' && localDate === '2025-05-05')?.entry;
+            const sessionId = linked?.sessionId ?? '';
+            const striker = yield* accountPerson(ids.striker);
+            const other = yield* accountPerson(ids.other);
+            yield* db.delete(team).where(eq(team.sessionId, sessionId));
+            const teams = yield* db
+                .insert(team)
+                .values([1, 2, 3].map(ordinal => ({ sessionId, ordinal })))
+                .returning({ id: team.id });
+            yield* db.insert(teamMember).values(
+                [other, striker].map((personId, index) => ({
+                    teamId: teams[index]?.id ?? '',
+                    sessionId,
+                    personId,
+                    assignedBy: 'balancer' as const
+                }))
+            );
+            const membersOf = () => db.select().from(teamMember).where(eq(teamMember.sessionId, sessionId)).orderBy(teamMember.personId);
+            const before = yield* membersOf();
+            yield* load(slug);
+            const unreferenced = yield* membersOf();
+            yield* db.insert(telegramChat).values({ chatId: -903n, communityId: first.communityId, kind: 'supergroup', title: 'Bal' });
+            yield* db.insert(messageRef).values({
+                chatId: -903n,
+                messageId: 777_777,
+                purpose: 'lineup',
+                entityType: 'session',
+                entityId: sessionId
+            });
+            yield* load(slug);
+            const played = yield* db.select().from(attendance).where(eq(attendance.sessionId, sessionId));
+
+            expect(linked?.personId).toBe(striker);
+            expect(unreferenced).toEqual(before);
+            expect(yield* membersOf()).toEqual(before);
+            expect(played.map(({ personId }) => personId)).toContain(striker);
+            expect(played.map(({ personId }) => personId)).not.toContain(other);
         })
     );
 });

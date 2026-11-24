@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
-import { Db } from '@rondo/db/service/db.service';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as FileSystem from 'effect/FileSystem';
@@ -16,7 +15,7 @@ import { extractAll } from './extract/extract-all';
 import { instantToLocalDate } from './extract/zoned-time';
 import { withoutLiveMessages } from './load/live-messages';
 import { loadPlan } from './load/load-plan';
-import { lockCommunity } from './load/lock-community';
+import { withCommunityLock } from './load/with-community-lock';
 import { parseHtmlPage } from './parse/parse-html-export';
 import { parseJsonExport } from './parse/parse-json-export';
 import { parseSnapshot } from './parse/parse-snapshot';
@@ -89,22 +88,38 @@ const readConfig = Effect.fn('IngestTelegram.readConfig')(function* (configPath:
     return yield* Schema.decodeEffect(Schema.fromJsonString(CommunityConfigSchema))(raw);
 });
 
-export const ingest = Effect.fn('IngestTelegram.ingest')(function* (exportDir: string, configPath: string) {
-    const db = yield* Db;
-    const config = yield* readConfig(configPath);
-    const { messages, fileSha256 } = yield* readMessages(exportDir, config);
-    const snapshot = yield* readSnapshot(exportDir);
+interface ExportContent {
+    readonly config: CommunityConfig;
+    readonly messages: readonly TelegramMessage[];
+    readonly fileSha256: string;
+    readonly snapshot: Option.Option<TelegramSnapshot>;
+}
+
+export const importMessages = Effect.fn('IngestTelegram.importMessages')(function* ({
+    config,
+    messages,
+    fileSha256,
+    snapshot
+}: ExportContent) {
     const now = yield* DateTime.nowAsDate;
     const lastSent = messages.findLast(message => isDefined(message.sentAt))?.sentAt ?? now;
-    const stats = yield* db.transaction(() =>
+
+    return yield* withCommunityLock(
+        { slug: config.slug },
         Effect.gen(function* () {
-            yield* lockCommunity(config.slug);
             const unhandled = yield* withoutLiveMessages(config.slug, messages);
             const plan = assemblePlan(extractAll(unhandled, config), instantToLocalDate(lastSent, config.timeZone));
 
             return yield* loadPlan(config, plan, fileSha256, Option.getOrUndefined(snapshot));
         })
     );
+});
+
+export const ingest = Effect.fn('IngestTelegram.ingest')(function* (exportDir: string, configPath: string) {
+    const config = yield* readConfig(configPath);
+    const { messages, fileSha256 } = yield* readMessages(exportDir, config);
+    const snapshot = yield* readSnapshot(exportDir);
+    const stats = yield* importMessages({ config, messages, fileSha256, snapshot });
 
     yield* Effect.logInfo('Telegram export ingested', stats);
 
