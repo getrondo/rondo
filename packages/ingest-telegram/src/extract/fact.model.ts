@@ -50,6 +50,7 @@ export interface PriceFact {
 
 export interface CancellationFact {
     readonly messageId: number;
+    readonly postedAt: Date;
     readonly localDate: string;
     readonly reason: 'weather' | 'low_turnout' | 'venue' | 'holiday' | 'organizer' | 'other';
 }
@@ -73,13 +74,6 @@ export interface AuthorFact {
     readonly lastSeenAt: Date;
 }
 
-export interface LocationFact {
-    readonly messageId: number;
-    readonly localDate: string;
-    readonly lat: number;
-    readonly lng: number;
-}
-
 export interface ExtractedFacts {
     readonly polls: readonly PollFact[];
     readonly lineups: readonly LineupFact[];
@@ -87,5 +81,4 @@ export interface ExtractedFacts {
     readonly cancellations: readonly CancellationFact[];
     readonly fixtures: readonly FixtureFact[];
     readonly authors: readonly AuthorFact[];
-    readonly locations: readonly LocationFact[];
 }

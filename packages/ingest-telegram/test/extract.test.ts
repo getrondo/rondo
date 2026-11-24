@@ -22,6 +22,16 @@ describe('game date resolution', () => {
         expect(resolveGameDate('Пятница, 3 января', '2024-12-30').date).toBe('2025-01-03');
     });
 
+    it('reads the genitive month of May', () => {
+        expect(resolveGameDate('Четверг, 15 мая, 19.00', '2025-05-01')).toEqual({ date: '2025-05-15', confidence: 0.95 });
+    });
+
+    it('rejects dates that do not exist on the calendar', () => {
+        expect(resolveGameDate('Играем 31 апреля', '2025-04-20')).toEqual({ date: '2025-04-20', confidence: 0.4 });
+        expect(resolveGameDate('Играем 29 февраля', '2025-02-20').date).toBe('2025-02-20');
+        expect(resolveGameDate('Играем 29 февраля', '2024-02-20').date).toBe('2024-02-29');
+    });
+
     it('resolves today and tomorrow', () => {
         expect(resolveGameDate('Сегодня играем', '2025-05-02').date).toBe('2025-05-02');
         expect(resolveGameDate('Завтра 19:00', '2025-05-02').date).toBe('2025-05-03');
@@ -79,6 +89,18 @@ describe('line-ups', () => {
         expect(lineup?.teams[1]?.members[1]?.isNewcomer).toBe(true);
     });
 
+    it('takes the game date from the header when it names one', () => {
+        const body = '\n🟢Я, Иван\n🔵Олег, Семён';
+        const dateOf = (header: string) =>
+            extractLineup(message(12, '2025-05-05T15:00:00Z', `${header}${body}`), testConfig, venueOf)?.localDate;
+
+        expect(dateOf('Составы на завтра, North:')).toBe('2025-05-06');
+        expect(dateOf('Составы на 9 мая, North:')).toBe('2025-05-09');
+        expect(dateOf('Составы на сегодня, North:')).toBe('2025-05-05');
+        expect(dateOf('Составы, North:')).toBe('2025-05-05');
+        expect(dateOf('Составы на пятницу, North:')).toBe('2025-05-05');
+    });
+
     it('ignores messages with fewer than two teams', () => {
         expect(extractLineup(message(11, '2025-05-05T15:00:00Z', 'Составы позже'), testConfig, venueOf)).toBeUndefined();
     });
@@ -113,6 +135,16 @@ describe('league fixtures', () => {
             ['Alpha', 6, 4],
             ['Beta', 17, 9]
         ]);
+    });
+
+    it('does not borrow the score of the next pairing', () => {
+        expect(
+            fixtures(message(23, '2025-09-11T10:00:00Z', 'TFC- Alpha\nTFC- Beta 3:1')).map(fact => [
+                fact.opponent,
+                fact.goalsFor,
+                fact.goalsAgainst
+            ])
+        ).toEqual([['Beta', 3, 1]]);
     });
 
     it('ignores messages from non-organizers', () => {

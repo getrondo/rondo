@@ -42,3 +42,9 @@ export const addDays = (isoDate: string, days: number): string => {
 };
 
 export const weekdayOf = (isoDate: string): number => new Date(`${isoDate}T12:00:00Z`).getUTCDay();
+
+export const isCalendarDate = (year: number, month: number, day: number): boolean => {
+    const date = new Date(Date.UTC(year, month - 1, day));
+
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+};

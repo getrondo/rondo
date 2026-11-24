@@ -77,13 +77,6 @@ const parseDateTitle = (title: string | undefined, timeZone: string): Date | und
         Option.getOrUndefined
     );
 
-const parseLocation = (body: HTMLElement): TelegramMessage['location'] =>
-    Option.fromNullishOr(body.querySelector('.media_location')?.getAttribute('href')).pipe(
-        Option.flatMap(href => Option.fromNullishOr(/q=(-?\d+\.\d+),(-?\d+\.\d+)/u.exec(href))),
-        Option.map(match => ({ lat: Number(match[1]), lng: Number(match[2]) })),
-        Option.getOrUndefined
-    );
-
 const parsePoll = (body: HTMLElement): TelegramMessage['poll'] =>
     Option.fromNullishOr(body.querySelector('.media_poll')).pipe(
         Option.map(poll => ({
@@ -109,7 +102,6 @@ const parseUserMessage = (id: number, body: HTMLElement, author: string | undefi
     forwardedFrom: textOf(body.querySelector('.forwarded_from'))?.replace(/^Forwarded from\s*/u, ''),
     text: textOf(body.querySelector(':scope > .text')),
     poll: parsePoll(body),
-    location: parseLocation(body),
     media: mediaSelectors.filter(([, selector]) => isDefined(body.querySelector(selector))).map(([kind]) => kind)
 });
 

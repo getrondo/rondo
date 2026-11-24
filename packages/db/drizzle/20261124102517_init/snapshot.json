@@ -2,7 +2,7 @@
     "type": "base",
     "version": "10",
     "dialect": "postgres",
-    "id": "7393808b-339b-4bed-b038-2a4b28639b52",
+    "id": "04a431ff-fff0-4634-9c51-ff27a2bb3d65",
     "prevIds": ["00000000-0000-0000-0000-000000000000"],
     "footprints": [
         {
@@ -1966,22 +1966,6 @@
         },
         {
             "statementType": "create_index",
-            "statementTarget": ["index", "scheduling", "signup", "signup_queue_uq"],
-            "writes": [
-                "s|idx|scheduling.signup_queue_uq",
-                "n|idx|scheduling.signup_queue_uq",
-                "e|idx|scheduling.signup_queue_uq",
-                "n|rel|scheduling.signup_queue_uq"
-            ],
-            "reads": [
-                "n|tbl|scheduling.signup",
-                "n|sch|scheduling",
-                "n|col|scheduling.signup.session_id",
-                "n|col|scheduling.signup.queue_pos"
-            ]
-        },
-        {
-            "statementType": "create_index",
             "statementTarget": ["index", "scheduling", "signup_event", "signup_event_signup_idx"],
             "writes": [
                 "s|idx|scheduling.signup_event_signup_idx",
@@ -2036,14 +2020,14 @@
         },
         {
             "statementType": "create_index",
-            "statementTarget": ["index", "venue", "venue", "venue_community_idx"],
+            "statementTarget": ["index", "venue", "venue", "venue_community_name_uq"],
             "writes": [
-                "s|idx|venue.venue_community_idx",
-                "n|idx|venue.venue_community_idx",
-                "e|idx|venue.venue_community_idx",
-                "n|rel|venue.venue_community_idx"
+                "s|idx|venue.venue_community_name_uq",
+                "n|idx|venue.venue_community_name_uq",
+                "e|idx|venue.venue_community_name_uq",
+                "n|rel|venue.venue_community_name_uq"
             ],
-            "reads": ["n|tbl|venue.venue", "n|sch|venue", "n|col|venue.venue.community_id"]
+            "reads": ["n|tbl|venue.venue", "n|sch|venue", "n|col|venue.venue.community_id", "n|col|venue.venue.name"]
         },
         {
             "statementType": "create_fk",
@@ -5251,7 +5235,7 @@
         {
             "schema": "ingest",
             "name": "source_ref_kind",
-            "values": ["poll", "lineup", "cancel", "result", "location", "price", "service", "message"],
+            "values": ["poll", "lineup", "cancel", "result", "price", "service", "message"],
             "entityType": "enums"
         },
         {
@@ -6430,19 +6414,6 @@
             "notNull": true,
             "dimensions": 0,
             "default": null,
-            "generated": null,
-            "identity": null,
-            "entityType": "columns"
-        },
-        {
-            "schema": "finance",
-            "table": "ledger_entry",
-            "name": "currency",
-            "type": "text",
-            "typeSchema": null,
-            "notNull": true,
-            "dimensions": 0,
-            "default": "'EUR'",
             "generated": null,
             "identity": null,
             "entityType": "columns"
@@ -11052,19 +11023,6 @@
         {
             "schema": "scheduling",
             "table": "signup",
-            "name": "queue_pos",
-            "type": "integer",
-            "typeSchema": null,
-            "notNull": false,
-            "dimensions": 0,
-            "default": null,
-            "generated": null,
-            "identity": null,
-            "entityType": "columns"
-        },
-        {
-            "schema": "scheduling",
-            "table": "signup",
             "name": "guest_of_person_id",
             "type": "uuid",
             "typeSchema": null,
@@ -12839,33 +12797,6 @@
         },
         {
             "schema": "scheduling",
-            "table": "signup",
-            "name": "signup_queue_uq",
-            "nameExplicit": true,
-            "columns": [
-                {
-                    "value": "session_id",
-                    "isExpression": false,
-                    "asc": true,
-                    "nullsFirst": false,
-                    "opclass": null
-                },
-                {
-                    "value": "queue_pos",
-                    "isExpression": false,
-                    "asc": true,
-                    "nullsFirst": false,
-                    "opclass": null
-                }
-            ],
-            "isUnique": true,
-            "where": "\"status\" = 'waitlisted'",
-            "with": "",
-            "method": "btree",
-            "entityType": "indexes"
-        },
-        {
-            "schema": "scheduling",
             "table": "signup_event",
             "name": "signup_event_signup_idx",
             "nameExplicit": true,
@@ -12961,7 +12892,7 @@
         {
             "schema": "venue",
             "table": "venue",
-            "name": "venue_community_idx",
+            "name": "venue_community_name_uq",
             "nameExplicit": true,
             "columns": [
                 {
@@ -12970,9 +12901,16 @@
                     "asc": true,
                     "nullsFirst": false,
                     "opclass": null
+                },
+                {
+                    "value": "name",
+                    "isExpression": false,
+                    "asc": true,
+                    "nullsFirst": false,
+                    "opclass": null
                 }
             ],
-            "isUnique": false,
+            "isUnique": true,
             "where": null,
             "with": "",
             "method": "btree",

@@ -60,7 +60,7 @@ CREATE TYPE "audit"."actor_kind" AS ENUM('user', 'bot', 'system');--> statement-
 CREATE TYPE "comms"."channel" AS ENUM('dm', 'group');--> statement-breakpoint
 CREATE TYPE "ingest"."ingest_source" AS ENUM('telegram_html', 'telegram_json');--> statement-breakpoint
 CREATE TYPE "comms"."message_purpose" AS ENUM('game_card', 'lineup', 'announcement', 'reminder', 'poll');--> statement-breakpoint
-CREATE TYPE "ingest"."source_ref_kind" AS ENUM('poll', 'lineup', 'cancel', 'result', 'location', 'price', 'service', 'message');--> statement-breakpoint
+CREATE TYPE "ingest"."source_ref_kind" AS ENUM('poll', 'lineup', 'cancel', 'result', 'price', 'service', 'message');--> statement-breakpoint
 CREATE TYPE "play"."assigned_by" AS ENUM('organizer', 'balancer', 'captain_pick', 'import');--> statement-breakpoint
 CREATE TYPE "play"."match_event_kind" AS ENUM('goal', 'own_goal', 'assist', 'yellow', 'timeout_2min', 'red', 'injury');--> statement-breakpoint
 CREATE TYPE "play"."match_stage" AS ENUM('rotation', 'round_robin', 'group', 'quarter_final', 'semi_final', 'final', 'friendly');--> statement-breakpoint
@@ -211,7 +211,6 @@ CREATE TABLE "finance"."ledger_entry" (
 	"txn_id" uuid NOT NULL,
 	"account_id" uuid NOT NULL,
 	"amount_cents" bigint NOT NULL,
-	"currency" text DEFAULT 'EUR' NOT NULL,
 	CONSTRAINT "ledger_entry_nonzero_ck" CHECK ("amount_cents" <> 0)
 );
 --> statement-breakpoint
@@ -729,7 +728,6 @@ CREATE TABLE "scheduling"."signup" (
 	"person_id" uuid NOT NULL,
 	"role" "scheduling"."signup_role" DEFAULT 'field'::"scheduling"."signup_role" NOT NULL,
 	"status" "scheduling"."signup_status" NOT NULL,
-	"queue_pos" integer,
 	"guest_of_person_id" uuid,
 	"priority" "scheduling"."signup_priority" DEFAULT 'normal'::"scheduling"."signup_priority" NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -858,12 +856,11 @@ CREATE INDEX "session_community_date_idx" ON "scheduling"."session" ("community_
 CREATE INDEX "session_venue_idx" ON "scheduling"."session" ("venue_id");--> statement-breakpoint
 CREATE INDEX "session_change_session_idx" ON "scheduling"."session_change" ("session_id","at");--> statement-breakpoint
 CREATE UNIQUE INDEX "signup_session_person_uq" ON "scheduling"."signup" ("session_id","person_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "signup_queue_uq" ON "scheduling"."signup" ("session_id","queue_pos") WHERE "status" = 'waitlisted';--> statement-breakpoint
 CREATE INDEX "signup_event_signup_idx" ON "scheduling"."signup_event" ("signup_id","at");--> statement-breakpoint
 CREATE INDEX "weather_session_idx" ON "scheduling"."weather_snapshot" ("session_id","fetched_at");--> statement-breakpoint
 CREATE INDEX "booking_field_idx" ON "venue"."booking" ("field_id");--> statement-breakpoint
 CREATE INDEX "field_venue_idx" ON "venue"."field" ("venue_id");--> statement-breakpoint
-CREATE INDEX "venue_community_idx" ON "venue"."venue" ("community_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "venue_community_name_uq" ON "venue"."venue" ("community_id","name");--> statement-breakpoint
 ALTER TABLE "community"."ad" ADD CONSTRAINT "ad_community_id_community_id_fkey" FOREIGN KEY ("community_id") REFERENCES "org"."community"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "community"."ad" ADD CONSTRAINT "ad_author_id_person_id_fkey" FOREIGN KEY ("author_id") REFERENCES "identity"."person"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "community"."equipment" ADD CONSTRAINT "equipment_community_id_community_id_fkey" FOREIGN KEY ("community_id") REFERENCES "org"."community"("id") ON DELETE CASCADE;--> statement-breakpoint

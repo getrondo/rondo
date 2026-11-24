@@ -50,12 +50,17 @@ pnpm -F @rondo/ingest-telegram ingest
 psql "$DATABASE_URL" -c "select analytics.refresh_all()"
 ```
 
-The import runs in one transaction and replaces the previously imported rows for that community
-(`source = 'import'`), so re-running it on a newer export is safe.
+The import runs in one transaction. It replaces only the import-scoped facts of that community
+(sessions, fixtures and price rules with `source = 'import'`, plus ingest runs) and upserts the
+rest: venues by `(community_id, name)`, aliases by `(community_id, alias_norm)` and authors by
+`(community_id, display_name)`. Re-running it on a newer export is safe: curated data (alias
+resolution and person links, manually added venues, bot-created sessions) is never overwritten, and
+persons are created only for aliases that did not exist yet. An export folder without any
+`messages*.html` page is rejected.
 
 ## 4. Review
 
-- **Aliases:** `identity.person_alias` holds every line-up name with occurrences and first/last seen. Merge duplicates and typos and link them to Telegram accounts (E15 alias-resolution UI).
+- **Aliases:** `identity.person_alias` holds every line-up name with occurrences and first/last seen. Merge duplicates and typos and link them to Telegram accounts (E15 alias-resolution UI). Your resolutions survive re-imports.
 - **Sessions without a line-up** are marked `played` with confidence ≤ 0.6; cancelled ones carry `cancel_reason`.
 - **Prices** are the monthly mode of "€N on the field" messages, scoped per venue when the message names one.
 

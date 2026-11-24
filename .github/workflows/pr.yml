@@ -77,7 +77,13 @@ jobs:
             - name: Generated files are committed
               id: diff
               continue-on-error: true
-              run: git diff --exit-code
+              run: |
+                  pnpm db:generate
+                  if [ -n "$(git status --porcelain)" ]; then
+                    git status --porcelain
+                    echo "::error::Generated files are not committed"
+                    exit 1
+                  fi
 
             - name: Summarize quality checks
               if: always()

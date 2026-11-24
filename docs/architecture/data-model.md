@@ -9,13 +9,13 @@ PostgreSQL 17 is the single source of truth. The schema is code: `packages/db/sr
 | Principle                                  | How                                                                                                                                                                                                                                                            |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Bounded contexts** | One Postgres schema per context (`identity`, `org`, `venue`, `scheduling`, `play`, `finance`, `feedback`, `league`, `community`, `comms`, `ingest`, `audit`), plus `play_private` and `feedback_private` for admin-only data and `analytics` for read models. Cross-context references are FKs by id only; no cross-context writes outside the owning service. |
-| **Multi-tenant from day one**              | Every tenant-owned row carries `community_id`. Row-level security policies use `current_setting('app.community_id')`. One community today, many tomorrow.                                                                                                      |
+| **Multi-tenant ready**                     | `community_id` sits on every aggregate root (child rows reach it through their parent). Row-level security is added together with the second tenant (E14); there is one community today, so none is enabled yet.                                                                                                      |
 | **Time-ordered ids** | `uuid` v7 primary keys generated in the app (`uuid` v7), so ids are sortable, index-friendly and safe to expose; switch to `uuidv7()` defaults on PG 18. Telegram ids are stored as `bigint` natural keys alongside. |
 | **Time is explicit**                       | All instants are `timestamptz`; local wall-clock (Europe/Vienna) lives on the community. Intervals use `tstzrange` / `daterange` with **exclusion constraints** (no double-booking a field; no overlapping price rules).                                       |
 | **History is append-only**                 | State tables have a matching `*_event` table (signup transitions, session changes, rating updates). Facts are never overwritten: reliability, audit and analytics read the events.                                                                             |
-| **Money is double-entry**                  | `finance.ledger_entry` rows per transaction sum to zero (deferred constraint trigger). Integer cents, ISO currency. No floats.                                                                                                                                 |
+| **Money is double-entry**                  | `finance.ledger_entry` rows per transaction sum to zero (deferred constraint trigger). Integer cents, the currency lives on the `account`. No floats.                                                                                                                                 |
 | **Enums as types, vocabularies as tables** | Small closed sets are Postgres enums (`signup_status`). Community-extensible sets are tables (activities, team colours, award kinds).                                                                                                                          |
-| **Privacy by design** | Personal data is concentrated in `identity`; analytics use `person_id`. `person.anonymized_at` plus a scrub job implement GDPR erasure without breaking aggregates. Ratings, peer ratings and incident reports live in `play_private` / `feedback_private`, granted only to the `rondo_admin` role. Tenant tables have row-level security for the `rondo_app` role (`app.community_id`). |
+| **Privacy by design** | Personal data is concentrated in `identity`; analytics use `person_id`. `person.anonymized_at` plus a scrub job implement GDPR erasure without breaking aggregates. Ratings, peer ratings and incident reports live in `play_private` / `feedback_private`, granted only to the `rondo_admin` role. Row-level tenant isolation is planned with the second tenant (E14). |
 | **Provenance**                             | Every imported or derived row has `source` (`bot`, `import`, `manual`) and optional `ingest.source_ref_id`, so imported history can be re-run idempotently and told apart.                                                                                     |
 | **Integrations via outbox**                | Domain events are written to `comms.outbox` in the same transaction; workers deliver them (Telegram messages, notifications). This gives exactly-once business effects with at-least-once delivery.                                                            |
 
@@ -63,7 +63,7 @@ erDiagram
 | `person`           | `id`, `display_name`, `locale` (`uk`/`ru`/…), `birth_date?` (opt-in), `created_at`, `anonymized_at?`                                                                                                                                                                                  | One human. Not tenant-scoped (a person can be in several communities).                                                                    |
 | `telegram_author` | `id`, `community_id`, `display_name`, `tg_user_id?`, `person_id?`, `message_count`, `first_seen_at`, `last_seen_at` | Authors seen in imported history (HTML exports carry display names, not ids); linked to a person during alias resolution. |
 | `telegram_account` | `tg_user_id bigint PK`, `person_id`, `username?`, `first_name`, `last_name?`, `language_code?`, `first_seen_at`, `last_seen_at`                                                                                                                                                       | 0..1 per person. Guests have none.                                                                                                        |
-| `person_alias`     | `id`, `community_id`, `person_id?`, `alias`, `alias_norm` (lower, unaccented, transliterated), `kind` (`nickname`/`first_name`/`placeholder`), `occurrences`, `first_seen_at`, `last_seen_at`, `resolution` (`unresolved`/`suggested`/`confirmed`/`guest`), `confidence numeric(3,2)` | How players appear in line-ups ("Brother 2", "Artem Miner"). Unique `(community_id, alias_norm, person_id)`. Drives E15 alias resolution. |
+| `person_alias`     | `id`, `community_id`, `person_id?`, `alias`, `alias_norm` (lower, unaccented, transliterated), `kind` (`nickname`/`first_name`/`full_name`/`placeholder`/`self`), `occurrences`, `first_seen_at`, `last_seen_at`, `resolution` (`unresolved`/`suggested`/`confirmed`/`guest`/`ignored`), `confidence numeric(3,2)` | How players appear in line-ups (for example "Player 2", "Ivan Sample"). Unique `(community_id, alias_norm)`; re-imports refresh counts and seen dates but never touch `person_id`, `resolution` or `confidence`. Drives E15 alias resolution. |
 | `consent`          | `person_id`, `purpose` (`processing`/`birthday`/`stats_public`/`dm_notifications`), `policy_version`, `granted_at`, `revoked_at?`                                                                                                                                                     | GDPR lawful basis per purpose.                                                                                                            |
 
 ### `org`: tenancy, groups and roles
@@ -92,11 +92,11 @@ erDiagram
 
 | Table              | Key columns                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Notes                                                                                  |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `series`           | `id`, `activity_id`, `venue_id`, `rrule` (RFC 5545), `local_start time`, `duration`, `capacity_min/max`, `gk_slots`, `price_rule_id`, `publish_offset interval`, `cancel_cutoff_offset`, `active daterange`                                                                                                                                                                                                                                                  | "Monday 19:00 Kendler, 18, €10".                                                       |
+| `series`           | `id`, `activity_id`, `venue_id`, `rrule` (RFC 5545), `local_start time`, `duration`, `capacity_min/max`, `gk_slots`, `publish_offset interval`, `cancel_cutoff_offset`, `active daterange`                                                                                                                                                                                                                                                  | "Monday 19:00 Kendler, 18, €10".                                                       |
 | `session`          | `id`, `community_id`, `activity_id`, `series_id?`, `venue_id`, `during tstzrange`, `status` (`draft`/`open`/`full`/`locked`/`played`/`cancelled`/`moved`), `capacity_min`, `capacity_max`, `gk_slots`, `fields_planned`, `format` (e.g. `3x6`), `signup_opens_at`, `cancel_cutoff_at`, `cancel_reason?` (`weather`/`low_turnout`/`venue`/`holiday`/`organizer`/`other`), `moved_to_session_id?`, `kind` (`casual`/`training`/`tournament`/`event`), `source` | The core entity. Imported sessions carry `confidence`.                                 |
 | `session_field`    | `session_id`, `field_id`, `booking_id?`                                                                                                                                                                                                                                                                                                                                                                                                                      | 1–3 fields per session.                                                                |
 | `session_change`   | `id`, `session_id`, `at`, `actor_person_id`, `diff jsonb`, `notified bool`                                                                                                                                                                                                                                                                                                                                                                                   | Time, venue, cap and status changes; drives E06 notifications.                         |
-| `signup`           | `id`, `session_id`, `person_id`, `role` (`field`/`gk`), `status` (`in`/`maybe`/`out`/`waitlisted`/`offered`), `queue_pos int?`, `guest_of_person_id?`, `priority` (`normal`/`held`/`reserve_bonus`), `created_at`, `updated_at`                                                                                                                                                                                                                              | Unique `(session_id, person_id)`. A guest is a person with no Telegram plus a sponsor. |
+| `signup`           | `id`, `session_id`, `person_id`, `role` (`field`/`gk`), `status` (`in`/`maybe`/`out`/`waitlisted`/`offered`), `guest_of_person_id?`, `priority` (`normal`/`held`/`reserve_bonus`), `created_at`, `updated_at`                                                                                                                                                                                                                              | Unique `(session_id, person_id)`. A guest is a person with no Telegram plus a sponsor. |
 | `signup_event`     | `id`, `signup_id`, `at`, `from_status`, `to_status`, `actor_person_id`, `late bool`                                                                                                                                                                                                                                                                                                                                                                          | Append-only; late-cancel and reliability are computed from here.                       |
 | `attendance`       | `session_id`, `person_id`, `outcome` (`attended`/`no_show`/`late`/`left_early`/`excused`), `late_minutes?`, `recorded_by`                                                                                                                                                                                                                                                                                                                                    | Post-game truth. Imported line-ups produce `attended`.                                 |
 | `duty`             | `session_id`, `person_id`, `kind` (`key`/`bibs`/`balls`/`collector`/`scorekeeper`/`first_aid`)                                                                                                                                                                                                                                                                                                                                                               | Match-day helpers.                                                                     |
@@ -123,11 +123,10 @@ erDiagram
 | Table              | Key columns                                                                                                                                                                                                                                 | Notes                                                                                                        |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `account`          | `id`, `community_id`, `kind` (`player_receivable`/`cash_box`/`organizer_bank`/`venue_payable`/`income`/`expense`/`prize_fund`), `person_id?`, `name`                                                                                        | One receivable account per player per community.                                                             |
-| `price_rule`       | `id`, `community_id`, `scope` (`activity`/`series`/`venue`/`session`), `scope_id`, `applies_to` (`field`/`gk`/`guest`/`hall_of_fame`), `amount_cents`, `headcount int4range?`, `valid daterange`                                            | €7 → €8 → €10; GK €5; "€15 if ≤10 players". Exclusion constraint on overlapping validity per scope and role. |
+| `price_rule`       | `id`, `community_id`, `scope` (`community`/`activity`/`series`/`venue`/`session`), `scope_id`, `applies_to` (`field`/`gk`/`guest`/`hall_of_fame`), `amount_cents`, `headcount int4range?`, `valid daterange`                                            | €7 → €8 → €10; GK €5; "€15 if ≤10 players". Exclusion constraint on overlapping validity per scope and role. |
 | `ledger_txn`       | `id`, `community_id`, `occurred_at`, `kind` (`session_fee`/`late_cancel_fee`/`no_show_fee`/`payment`/`venue_cost`/`event_split`/`prize`/`adjustment`), `session_id?`, `event_id?`, `memo`, `created_by`, `approved_by?`, `reverses_txn_id?` | Immutable; corrections reverse.                                                                              |
-| `ledger_entry`     | `id`, `txn_id`, `account_id`, `amount_cents bigint`, `currency`                                                                                                                                                                             | Σ per txn = 0.                                                                                               |
+| `ledger_entry`     | `id`, `txn_id`, `account_id`, `amount_cents bigint`                                                                                                                                                                             | Σ per txn = 0.                                                                                               |
 | `payment`          | `txn_id`, `payer_person_id`, `method` (`cash`/`sepa`/`other`), `collected_by_person_id?`, `confirmed_by?`, `confirmed_at?`                                                                                                                  |                                                                                                              |
-| `balance` _(view)_ | `person_id`, `community_id`, `balance_cents`                                                                                                                                                                                                | Materialized and refreshed on change.                                                                        |
 
 ### `feedback`
 
@@ -166,40 +165,40 @@ erDiagram
 ### `ingest`: imported history (data minimization)
 
 `run(id, community_id, source (telegram_html/telegram_json), file_sha256, started_at, finished_at, stats jsonb)`,
-`source_ref(id, run_id, chat_id, message_id, sent_at, kind (poll/lineup/cancel/result/location/service))`, storing references and extracted facts, **never raw message text**,
+`source_ref(id, run_id, chat_id, message_id, sent_at, kind (poll/lineup/cancel/result/price/service/message))`, storing references and extracted facts, **never raw message text**,
 `extraction(id, source_ref_id, entity_type, entity_id, confidence, parser_version)`.
 
 ### `audit`
 
-`audit.log(id, at, actor_person_id?, actor_kind (user/bot/system), community_id, action, entity_type, entity_id, diff jsonb)`, written by triggers on mutable tables and partitioned monthly.
+`audit.log(id, at, actor_person_id?, actor_kind (user/bot/system), community_id, action, entity_type, entity_id, diff jsonb)`, append-only (updates and deletes are rejected by trigger). Writers, triggers on mutable tables and monthly partitioning are planned.
 
 ## Read models and analytics
 
-Materialized views (refreshed by jobs), never written to by the app:
+Materialized views refreshed with `select analytics.refresh_all()`, never written to by the app:
 
-- `analytics.player_season`: games, attendance %, streak, mini-game W/D/L, goals, MVPs, reliability (late cancels and no-shows per 10 signups).
-- `analytics.session_fill`: signups over time, fill rate, waitlist length and conversion.
-- `analytics.venue_usage`: sessions per venue, field, weekday and season; cancellation by reason.
-- `analytics.community_health`: weekly active players, newcomers retained after 2/4/8 weeks, churned regulars.
-- `analytics.balance_quality`: predicted vs actual goal difference per session.
+- `analytics.player_attendance`: games, first and last game per person and year (attended, late and left-early outcomes of played sessions).
+- `analytics.venue_usage`: played and cancelled sessions per venue, weekday and year.
+- `analytics.community_monthly`: sessions played and cancelled, attendances and active players per month.
+
+Planned for later epics: per-season reliability and streaks, session fill and waitlist conversion, community health and balance quality.
 
 ## Key invariants (enforced in the database)
 
 1. No overlapping confirmed bookings per field (`EXCLUDE … tstzrange &&`).
-2. One signup per person per session; `queue_pos` unique per session among `waitlisted`.
+2. One signup per person per session.
 3. Ledger transactions balance to zero (deferred constraint trigger).
-4. Price rules don't overlap for the same scope, role and validity (`EXCLUDE … daterange &&`).
+4. Price rules don't overlap for the same scope, role and validity (`EXCLUDE … daterange &&`), checked separately among rules with a headcount range (where the ranges must not intersect) and among rules without one.
 5. A team member belongs to at most one team per session (unique on `(session_id, person_id)` via a denormalized column).
 6. `session.moved_to_session_id` implies `status = 'moved'` (CHECK).
-7. A guest signup requires `guest_of_person_id` when the person has no Telegram account (trigger).
+7. Venue names are unique per community (the importer upserts venues by name).
 
 ## Roles and security
 
 | Role | Can do |
 |---|---|
-| owner (migrations, importer) | Everything; bypasses RLS. Used only by migrations and the importer. |
-| `rondo_app` | CRUD on context schemas, limited to its tenant through RLS (`set app.community_id = …`); insert-only on `audit`; read on `analytics`. |
-| `rondo_admin` | `rondo_app` plus `play_private` and `feedback_private` (ratings, peer ratings, incidents). |
+| owner (migrations, importer) | Everything. Used only by migrations and the importer. |
+| `rondo_app` | CRUD on context schemas; insert-only on `audit`; read on `analytics`. Default privileges cover tables created by later migrations. Tenant isolation through RLS is planned with the second tenant (E14). |
+| `rondo_admin` | `rondo_app` plus `play_private` and `feedback_private` (ratings, peer ratings, incidents), also through default privileges. |
 
 Append-only tables (`finance.ledger_entry`, `scheduling.signup_event`, `audit.log`) reject UPDATE and DELETE by trigger.
 
@@ -209,7 +208,7 @@ First import of the community's export (June 2023 → November 2026), run with [
 
 | Entity | Rows | Notes |
 |---|---|---|
-| `scheduling.session` | 418 | 396 played, 22 cancelled (with reason); football 390, plus futsal, beach volleyball, boxing and basketball |
+| `scheduling.session` | 416 | 394 played, 22 cancelled (with reason); football 390, plus futsal, beach volleyball, boxing and basketball |
 | `play.team` / `play.team_member` | 668 / 4,219 | from ~205 posted line-ups |
 | `scheduling.attendance` | 4,219 | `source = 'import'` |
 | `identity.person_alias` | ~400 | about 120 recurring (≥ 5 games); typos and duplicates left for alias resolution |

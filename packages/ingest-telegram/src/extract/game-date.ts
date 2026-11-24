@@ -1,6 +1,7 @@
 import { isDefined } from '@rnw-community/shared';
+import * as Option from 'effect/Option';
 
-import { addDays, weekdayOf } from './zoned-time';
+import { addDays, isCalendarDate, weekdayOf } from './zoned-time';
 
 const weekdays: readonly (readonly [number, RegExp])[] = [
     [1, /понед[еі]л/iu],
@@ -17,7 +18,7 @@ const months: readonly (readonly [number, RegExp])[] = [
     [2, /феврал|лют/iu],
     [3, /март|берез/iu],
     [4, /апрел|квіт/iu],
-    [5, /ма[яйе]\b|травн/iu],
+    [5, /ма[яйе](?!\p{L})|травн/iu],
     [6, /июн|черв/iu],
     [7, /июл|лип/iu],
     [8, /август|серп/iu],
@@ -32,12 +33,14 @@ const localTimePattern = /(?<!\d)(1\d|2[0-3]|0?9)\s?[.:-]\s?(00|15|30|45)(?!\d)/
 
 const findWeekday = (text: string): number | undefined => weekdays.find(([, regex]) => regex.test(text))?.[0];
 
-const toIsoDate = (month: number, day: number, postedDate: string): string => {
+const toIsoDate = (month: number, day: number, postedDate: string): Option.Option<string> => {
     const postedYear = Number(postedDate.slice(0, 4));
     const postedMonth = Number(postedDate.slice(5, 7));
     const year = month < postedMonth - 6 ? postedYear + 1 : postedYear;
 
-    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return isCalendarDate(year, month, day)
+        ? Option.some(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`)
+        : Option.none();
 };
 
 const explicitDate = (text: string, postedDate: string): string | undefined =>
@@ -48,7 +51,7 @@ const explicitDate = (text: string, postedDate: string): string | undefined =>
             const day = Number(match[1]);
             const month = months.find(([, regex]) => regex.test(match[2] ?? ''))?.[0];
 
-            return isDefined(month) && day >= 1 && day <= 31 ? [toIsoDate(month, day, postedDate)] : [];
+            return isDefined(month) ? Option.toArray(toIsoDate(month, day, postedDate)) : [];
         })
         .at(0);
 

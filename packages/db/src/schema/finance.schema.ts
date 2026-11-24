@@ -86,8 +86,7 @@ export const ledgerEntry = finance.table(
         id: id(),
         txnId: requiredRef('txn_id', () => ledgerTxn.id, 'restrict'),
         accountId: requiredRef('account_id', () => account.id, 'restrict'),
-        amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
-        currency: text('currency').notNull().default('EUR')
+        amountCents: bigint('amount_cents', { mode: 'number' }).notNull()
     },
     t => [
         index('ledger_entry_account_idx').on(t.accountId),

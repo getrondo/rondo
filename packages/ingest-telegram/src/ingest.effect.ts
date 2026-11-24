@@ -1,13 +1,14 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as FileSystem from 'effect/FileSystem';
 import * as Schema from 'effect/Schema';
 
 import { CommunityConfigSchema, type CommunityConfig } from './config/community-config';
+import { ExportPagesNotFoundError } from './error/export-pages-not-found.error';
 import { assemblePlan } from './extract/assemble-plan';
 import { extractAll } from './extract/extract-all';
 import { instantToLocalDate } from './extract/zoned-time';
@@ -23,6 +24,11 @@ const readExport = Effect.fn('IngestTelegram.readExport')(function* (exportDir: 
     const pages = (yield* fs.readDirectory(exportDir))
         .filter(name => /^messages\d*\.html$/u.test(name))
         .toSorted((a, b) => pageOrder(a) - pageOrder(b));
+
+    if (!isNotEmptyArray(pages)) {
+        return yield* ExportPagesNotFoundError.make({ exportDir });
+    }
+
     const hash = createHash('sha256');
     const messages: TelegramMessage[] = [];
     let author: string | undefined;

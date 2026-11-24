@@ -18,7 +18,6 @@ const page = `<!DOCTYPE html><html><body><div class="history">
 <div class="pull_right date details" title="2 June 2023, 09:00:00">09:00</div>
 <div class="from_name">Player</div>
 <div class="reply_to details">In reply to <a href="#go_to_message2" onclick="return GoToMessage(2)">this message</a></div>
-<a class="media clearfix pull_left block_link media_location" href="https://maps.google.com/?q=48.2,16.3"><div class="body"><div class="title bold">Location</div></div></a>
 </div></div>
 </div></body></html>`;
 
@@ -48,7 +47,7 @@ describe('Telegram HTML export parsing', () => {
         });
     });
 
-    it('reads replies and locations', () => {
-        expect(messages[3]).toMatchObject({ replyTo: 2, location: { lat: 48.2, lng: 16.3 } });
+    it('reads replies', () => {
+        expect(messages[3]).toMatchObject({ replyTo: 2 });
     });
 });

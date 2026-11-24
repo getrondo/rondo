@@ -2,7 +2,9 @@ CREATE EXTENSION IF NOT EXISTS btree_gist;
 --> statement-breakpoint
 ALTER TABLE "venue"."booking" ADD CONSTRAINT "booking_no_overlap_ex" EXCLUDE USING gist ("field_id" WITH =, "during" WITH &&) WHERE ("status" <> 'released');
 --> statement-breakpoint
-ALTER TABLE "finance"."price_rule" ADD CONSTRAINT "price_rule_no_overlap_ex" EXCLUDE USING gist ("community_id" WITH =, "scope" WITH =, (coalesce("scope_id", '00000000-0000-0000-0000-000000000000'::uuid)) WITH =, "applies_to" WITH =, (coalesce("headcount", 'empty'::int4range)) WITH =, "valid" WITH &&);
+ALTER TABLE "finance"."price_rule" ADD CONSTRAINT "price_rule_headcount_no_overlap_ex" EXCLUDE USING gist ("community_id" WITH =, "scope" WITH =, (coalesce("scope_id", '00000000-0000-0000-0000-000000000000'::uuid)) WITH =, "applies_to" WITH =, "headcount" WITH &&, "valid" WITH &&) WHERE ("headcount" IS NOT NULL);
+--> statement-breakpoint
+ALTER TABLE "finance"."price_rule" ADD CONSTRAINT "price_rule_default_no_overlap_ex" EXCLUDE USING gist ("community_id" WITH =, "scope" WITH =, (coalesce("scope_id", '00000000-0000-0000-0000-000000000000'::uuid)) WITH =, "applies_to" WITH =, "valid" WITH &&) WHERE ("headcount" IS NULL);
 --> statement-breakpoint
 CREATE FUNCTION "finance"."assert_txn_balanced"() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -51,28 +53,6 @@ GRANT USAGE ON SCHEMA "play_private", "feedback_private" TO "rondo_admin";
 --> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "play_private", "feedback_private" TO "rondo_admin";
 --> statement-breakpoint
-CREATE FUNCTION "org"."current_community_id"() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('app.community_id', true), '')::uuid $$;
---> statement-breakpoint
-DO $$
-DECLARE
-    target record;
-BEGIN
-    FOR target IN
-        SELECT c.table_schema, c.table_name
-        FROM information_schema.columns c
-        JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
-        WHERE c.column_name = 'community_id' AND c.table_schema NOT IN ('audit', 'pg_catalog', 'information_schema')
-    LOOP
-        EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', target.table_schema, target.table_name);
-        EXECUTE format('CREATE POLICY tenant_isolation ON %I.%I TO rondo_app USING (community_id = org.current_community_id()) WITH CHECK (community_id = org.current_community_id())', target.table_schema, target.table_name);
-    END LOOP;
-END;
-$$;
---> statement-breakpoint
-ALTER TABLE "org"."community" ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY "tenant_isolation" ON "org"."community" TO "rondo_app" USING ("id" = "org"."current_community_id"());
---> statement-breakpoint
 CREATE SCHEMA "analytics";
 --> statement-breakpoint
 CREATE MATERIALIZED VIEW "analytics"."player_attendance" AS
@@ -94,7 +74,7 @@ CREATE UNIQUE INDEX "venue_usage_uq" ON "analytics"."venue_usage" ("community_id
 CREATE MATERIALIZED VIEW "analytics"."community_monthly" AS
 SELECT s."community_id", date_trunc('month', s."local_date"::date)::date AS "month", count(DISTINCT s."id") FILTER (WHERE s."status" = 'played')::int AS "sessions_played", count(DISTINCT s."id") FILTER (WHERE s."status" = 'cancelled')::int AS "sessions_cancelled", count(a."person_id")::int AS "attendances", count(DISTINCT a."person_id")::int AS "active_players"
 FROM "scheduling"."session" s
-LEFT JOIN "scheduling"."attendance" a ON a."session_id" = s."id"
+LEFT JOIN "scheduling"."attendance" a ON a."session_id" = s."id" AND a."outcome" IN ('attended', 'late', 'left_early')
 GROUP BY s."community_id", date_trunc('month', s."local_date"::date);
 --> statement-breakpoint
 CREATE UNIQUE INDEX "community_monthly_uq" ON "analytics"."community_monthly" ("community_id", "month");
@@ -110,3 +90,11 @@ $$;
 GRANT USAGE ON SCHEMA "analytics" TO "rondo_app";
 --> statement-breakpoint
 GRANT SELECT ON ALL TABLES IN SCHEMA "analytics" TO "rondo_app";
+--> statement-breakpoint
+ALTER DEFAULT PRIVILEGES IN SCHEMA "identity", "org", "venue", "scheduling", "play", "finance", "feedback", "league", "community", "comms", "ingest" GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "rondo_app";
+--> statement-breakpoint
+ALTER DEFAULT PRIVILEGES IN SCHEMA "audit" GRANT SELECT, INSERT ON TABLES TO "rondo_app";
+--> statement-breakpoint
+ALTER DEFAULT PRIVILEGES IN SCHEMA "play_private", "feedback_private" GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "rondo_admin";
+--> statement-breakpoint
+ALTER DEFAULT PRIVILEGES IN SCHEMA "analytics" GRANT SELECT ON TABLES TO "rondo_app";

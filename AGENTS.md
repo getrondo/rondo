@@ -22,7 +22,7 @@ pnpm ts                    # tsrs typecheck, every workspace plus the root
 pnpm lint:check            # oxlint with the Effect language-service rules and the local lint-rules plugin
 pnpm deadcode              # knip
 pnpm cpd                   # jscpd
-pnpm test                  # vitest per workspace through turbo, PGlite in-process Postgres
+pnpm test                  # vitest per workspace through turbo, PGlite in-process Postgres (layer in @rondo/db/testing)
 
 pnpm check                 # fmt:check, ts, lint:check, deadcode, cpd, test
 ```
@@ -40,7 +40,7 @@ packages/
   ingest-telegram/      Telegram export importer (JSON export to domain rows)
   domain/               Domain services and Schema types (future)
 tests/
-  test-kit/             @rondo/test-kit: vitest config factory, PGlite layers, shared test helpers
+  test-kit/             @rondo/test-kit: vitest config factory and shared test helpers (the PGlite layer lives in @rondo/db/testing)
 lint-rules/             Local oxlint plugin (effect-fn-name, effect-service-id, effect-no-run, ...)
 docs/
   vision.md             Product vision
@@ -118,7 +118,7 @@ export class PlayerService extends Context.Service<PlayerService>()('@rondo/doma
 - **Validation.** Effect `Schema` at boundaries (`Schema.decodeUnknownEffect`). No zod.
 - **Database.** Drizzle over `drizzle-orm/effect-postgres` and `@effect/sql-pg`. Row types come from `typeof table.$inferSelect` and `$inferInsert`. Repositories return Effects, never builders.
 - **Concurrency and time.** `Schedule`, `Effect.retry`, `Effect.timeout`, `Semaphore`, `FiberMap`, `Effect.acquireRelease`. No `setTimeout` loops or `Promise.race`.
-- **Tests.** `@effect/vitest`: every test is `it.effect('...', () => Effect.gen(function* () {...}))`, `it.layer` for shared layers. DB tests run on PGlite provided as a layer from `@rondo/test-kit`. No `async` bodies, no `runPromise`, no `vi.mock`. Time-dependent tests use `TestClock`.
+- **Tests.** `@effect/vitest`: every test is `it.effect('...', () => Effect.gen(function* () {...}))`, `it.layer` for shared layers. DB tests run on PGlite provided as a layer from `@rondo/db/testing/test-db.layer`. No `async` bodies, no `runPromise`, no `vi.mock`. Time-dependent tests use `TestClock`.
 
 ## Git
 

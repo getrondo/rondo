@@ -3,11 +3,11 @@ import * as Option from 'effect/Option';
 
 import { resolveGameDate } from './game-date';
 import { compile, matchesAny, normalizeAlias } from './normalize';
-import { addDays, instantToLocalDate } from './zoned-time';
+import { addDays, instantToLocalDate, isCalendarDate } from './zoned-time';
 
 import type { CommunityConfig } from '../config/community-config';
 import type { TelegramMessage } from '../model/telegram-message.model';
-import type { CancellationFact, FixtureFact, LocationFact, PriceFact } from './fact.model';
+import type { CancellationFact, FixtureFact, PriceFact } from './fact.model';
 
 interface OrganizerPost {
     readonly text: string;
@@ -54,6 +54,7 @@ export const extractCancellation = (
         Option.filter(({ text }) => cancelSignal.test(text) && !/\?\s*$/u.test(text) && text.length <= maxMessageLength),
         Option.map(({ text, sentAt }) => ({
             messageId: message.id,
+            postedAt: sentAt,
             localDate: resolveGameDate(text, instantToLocalDate(sentAt, config.timeZone)).date,
             reason: reasons.find(([, regex]) => regex.test(text))?.[0] ?? 'organizer'
         })),
@@ -123,7 +124,8 @@ const cleanTeam = (value: string): string => {
 
 const resolveLocalDate = (text: string, postedDate: string): string => {
     const numeric = numericDate.exec(text);
-    const playedOn = isDefined(numeric) ? `${numeric[3]}-${numeric[2]}-${numeric[1]}` : resolveGameDate(text, postedDate).date;
+    const isNumericValid = isDefined(numeric) && isCalendarDate(Number(numeric[3]), Number(numeric[2]), Number(numeric[1]));
+    const playedOn = isNumericValid ? `${numeric[3]}-${numeric[2]}-${numeric[1]}` : resolveGameDate(text, postedDate).date;
     const yearTypo = playedOn < addDays(postedDate, -60) ? `${postedDate.slice(0, 4)}${playedOn.slice(4)}` : playedOn;
 
     return yearTypo > postedDate ? postedDate : yearTypo;
@@ -136,42 +138,60 @@ const scoreOf = (pairing: RegExpExecArray, following: readonly string[]): Option
               Option.map(match => ({ goalsLeft: Number(match[1]), goalsRight: Number(match[2]) }))
           );
 
+interface Pairing {
+    readonly match: RegExpExecArray;
+    readonly left: string;
+    readonly right: string;
+    readonly home: boolean;
+}
+
+const pairingOf = (line: string, isOurs: (side: string) => boolean): Option.Option<Pairing> =>
+    Option.fromNullishOr(pairingPattern.exec(line)).pipe(
+        Option.flatMap(match => {
+            const left = cleanTeam((match[1] ?? '').split(':').at(-1) ?? '');
+            const right = cleanTeam(match[2] ?? '');
+            const home = isOurs(left);
+
+            return home === isOurs(right) ? Option.none() : Option.some({ match, left, right, home });
+        })
+    );
+
+const untilNextPairing = (following: readonly string[], isOurs: (side: string) => boolean): readonly string[] => {
+    const next = following.findIndex(line => Option.isSome(pairingOf(line, isOurs)));
+
+    return next === -1 ? following : following.slice(0, next);
+};
+
 const fixtureFromLine = (
     context: FixtureContext,
     isOurs: (side: string) => boolean,
     lines: readonly string[],
     index: number
 ): Option.Option<FixtureFact> =>
-    Option.fromNullishOr(pairingPattern.exec(lines[index] ?? '')).pipe(
-        Option.flatMap(pairing => {
-            const left = cleanTeam((pairing[1] ?? '').split(':').at(-1) ?? '');
-            const right = cleanTeam(pairing[2] ?? '');
-            const home = isOurs(left);
+    pairingOf(lines[index] ?? '', isOurs).pipe(
+        Option.flatMap(({ match, left, right, home }) =>
+            scoreOf(match, untilNextPairing(lines.slice(index + 1, index + 4), isOurs)).pipe(
+                Option.map(({ goalsLeft, goalsRight }) => {
+                    const ours = normalizeAlias(home ? left : right);
+                    const squad =
+                        context.squads.find(
+                            candidate => matchesAny(context.text, candidate.context) || matchesAny(ours, candidate.regexes)
+                        ) ?? context.squads.at(-1);
 
-            return home === isOurs(right)
-                ? Option.none()
-                : scoreOf(pairing, lines.slice(index + 1, index + 4)).pipe(
-                      Option.map(({ goalsLeft, goalsRight }) => {
-                          const ours = normalizeAlias(home ? left : right);
-                          const squad =
-                              context.squads.find(
-                                  candidate => matchesAny(context.text, candidate.context) || matchesAny(ours, candidate.regexes)
-                              ) ?? context.squads.at(-1);
-
-                          return {
-                              messageId: context.message.id,
-                              localDate: context.localDate,
-                              squadName: squad?.name ?? 'Team',
-                              competition: competitionOf(context.text),
-                              season: seasonOf(context.localDate),
-                              opponent: home ? right : left,
-                              goalsFor: home ? goalsLeft : goalsRight,
-                              goalsAgainst: home ? goalsRight : goalsLeft,
-                              home
-                          };
-                      })
-                  );
-        })
+                    return {
+                        messageId: context.message.id,
+                        localDate: context.localDate,
+                        squadName: squad?.name ?? 'Team',
+                        competition: competitionOf(context.text),
+                        season: seasonOf(context.localDate),
+                        opponent: home ? right : left,
+                        goalsFor: home ? goalsLeft : goalsRight,
+                        goalsAgainst: home ? goalsRight : goalsLeft,
+                        home
+                    };
+                })
+            )
+        )
     );
 
 export const makeFixtureExtractor = (config: CommunityConfig, organizers: ReadonlySet<string>) => {
@@ -202,14 +222,3 @@ export const makeFixtureExtractor = (config: CommunityConfig, organizers: Readon
             Option.getOrElse((): FixtureFact[] => [])
         );
 };
-
-export const extractLocation = (message: TelegramMessage, config: CommunityConfig): LocationFact | undefined =>
-    Option.all({ location: Option.fromNullishOr(message.location), sentAt: Option.fromNullishOr(message.sentAt) }).pipe(
-        Option.map(({ location, sentAt }) => ({
-            messageId: message.id,
-            localDate: instantToLocalDate(sentAt, config.timeZone),
-            lat: location.lat,
-            lng: location.lng
-        })),
-        Option.getOrUndefined
-    );

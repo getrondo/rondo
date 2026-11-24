@@ -2,7 +2,7 @@ import { isDefined } from '@rnw-community/shared';
 
 import { extractLineup } from './extract-lineup';
 import { extractPoll, makeVenueMatcher } from './extract-poll';
-import { extractCancellation, extractLocation, extractPrice, makeFixtureExtractor } from './extract-signals';
+import { extractCancellation, extractPrice, makeFixtureExtractor } from './extract-signals';
 
 import type { CommunityConfig } from '../config/community-config';
 import type { TelegramMessage } from '../model/telegram-message.model';
@@ -41,7 +41,6 @@ export const extractAll = (messages: readonly TelegramMessage[], config: Communi
         prices: own.map(message => extractPrice(message, config, organizers, venueOf)).filter(fact => isDefined(fact)),
         cancellations: own.map(message => extractCancellation(message, config, organizers)).filter(fact => isDefined(fact)),
         fixtures: own.flatMap(message => fixtureOf(message)),
-        authors: collectAuthors(own),
-        locations: own.map(message => extractLocation(message, config)).filter(fact => isDefined(fact))
+        authors: collectAuthors(own)
     };
 };

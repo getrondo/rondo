@@ -5,11 +5,6 @@ const PollSchema = Schema.Struct({
     answers: Schema.Array(Schema.String)
 });
 
-const LocationSchema = Schema.Struct({
-    lat: Schema.Finite,
-    lng: Schema.Finite
-});
-
 const MediaKindSchema = Schema.Literals(['photo', 'video', 'voice', 'sticker', 'gif', 'file']);
 
 const TelegramMessageSchema = Schema.Struct({
@@ -21,7 +16,6 @@ const TelegramMessageSchema = Schema.Struct({
     forwardedFrom: Schema.optional(Schema.String),
     text: Schema.optional(Schema.String),
     poll: Schema.optional(PollSchema),
-    location: Schema.optional(LocationSchema),
     media: Schema.Array(MediaKindSchema)
 });
 

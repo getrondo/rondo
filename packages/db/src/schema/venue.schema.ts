@@ -1,5 +1,18 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, doublePrecision, index, integer, jsonb, pgSchema, primaryKey, smallint, text, time } from 'drizzle-orm/pg-core';
+import {
+    boolean,
+    check,
+    doublePrecision,
+    index,
+    integer,
+    uniqueIndex,
+    jsonb,
+    pgSchema,
+    primaryKey,
+    smallint,
+    text,
+    time
+} from 'drizzle-orm/pg-core';
 
 import { createdAt, id, instant, ref, tstzrange, updatedAt, requiredRef } from './columns';
 import { person } from './identity.schema';
@@ -34,7 +47,7 @@ export const venue = venueSchema.table(
         updatedAt: updatedAt()
     },
     t => [
-        index('venue_community_idx').on(t.communityId),
+        uniqueIndex('venue_community_name_uq').on(t.communityId, t.name),
         check('venue_lat_ck', sql`${t.lat} is null or ${t.lat} between -90 and 90`),
         check('venue_lng_ck', sql`${t.lng} is null or ${t.lng} between -180 and 180`),
         check('venue_district_ck', sql`${t.district} is null or ${t.district} between 1 and 23`)

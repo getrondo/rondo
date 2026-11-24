@@ -5,7 +5,6 @@ import {
     date,
     doublePrecision,
     index,
-    integer,
     interval,
     jsonb,
     numeric,
@@ -122,18 +121,12 @@ export const signup = scheduling.table(
         personId: requiredRef('person_id', () => person.id, 'restrict'),
         role: signupRoleEnum('role').notNull().default('field'),
         status: signupStatusEnum('status').notNull(),
-        queuePos: integer('queue_pos'),
         guestOfPersonId: ref('guest_of_person_id').references(() => person.id, { onDelete: 'set null' }),
         priority: signupPriorityEnum('priority').notNull().default('normal'),
         createdAt: createdAt(),
         updatedAt: updatedAt()
     },
-    t => [
-        uniqueIndex('signup_session_person_uq').on(t.sessionId, t.personId),
-        uniqueIndex('signup_queue_uq')
-            .on(t.sessionId, t.queuePos)
-            .where(sql`${t.status} = 'waitlisted'`)
-    ]
+    t => [uniqueIndex('signup_session_person_uq').on(t.sessionId, t.personId)]
 );
 
 export const signupEvent = scheduling.table(

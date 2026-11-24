@@ -11,16 +11,7 @@ export const audit = pgSchema('audit');
 export const messagePurposeEnum = comms.enum('message_purpose', ['game_card', 'lineup', 'announcement', 'reminder', 'poll']);
 export const channelEnum = comms.enum('channel', ['dm', 'group']);
 export const ingestSourceEnum = ingest.enum('ingest_source', ['telegram_html', 'telegram_json']);
-export const sourceRefKindEnum = ingest.enum('source_ref_kind', [
-    'poll',
-    'lineup',
-    'cancel',
-    'result',
-    'location',
-    'price',
-    'service',
-    'message'
-]);
+export const sourceRefKindEnum = ingest.enum('source_ref_kind', ['poll', 'lineup', 'cancel', 'result', 'price', 'service', 'message']);
 export const actorKindEnum = audit.enum('actor_kind', ['user', 'bot', 'system']);
 
 export const messageRef = comms.table(

@@ -22,8 +22,8 @@ program composed from `Layer`s; promises exist only at foreign boundaries.
 | Core library | `effect` 4.x: `Context.Service`, `Layer`, `Schema`, `Config`, `Schema.TaggedError`, `effect/FileSystem` |
 | Database | PostgreSQL 17, one schema per bounded context ([data model](../architecture/data-model.md)) |
 | Data access | Drizzle ORM 1.0 (`drizzle-orm/effect-postgres`) over `@effect/sql-pg`; queries are Effects; `Db` service in `@rondo/db` |
-| Migrations | `drizzle-kit generate` from the TypeScript schema, plus hand-written SQL migrations for invariants Drizzle can't express (exclusion constraints, deferred triggers, RLS, materialized views) |
-| Tests | Vitest 5 and `@effect/vitest`; integration tests run real SQL on in-process Postgres (PGlite served over the wire protocol with `@electric-sql/pglite-socket`), so CI needs no Docker |
+| Migrations | `drizzle-kit generate` from the TypeScript schema, plus hand-written SQL migrations for invariants Drizzle can't express (exclusion constraints, deferred triggers, role grants, materialized views; row-level security arrives with the second tenant, E14) |
+| Tests | Vitest 5 and `@effect/vitest`; integration tests run real SQL on in-process Postgres (PGlite served over the wire protocol with `@electric-sql/pglite-socket`), so CI needs no Docker; the PGlite test layer is exported from `@rondo/db/testing` |
 | Bot | grammY behind an Effect `Telegram` service (webhook mode); updates are decoded with `Schema` |
 | Durable work | Transactional outbox (`comms.outbox`) and Effect workers with `FOR UPDATE SKIP LOCKED`; Effect Workflow/Cluster with SQL storage is evaluated for long-lived timers (E04, E06) |
 | Mini App and API | React and Vite with `@effect/atom-react`; Effect `HttpApi` for the typed API shared with the client; auth via signed Telegram `initData` |
@@ -32,7 +32,7 @@ program composed from `Layer`s; promises exist only at foreign boundaries.
 | Weather and holidays | GeoSphere Austria API (fallback Open-Meteo); `date-holidays` (AT, Vienna) |
 | Observability | Effect logger and tracer → OpenTelemetry; `/health` endpoint |
 | Quality gates | oxfmt; `effect-tsgo --tsrs-lint oxlint --type-aware --deny-warnings` with local Effect rules (`lint-rules/`); knip; jscpd at threshold 0; commitlint; husky with lint-staged |
-| CI/CD | GitHub Actions on self-hosted runners (`linux-portable-*`): quality job (format, types, lint, dead code, duplication, tests, `drizzle-kit check`, clean `git diff`); release-please |
+| CI/CD | GitHub Actions on GitHub-hosted `ubuntu-latest` runners: quality job (format, types, lint, dead code, duplication, tests, `drizzle-kit check`, `db:generate` leaves a clean worktree); release-please |
 | Hosting | One container (bot, API, workers) plus managed Postgres in an EU region; decided in E01 |
 
 ### Telegram specifics

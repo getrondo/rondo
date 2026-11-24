@@ -42,7 +42,8 @@ export const recordProvenance = Effect.fn('IngestTelegram.recordProvenance')(fun
     const unique = [...new Map(refs.map(ref => [`${ref.messageId}|${ref.kind}`, ref])).values()];
     const sentAtById = new Map([
         ...plan.facts.polls.map(poll => [poll.messageId, poll.postedAt] as const),
-        ...plan.facts.lineups.map(lineup => [lineup.messageId, lineup.postedAt] as const)
+        ...plan.facts.lineups.map(lineup => [lineup.messageId, lineup.postedAt] as const),
+        ...plan.facts.cancellations.map(cancellation => [cancellation.messageId, cancellation.postedAt] as const)
     ]);
     const sourceRefIds: string[] = [];
 

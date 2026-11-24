@@ -2,7 +2,7 @@ import { isDefined, isNotEmptyArray, isNotEmptyString } from '@rnw-community/sha
 import * as Option from 'effect/Option';
 
 import { pricePattern } from './extract-signals';
-import { findLocalTime } from './game-date';
+import { findLocalTime, resolveGameDate } from './game-date';
 import { normalizeAlias } from './normalize';
 import { instantToLocalDate } from './zoned-time';
 
@@ -16,6 +16,7 @@ const gkMarker = new RegExp(gkPattern, 'giu');
 const newcomerMarker = new RegExp(newcomerPattern, 'giu');
 const isGkText = new RegExp(gkPattern, 'iu');
 const isNewcomerText = new RegExp(newcomerPattern, 'iu');
+const statedDateConfidence = 0.9;
 const noise = /^(?:может|возможно|опозда|придет|приедет|резерв|в резерве|мяч|манишк|оплата|по \d)/iu;
 
 const removeMarker = (text: string, marker: RegExp): string => {
@@ -92,13 +93,15 @@ export const extractLineup = (
         Option.filter(({ text }) => /состав|склад/iu.test(text)),
         Option.flatMap(({ text, sentAt }) => {
             const { header, teams } = buildTeams(text, config);
+            const postedDate = instantToLocalDate(sentAt, config.timeZone);
+            const headerDate = resolveGameDate(header, postedDate);
 
             return teams.length < 2
                 ? Option.none()
                 : Option.some({
                       messageId: message.id,
                       postedAt: sentAt,
-                      localDate: instantToLocalDate(sentAt, config.timeZone),
+                      localDate: headerDate.confidence >= statedDateConfidence ? headerDate.date : postedDate,
                       localTime: findLocalTime(header),
                       venueKey: venueOf(header),
                       teams,

@@ -1,5 +1,5 @@
+import { isNotEmptyArray } from '@rnw-community/shared';
 import { priceRule } from '@rondo/db/schema/finance.schema';
-import { person, personAlias, telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { fixture } from '@rondo/db/schema/league.schema';
 import { activity, community } from '@rondo/db/schema/org.schema';
 import { ingestRun } from '@rondo/db/schema/platform.schema';
@@ -24,16 +24,6 @@ export const purgePreviousImport = Effect.fn('IngestTelegram.purgePreviousImport
             and(eq(fixture.source, 'import'), sql`${fixture.squadId} in (select id from league.squad where community_id = ${communityId})`)
         );
     yield* transaction.delete(priceRule).where(and(eq(priceRule.communityId, communityId), eq(priceRule.note, 'import')));
-    yield* transaction
-        .delete(person)
-        .where(
-            and(
-                eq(person.source, 'import'),
-                sql`${person.id} in (select person_id from identity.person_alias where community_id = ${communityId})`
-            )
-        );
-    yield* transaction.delete(personAlias).where(eq(personAlias.communityId, communityId));
-    yield* transaction.delete(telegramAuthor).where(eq(telegramAuthor.communityId, communityId));
     yield* transaction.delete(ingestRun).where(eq(ingestRun.communityId, communityId));
 });
 
@@ -55,34 +45,52 @@ export const upsertReference = Effect.fn('IngestTelegram.upsertReference')(funct
 }: LoadContext) {
     const sports = [...new Set(plan.sessions.map(planned => planned.sport))];
 
-    yield* transaction
-        .insert(activity)
-        .values(sports.map(sport => ({ communityId, sport, name: sport })))
-        .onConflictDoNothing();
+    if (isNotEmptyArray(sports)) {
+        yield* transaction
+            .insert(activity)
+            .values(sports.map(sport => ({ communityId, sport, name: sport })))
+            .onConflictDoNothing();
+    }
+
     const activities = yield* transaction.select().from(activity).where(eq(activity.communityId, communityId));
 
-    yield* transaction.delete(venue).where(eq(venue.communityId, communityId));
-    const venues = yield* transaction
-        .insert(venue)
-        .values(
-            config.venues.map(configured => ({
-                communityId,
-                name: configured.name,
-                kind: configured.kind,
-                district: configured.district,
-                lat: configured.lat,
-                lng: configured.lng,
-                indoor: configured.indoor,
-                transit: configured.transit
-            }))
-        )
-        .returning({ id: venue.id, name: venue.name });
+    const venues = isNotEmptyArray(config.venues)
+        ? yield* transaction
+              .insert(venue)
+              .values(
+                  config.venues.map(configured => ({
+                      communityId,
+                      name: configured.name,
+                      kind: configured.kind,
+                      district: configured.district,
+                      lat: configured.lat,
+                      lng: configured.lng,
+                      indoor: configured.indoor,
+                      transit: configured.transit
+                  }))
+              )
+              .onConflictDoUpdate({
+                  target: [venue.communityId, venue.name],
+                  set: {
+                      kind: sql`excluded.kind`,
+                      district: sql`coalesce(excluded.district, ${venue.district})`,
+                      lat: sql`coalesce(excluded.lat, ${venue.lat})`,
+                      lng: sql`coalesce(excluded.lng, ${venue.lng})`,
+                      indoor: sql`coalesce(excluded.indoor, ${venue.indoor})`,
+                      transit: sql`coalesce(excluded.transit, ${venue.transit})`
+                  }
+              })
+              .returning({ id: venue.id, name: venue.name })
+        : [];
     const venueIdByKey = new Map(config.venues.map(configured => [configured.key, venues.find(row => row.name === configured.name)?.id]));
 
-    yield* transaction
-        .insert(teamColor)
-        .values(config.teamColors.map(color => ({ communityId, name: color.name, emoji: color.emoji })))
-        .onConflictDoNothing();
+    if (isNotEmptyArray(config.teamColors)) {
+        yield* transaction
+            .insert(teamColor)
+            .values(config.teamColors.map(color => ({ communityId, name: color.name, emoji: color.emoji })))
+            .onConflictDoNothing();
+    }
+
     const colors = yield* transaction.select().from(teamColor).where(eq(teamColor.communityId, communityId));
 
     return {
