@@ -160,6 +160,7 @@ erDiagram
 ### `comms`: Telegram I/O
 
 `message_ref(chat_id, message_id, purpose (game_card/lineup/announcement), entity_type, entity_id)`: which Telegram message renders which entity (edited in place);
+`poll_vote(poll_id, tg_user_id, session_id?, choice (yes/no/other), voted_at?)`: votes of imported polls, signed up but not attended; primary key `(poll_id, tg_user_id)`, forwards share one poll;
 `notification_pref(person_id, channel (dm/group), kind, enabled)`;
 `outbox(id, aggregate_type, aggregate_id, event_type, payload jsonb, created_at, dispatched_at?, attempts)`.
 
