@@ -2,8 +2,10 @@ import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { describeAction } from '@rondo/core/actions/describe-action';
 import { requireActionScope } from '@rondo/core/actions/execute-action';
 import { proposeAction } from '@rondo/core/actions/pending-action.service';
+import { suggestAliasLinks } from '@rondo/core/people/alias-links.service';
 import { searchPeople, unresolvedAliases } from '@rondo/core/people/people.service';
 import { listSessions, listVenues, requireSession } from '@rondo/core/sessions/session.service';
+import { signedUpByVotes } from '@rondo/core/signups/signed-up-by-votes';
 import { rosterOf } from '@rondo/core/signups/signup.service';
 import {
     attendanceCoverage,
@@ -82,10 +84,15 @@ const readTools = (scope: ToolScope, run: ToolRunner) => ({
         execute: async input => await run(listSessions(scope.communityId, input))
     }),
     session_roster: tool({
-        description: 'Who signed up for a game via the bot poll: status in/out/waitlisted and role field/gk.',
+        description:
+            'Who signed up for a game. signups: via the bot poll, status in/out/waitlisted and role field/gk. votes: yes votes of imported polls in time order, not proof of playing.',
         inputSchema: toolSchema(SessionRef),
         execute: async input =>
-            await run(requireSession(scope.communityId, input.sessionId).pipe(Effect.andThen(rosterOf(input.sessionId))))
+            await run(
+                requireSession(scope.communityId, input.sessionId).pipe(
+                    Effect.andThen(Effect.all({ signups: rosterOf(input.sessionId), votes: signedUpByVotes(input.sessionId) }))
+                )
+            )
     }),
     top_players: tool({
         description: 'Players ranked by number of games played in a date range.',
@@ -114,14 +121,20 @@ const readTools = (scope: ToolScope, run: ToolRunner) => ({
         execute: async input => await run(searchPeople(scope.communityId, input.query, 10))
     }),
     player_history: tool({
-        description: 'Games played, first and last game and nicknames of one player.',
+        description: 'Games played, games signed up for by poll votes, first and last game and nicknames of one player.',
         inputSchema: toolSchema(Schema.Struct({ personId: Schema.String })),
         execute: async input => await run(withCoverage(scope, playerHistory(scope.communityId, input.personId)))
     }),
     unresolved_aliases: tool({
-        description: 'Line-up nicknames not yet confirmed as a known person, most frequent first. Useful to clean up duplicates.',
+        description:
+            'Line-up nicknames not yet confirmed as a known person, most frequent first. shared=true means several players use it. Useful to clean up duplicates.',
         inputSchema: toolSchema(Schema.Struct({ limit: Limit })),
         execute: async input => await run(unresolvedAliases(scope.communityId, input.limit ?? 20))
+    }),
+    suggest_alias_links: tool({
+        description: 'Likely players for unlinked nicknames, from who voted in the same games. Never links anything by itself.',
+        inputSchema: toolSchema(Schema.Struct({ limit: Limit })),
+        execute: async input => await run(suggestAliasLinks(scope.communityId, input.limit ?? 20))
     }),
     list_venues: tool({
         description: 'Venues (fields) of the community with ids.',
@@ -205,6 +218,16 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
                     return yield* propose(scope, { _tag: 'publish_teams', sessionId: input.sessionId, teams });
                 })
             )
+    }),
+    propose_link_alias: tool({
+        description: 'Propose linking a line-up nickname (aliasId) to a player. Can be undone with propose_unlink_alias.',
+        inputSchema: toolSchema(Schema.Struct({ aliasId: Schema.String, personId: Schema.String })),
+        execute: async input => await run(propose(scope, { _tag: 'link_alias', ...input }))
+    }),
+    propose_unlink_alias: tool({
+        description: 'Propose undoing the link between a line-up nickname and a player.',
+        inputSchema: toolSchema(Schema.Struct({ aliasId: Schema.String })),
+        execute: async input => await run(propose(scope, { _tag: 'unlink_alias', ...input }))
     }),
     propose_rename_person: tool({
         description: 'Propose changing the display name of a player.',

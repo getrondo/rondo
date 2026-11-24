@@ -1,12 +1,18 @@
 import { isDefined, isEmptyArray, isNotEmptyArray } from '@rnw-community/shared';
-import { person, personAlias, telegramAuthor } from '@rondo/db/schema/identity.schema';
+import { telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { messageRef } from '@rondo/db/schema/platform.schema';
-import { team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
-import { attendance, session } from '@rondo/db/schema/scheduling.schema';
+import { lineupEntry, team, teamColor } from '@rondo/db/schema/play.schema';
+import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { extractLineup } from '@rondo/ingest-telegram/extract/extract-lineup';
 import { extractPoll, makeVenueMatcher } from '@rondo/ingest-telegram/extract/extract-poll';
 import { extractCancellation } from '@rondo/ingest-telegram/extract/extract-signals';
+import { aliasesIn } from '@rondo/ingest-telegram/identity/aliases-in';
+import { countOccurrences } from '@rondo/ingest-telegram/identity/count-occurrences';
+import { ensureAliases } from '@rondo/ingest-telegram/identity/ensure-aliases';
+import { loadDirectory } from '@rondo/ingest-telegram/identity/load-directory';
+import { entriesOf } from '@rondo/ingest-telegram/roster/entries-of';
+import { syncSessionRoster } from '@rondo/ingest-telegram/roster/sync-session-roster';
 import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -148,45 +154,6 @@ const rememberMessage = Effect.fn('Core.rememberMessage')(function* (message: Gr
         .onConflictDoNothing();
 });
 
-const personForAlias = Effect.fn('Core.personForAlias')(function* (
-    communityId: string,
-    member: LineupFact['teams'][number]['members'][number],
-    message: GroupMessage
-) {
-    const db = yield* Db;
-
-    if (member.isSelf) {
-        return message.senderPersonId;
-    }
-
-    const [known] = yield* db
-        .update(personAlias)
-        .set({ occurrences: sql`${personAlias.occurrences} + 1`, lastSeenAt: message.sentAt })
-        .where(and(eq(personAlias.communityId, communityId), eq(personAlias.aliasNorm, member.aliasNorm)))
-        .returning({ personId: personAlias.personId });
-
-    if (isDefined(known?.personId)) {
-        return known.personId;
-    }
-
-    const [created] = yield* db.insert(person).values({ displayName: member.alias, source: 'bot' }).returning({ id: person.id });
-    const personId = created?.id ?? '';
-    yield* db
-        .insert(personAlias)
-        .values({
-            communityId,
-            personId,
-            alias: member.alias,
-            aliasNorm: member.aliasNorm,
-            occurrences: 1,
-            firstSeenAt: message.sentAt,
-            lastSeenAt: message.sentAt
-        })
-        .onConflictDoUpdate({ target: [personAlias.communityId, personAlias.aliasNorm], set: { personId } });
-
-    return personId;
-});
-
 const applyLineup = Effect.fn('Core.applyLineup')(function* (
     communityId: string,
     config: CommunityConfig,
@@ -203,36 +170,33 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
     const sessionId = found.value;
     const colors = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId));
 
+    const known = yield* loadDirectory(communityId);
+    yield* ensureAliases({
+        communityId,
+        source: 'bot',
+        aliases: aliasesIn([fact], known, message.senderName)
+    });
+    const directory = yield* loadDirectory(communityId);
+    const previous = yield* db.delete(lineupEntry).where(eq(lineupEntry.sessionId, sessionId)).returning();
+    const entries = entriesOf(
+        sessionId,
+        fact,
+        directory,
+        previous.filter(entry => entry.resolvedBy === 'manual')
+    );
+
     yield* db.delete(team).where(eq(team.sessionId, sessionId));
-    yield* db.delete(attendance).where(and(eq(attendance.sessionId, sessionId), eq(attendance.source, 'bot')));
-
-    for (const lineupTeam of fact.teams) {
-        const [stored] = yield* db
-            .insert(team)
-            .values({
-                sessionId,
-                ordinal: lineupTeam.ordinal,
-                colorId: colors.find(color => color.emoji === lineupTeam.emoji)?.id,
-                publishedAt: message.sentAt
-            })
-            .returning({ id: team.id });
-
-        for (const member of lineupTeam.members) {
-            const personId = yield* personForAlias(communityId, member, message);
-            yield* db
-                .insert(teamMember)
-                .values({
-                    teamId: stored?.id ?? '',
-                    sessionId,
-                    personId,
-                    isGk: member.isGk,
-                    isNewcomer: member.isNewcomer,
-                    assignedBy: 'organizer'
-                })
-                .onConflictDoNothing();
-            yield* db.insert(attendance).values({ sessionId, personId, outcome: 'attended', source: 'bot' }).onConflictDoNothing();
-        }
-    }
+    yield* db.insert(team).values(
+        fact.teams.map(({ ordinal, emoji }) => ({
+            sessionId,
+            ordinal,
+            colorId: colors.find(color => color.emoji === emoji)?.id,
+            publishedAt: message.sentAt
+        }))
+    );
+    yield* db.insert(lineupEntry).values(entries);
+    yield* countOccurrences(communityId);
+    yield* syncSessionRoster([sessionId]);
 
     const status = fact.localDate < todayIn(config.timeZone, message.sentAt) ? 'played' : 'locked';
     yield* db
@@ -255,6 +219,7 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
         kind: 'message',
         sentAt: message.sentAt,
         author: message.senderName,
+        authorId: Number(message.senderTgUserId),
         text: message.text,
         poll: message.poll,
         media: []

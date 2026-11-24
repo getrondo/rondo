@@ -2,6 +2,7 @@ import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { membership } from '@rondo/db/schema/org.schema';
 import { Db } from '@rondo/db/service/db.service';
+import { releaseUsernames } from '@rondo/ingest-telegram/identity/release-usernames';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -28,6 +29,7 @@ export const upsertTelegramUser = Effect.fn('Core.upsertTelegramUser')(function*
                 .select({ firstName: telegramAccount.firstName, lastName: telegramAccount.lastName })
                 .from(telegramAccount)
                 .where(eq(telegramAccount.tgUserId, user.id));
+            yield* releaseUsernames(isNotEmptyString(user.username) ? [user.username] : []);
             const [account] = yield* transaction
                 .insert(telegramAccount)
                 .values({

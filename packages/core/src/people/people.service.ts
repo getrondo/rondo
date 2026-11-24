@@ -4,7 +4,8 @@ import { membership } from '@rondo/db/schema/org.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { normalizeAlias } from '@rondo/ingest-telegram/extract/normalize';
-import { and, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { refreshNames } from '@rondo/ingest-telegram/identity/refresh-names';
+import { and, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
@@ -74,18 +75,14 @@ export const unresolvedAliases = Effect.fn('Core.unresolvedAliases')(function* (
 
     return yield* db
         .select({
+            aliasId: personAlias.id,
             alias: personAlias.alias,
             personId: personAlias.personId,
             occurrences: personAlias.occurrences,
-            resolution: personAlias.resolution
+            shared: sql<boolean>`${personAlias.kind} = 'placeholder'`
         })
         .from(personAlias)
-        .where(
-            and(
-                eq(personAlias.communityId, communityId),
-                or(eq(personAlias.resolution, 'unresolved'), eq(personAlias.resolution, 'suggested'))
-            )
-        )
+        .where(and(eq(personAlias.communityId, communityId), inArray(personAlias.resolution, ['unresolved', 'suggested', 'guest'])))
         .orderBy(desc(personAlias.occurrences))
         .limit(limit);
 });
@@ -104,14 +101,21 @@ export const mergePeople = Effect.fn('Core.mergePeople')(function* (input: {
                 Effect.tapError(error => Effect.logWarning('[merge] refused', error)),
                 Effect.mapError(() =>
                     ActionFailedError.make({
-                        reason: 'records conflict: both have Telegram, both signed up for one game, or already merged'
+                        reason: 'records conflict: both are in one game or signed up for it, both have a rating, or one is already merged'
                     })
                 )
             );
             yield* transaction
                 .update(personAlias)
-                .set({ resolution: 'confirmed', confidence: 1 })
-                .where(and(eq(personAlias.communityId, input.communityId), eq(personAlias.personId, input.intoPersonId)));
+                .set({ resolution: 'confirmed', confidence: 1, guestPersonId: null })
+                .where(
+                    and(
+                        eq(personAlias.communityId, input.communityId),
+                        eq(personAlias.personId, input.intoPersonId),
+                        ne(personAlias.kind, 'placeholder')
+                    )
+                );
+            yield* refreshNames([input.intoPersonId]);
         })
     );
     yield* recordAudit({
