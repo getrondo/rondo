@@ -5,7 +5,7 @@ venues, sessions (with status and confidence), teams, attendance, player aliases
 authors, venue-scoped price history, league squads, competitions and fixtures, plus provenance
 (`ingest.run`, `ingest.source_ref`, `ingest.extraction`).
 
-Raw message text is **never** stored. Exports and community configs contain personal data. Keep
+Message bodies are **not** stored; only extracted facts are, including poll titles (`session.title`) and line-up names (`person_alias.alias`). Exports and community configs contain personal data. Keep
 them outside the repository (e.g. `~/getrondo/rondo-data/`); `.gitignore` blocks the usual names.
 
 ## 1. Export the chat
@@ -53,7 +53,7 @@ psql "$DATABASE_URL" -c "select analytics.refresh_all()"
 The import runs in one transaction. It replaces only the import-scoped facts of that community
 (sessions and fixtures with `source = 'import'`, price rules with `note = 'import'`, plus ingest runs) and upserts the
 rest: venues by `(community_id, name)` (venue names in the config must be unique; an existing venue keeps its `kind`), aliases by `(community_id, alias_norm)` and authors by
-`(community_id, display_name)`. Re-running it on a newer export is safe: curated data (alias
+`(community_id, display_name)`. Re-running it on a newer export is safe **before go-live**: imported sessions are recreated with new ids, so once the bot attaches data to imported sessions, stop re-importing. Until then, curated data (alias
 resolution and person links, manually added venues, bot-created sessions) is never overwritten, and
 persons are created only for aliases that did not exist yet. An export folder without any
 `messages*.html` page is rejected.

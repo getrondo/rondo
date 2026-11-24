@@ -81,7 +81,10 @@ export const extractPrice = (
                         localDate: instantToLocalDate(sentAt, config.timeZone),
                         amountCents: Number(match[1]) * 100,
                         venueKey: venueOf(text),
-                        appliesTo: /вратар|воротар/iu.test(line) && !/[💷💵💶💴🟠🟢🔵]/u.test(line) ? ('gk' as const) : ('field' as const)
+                        appliesTo:
+                            /вратар|воротар/iu.test(line) && !config.teamColors.some(color => line.includes(color.emoji))
+                                ? ('gk' as const)
+                                : ('field' as const)
                     };
                 })
             )

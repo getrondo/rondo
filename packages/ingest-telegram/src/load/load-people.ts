@@ -83,7 +83,7 @@ export const insertPeople = Effect.fn('IngestTelegram.insertPeople')(function* (
                     communityId,
                     displayName: author.displayName,
                     personId: Option.fromNullishOr(selfPersonId).pipe(
-                        Option.filter(() => config.organizers.includes(author.displayName)),
+                        Option.filter(() => author.displayName === config.organizers[0]),
                         Option.getOrUndefined
                     ),
                     messageCount: author.messageCount,

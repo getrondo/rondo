@@ -37,7 +37,7 @@ apps/
   miniapp/              Telegram Mini App (future)
 packages/
   db/                   Drizzle schema per bounded context, migrations, DB layer
-  ingest-telegram/      Telegram export importer (JSON export to domain rows)
+  ingest-telegram/      Telegram export importer (HTML export to domain rows)
   domain/               Domain services and Schema types (future)
 tests/
   test-kit/             @rondo/test-kit: vitest config factory and shared test helpers (the PGlite layer lives in @rondo/db/testing)

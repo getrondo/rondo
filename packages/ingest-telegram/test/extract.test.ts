@@ -211,3 +211,64 @@ describe('plan assembly', () => {
         ]);
     });
 });
+
+describe('plan assembly edge cases', () => {
+    const poll = (id: number, sentAt: string, question: string) =>
+        message(id, sentAt, '', { text: undefined, poll: { question, answers: ['+', '-'] } });
+    const lineup = (id: number, sentAt: string, header: string) => message(id, sentAt, `${header}\n🟢Иван, Пётр\n🔵Олег, Семён`);
+
+    it('files a line-up under the sport of that day’s game poll', () => {
+        const plan = assemblePlan(
+            extractAll(
+                [
+                    poll(1, '2025-01-13T18:00:00Z', 'Вторник, 14 января, 20.00 зал North'),
+                    lineup(2, '2025-01-14T16:00:00Z', 'Составы на сегодня')
+                ],
+                testConfig
+            ),
+            '2025-06-30'
+        );
+
+        expect(plan.sessions.map(session => [session.sport, session.status, session.lineup?.messageId])).toEqual([['futsal', 'played', 2]]);
+    });
+
+    it('lets a cancellation posted after the line-up win', () => {
+        const plan = assemblePlan(
+            extractAll(
+                [
+                    poll(1, '2025-05-19T18:00:00Z', 'Среда, 21 мая, 19.00 North'),
+                    lineup(2, '2025-05-20T16:00:00Z', 'Составы на завтра'),
+                    message(3, '2025-05-21T08:00:00Z', 'Сегодня отмена, дождь')
+                ],
+                testConfig
+            ),
+            '2025-06-30'
+        );
+
+        expect(plan.sessions.map(session => [session.localDate, session.status, session.lineup])).toEqual([
+            ['2025-05-21', 'cancelled', undefined]
+        ]);
+        expect(plan.aliases).toEqual([]);
+    });
+
+    it('counts aliases once per session when a line-up is reposted', () => {
+        const plan = assemblePlan(
+            extractAll(
+                [lineup(1, '2025-05-05T15:00:00Z', 'Составы на сегодня'), lineup(2, '2025-05-05T15:30:00Z', 'Составы на сегодня')],
+                testConfig
+            ),
+            '2025-06-30'
+        );
+
+        expect(plan.aliases.find(alias => alias.aliasNorm === 'иван')?.occurrences).toBe(1);
+    });
+
+    it('does not read a team line with a configured colour as a goalkeeper price', () => {
+        const plan = assemblePlan(
+            extractAll([message(1, '2025-05-05T15:00:00Z', 'Составы:\n🔴Иван вратарь, по 5 евро на поле\n🟢Олег, Семён')], testConfig),
+            '2025-06-30'
+        );
+
+        expect(plan.prices.map(price => price.appliesTo)).toEqual(['field']);
+    });
+});

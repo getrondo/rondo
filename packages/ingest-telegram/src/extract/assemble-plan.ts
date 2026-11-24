@@ -166,11 +166,29 @@ const planPrices = (prices: readonly PriceFact[]): PlannedPrice[] =>
         }));
     });
 
+const lineupSport = (date: string, pollsByKey: ReadonlyMap<string, readonly PollFact[]>): PollFact['sport'] => {
+    const sameDay = [...pollsByKey].filter(([key]) => key.startsWith(`${date}|`)).flatMap(([, polls]) => polls);
+
+    return sameDay.some(poll => poll.sport === 'football') ? 'football' : (latest(sameDay)?.sport ?? 'football');
+};
+
+const playedLineup = (lineup: LineupFact, cancellation: CancellationFact | undefined): Option.Option<LineupFact> =>
+    Option.liftPredicate((candidate: LineupFact) => !isDefined(cancellation) || cancellation.messageId < candidate.messageId)(lineup);
+
 export const assemblePlan = (facts: ExtractedFacts, asOf: string): ImportPlan => {
     const gamePolls = facts.polls.filter(poll => !poll.isReserve);
     const pollsByKey = groupBy(gamePolls, poll => `${poll.localDate}|${poll.sport}`);
-    const lineupsByKey = new Map(facts.lineups.map(lineup => [`${lineup.localDate}|football`, lineup]));
     const cancellationsByDate = new Map(facts.cancellations.map(cancellation => [cancellation.localDate, cancellation]));
+    const lineupsByKey = new Map<string, LineupFact>(
+        facts.lineups.flatMap(lineup =>
+            playedLineup(lineup, cancellationsByDate.get(lineup.localDate)).pipe(
+                Option.match({
+                    onNone: () => [],
+                    onSome: played => [[`${played.localDate}|${lineupSport(played.localDate, pollsByKey)}`, played] as const]
+                })
+            )
+        )
+    );
     const keys = new Set([...pollsByKey.keys(), ...lineupsByKey.keys()]);
 
     const sessions = [...keys].toSorted().map(key =>
@@ -183,5 +201,11 @@ export const assemblePlan = (facts: ExtractedFacts, asOf: string): ImportPlan =>
         })
     );
 
-    return { sessions, aliases: planAliases(facts.lineups), prices: planPrices(facts.prices), fixtures: facts.fixtures, facts };
+    return {
+        sessions,
+        aliases: planAliases([...lineupsByKey.values()]),
+        prices: planPrices(facts.prices),
+        fixtures: facts.fixtures,
+        facts
+    };
 };

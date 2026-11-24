@@ -1,5 +1,15 @@
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 --> statement-breakpoint
+ALTER TABLE "identity"."telegram_author" ADD CONSTRAINT "telegram_author_community_fk" FOREIGN KEY ("community_id") REFERENCES "org"."community"("id") ON DELETE CASCADE;
+--> statement-breakpoint
+ALTER TABLE "identity"."person_alias" ADD CONSTRAINT "person_alias_community_fk" FOREIGN KEY ("community_id") REFERENCES "org"."community"("id") ON DELETE CASCADE;
+--> statement-breakpoint
+ALTER TABLE "scheduling"."session" ADD CONSTRAINT "session_moved_to_fk" FOREIGN KEY ("moved_to_session_id") REFERENCES "scheduling"."session"("id") ON DELETE SET NULL;
+--> statement-breakpoint
+ALTER TABLE "finance"."ledger_txn" ADD CONSTRAINT "ledger_txn_reverses_fk" FOREIGN KEY ("reverses_txn_id") REFERENCES "finance"."ledger_txn"("id") ON DELETE RESTRICT;
+--> statement-breakpoint
+ALTER TABLE "community"."ad" ADD CONSTRAINT "ad_fee_txn_fk" FOREIGN KEY ("fee_txn_id") REFERENCES "finance"."ledger_txn"("id") ON DELETE SET NULL;
+--> statement-breakpoint
 ALTER TABLE "venue"."booking" ADD CONSTRAINT "booking_no_overlap_ex" EXCLUDE USING gist ("field_id" WITH =, "during" WITH &&) WHERE ("status" <> 'released');
 --> statement-breakpoint
 ALTER TABLE "finance"."price_rule" ADD CONSTRAINT "price_rule_headcount_no_overlap_ex" EXCLUDE USING gist ("community_id" WITH =, "scope" WITH =, (coalesce("scope_id", '00000000-0000-0000-0000-000000000000'::uuid)) WITH =, "applies_to" WITH =, "headcount" WITH &&, "valid" WITH &&) WHERE ("headcount" IS NOT NULL);
