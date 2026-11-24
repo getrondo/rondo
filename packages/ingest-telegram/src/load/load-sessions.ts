@@ -31,7 +31,10 @@ const startOf = (planned: PlannedSession, timeZone: string): Date => {
     return zonedToInstant({ year, month, day, hour, minute }, timeZone);
 };
 
-const existingSessions = Effect.fn('IngestTelegram.existingSessions')(function* ({ transaction, communityId }: LoadContext) {
+const existingSessions = Effect.fn('IngestTelegram.existingSessions')(function* (
+    { transaction, communityId }: LoadContext,
+    live: LiveMessages
+) {
     const rows = yield* transaction
         .select({ id: session.id, localDate: session.localDate, activityId: session.activityId, source: session.source })
         .from(session)
@@ -56,10 +59,12 @@ const existingSessions = Effect.fn('IngestTelegram.existingSessions')(function* 
 
     return {
         edited: new Set(changed.map(({ id }) => id)),
-        byMessage: new Map(references.map(({ messageId, sessionId }) => [messageId, rowById.get(sessionId)])),
+        byMessage: new Map([...references, ...live].map(({ messageId, sessionId }) => [messageId, rowById.get(sessionId)])),
         byDay
     };
 });
+
+type LiveMessages = Effect.Success<ReturnType<typeof liveMessages>>;
 
 type Existing = Effect.Success<ReturnType<typeof existingSessions>>;
 
@@ -88,10 +93,11 @@ const matchSessions = (
 const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function* (
     context: LoadContext,
     reference: ReferenceIds,
-    liveSessionIds: ReadonlySet<string>
+    live: LiveMessages
 ) {
     const { transaction, communityId, config, plan } = context;
-    const existing = yield* existingSessions(context);
+    const existing = yield* existingSessions(context, live);
+    const liveSessionIds = new Set(live.map(({ sessionId }) => sessionId));
     const matched = matchSessions(
         plan.sessions.map(item => ({
             key: `${item.localDate}|${reference.activityIdBySport.get(item.sport)}`,
@@ -158,6 +164,8 @@ const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function
     return planned.map(({ row }) => row.id ?? idByKey.get(`${row.localDate}|${row.activityId}`) ?? '');
 });
 
+const isManualIn = (sessionId: typeof session.id) => and(eq(lineupEntry.sessionId, sessionId), eq(lineupEntry.resolvedBy, 'manual'));
+
 const deleteStaleSessions = Effect.fn('IngestTelegram.deleteStaleSessions')(function* (
     { transaction, communityId }: LoadContext,
     currentIds: ReadonlySet<string>
@@ -169,6 +177,7 @@ const deleteStaleSessions = Effect.fn('IngestTelegram.deleteStaleSessions')(func
             and(
                 eq(session.communityId, communityId),
                 eq(session.source, 'import'),
+                notExists(transaction.select().from(lineupEntry).where(isManualIn(session.id))),
                 notExists(transaction.select().from(sessionChange).where(eq(sessionChange.sessionId, session.id))),
                 notExists(transaction.select().from(signup).where(eq(signup.sessionId, session.id))),
                 notExists(
@@ -301,14 +310,23 @@ export const loadSessions = Effect.fn('IngestTelegram.loadSessions')(function* (
 ) {
     const live = yield* liveMessages(context.config.slug);
     const liveSessionIds = new Set(live.map(({ sessionId }) => sessionId));
-    const liveLineups = new Set(live.filter(({ purpose }) => purpose === 'lineup').map(({ sessionId }) => sessionId));
-    const sessionIds = yield* upsertSessionRows(context, reference, liveSessionIds);
+    const lineups = live.filter(({ isLineup }) => isLineup);
+    const liveLineups = new Set(lineups.map(({ sessionId }) => sessionId));
+    const storedLineups = new Set(lineups.filter(({ isStored }) => isStored).map(({ sessionId }) => sessionId));
+    const sessionIds = yield* upsertSessionRows(context, reference, live);
 
     yield* deleteStaleSessions(context, new Set([...sessionIds, ...liveSessionIds]));
 
-    const games = context.plan.sessions
+    const planned = context.plan.sessions
         .map(({ lineup, pollMessageIds }, index) => ({ sessionId: sessionIds[index] ?? '', lineup, pollMessageIds }))
-        .filter(({ sessionId }) => !liveLineups.has(sessionId));
+        .filter(({ sessionId, lineup }) => !storedLineups.has(sessionId) && (isDefined(lineup) || !liveLineups.has(sessionId)));
+    const manual = yield* context.transaction
+        .selectDistinct({ sessionId: lineupEntry.sessionId })
+        .from(lineupEntry)
+        .innerJoin(session, eq(session.id, lineupEntry.sessionId))
+        .where(and(eq(session.communityId, context.communityId), eq(lineupEntry.resolvedBy, 'manual')));
+    const manualSessionIds = new Set(manual.map(({ sessionId }) => sessionId));
+    const games = planned.filter(({ sessionId, lineup }) => isDefined(lineup) || !manualSessionIds.has(sessionId));
     const teams = yield* upsertTeams(context, reference, games);
     const { entries, unassigned } = yield* replaceEntries(context, directory, games);
 

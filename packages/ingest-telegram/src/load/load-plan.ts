@@ -14,6 +14,7 @@ import { insertPeople } from './load-people';
 import { recordProvenance } from './load-provenance';
 import { loadSessions } from './load-sessions';
 import { insertVotes } from './load-votes';
+import { lockCommunity } from './lock-community';
 import { removeUnusedNicknames } from './remove-unused-nicknames';
 
 import type { CommunityConfig } from '../config/community-config';
@@ -32,6 +33,7 @@ export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
 
     return yield* db.transaction(transaction =>
         Effect.gen(function* () {
+            yield* lockCommunity(config.slug);
             const communityId = yield* upsertCommunity(transaction, config);
             const context = { transaction, communityId, config, plan, snapshot };
             yield* purgePreviousImport(transaction, communityId);

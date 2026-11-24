@@ -41,11 +41,23 @@ const applyManual = (rows: readonly EntryRow[], manual: readonly EntryRow[]): En
         place(entry, row => isPlayer(row, entry));
     }
 
-    return rows.map(row => {
+    const resolved = rows.map(row => {
         const override = overrides.get(row);
 
         return isDefined(override) ? Object.assign(row, { personId: override.personId, resolvedBy: 'manual' as const }) : row;
     });
+    const matched = new Set(overrides.values());
+    const players = new Set(resolved.map(({ personId }) => personId));
+    const lastTeam = Math.max(...rows.map(({ teamOrdinal }) => teamOrdinal));
+    const unmatched = manual.filter(entry => !matched.has(entry) && !(isDefined(entry.personId) && players.has(entry.personId)));
+
+    for (const entry of unmatched) {
+        const teamOrdinal = Math.min(entry.teamOrdinal, lastTeam);
+        const position = 1 + Math.max(0, ...resolved.filter(row => row.teamOrdinal === teamOrdinal).map(row => row.position));
+        resolved.push({ ...entry, teamOrdinal, position });
+    }
+
+    return resolved;
 };
 
 export const entriesOf = (sessionId: string, lineup: LineupFact, directory: Directory, manual: readonly EntryRow[] = []): EntryRow[] => {

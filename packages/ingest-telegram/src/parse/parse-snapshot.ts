@@ -53,7 +53,7 @@ const voteChoice = (answers: Answers, options: readonly string[]): VoteChoice =>
 
 const linesOf = (file: string): string[] => file.split('\n').filter(line => isNotEmptyString(line.trim()));
 
-const quotePollId = (line: string): string => line.replace(/"poll":\s*\{"id":\s*(\d+)/u, '"poll":{"id":"$1"');
+const quotePollId = (line: string): string => line.replace(/"poll"\s*:\s*\{\s*"id"\s*:\s*(\d+)/u, '"poll":{"id":"$1"');
 
 const mergeUsers = (users: readonly SnapshotUser[]): Map<number, SnapshotUser> => {
     const merged = new Map<number, SnapshotUser>();
