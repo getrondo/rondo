@@ -2,6 +2,7 @@ import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { AiGateway } from '@rondo/assistant/service/ai-gateway.service';
 import { Access } from '@rondo/core/access/admin-access';
+import { createSession } from '@rondo/core/sessions/session.service';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
 import { processedUpdate, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
@@ -176,6 +177,49 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
 
             expect(error).toMatchObject({ _tag: 'UpdateInProgressError' });
             expect(recorder.calls).toHaveLength(calls);
+        })
+    );
+
+    it.effect('asks the admin privately before a cancellation written in the group is applied', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const group = { id: -100_700, type: 'supergroup' as const, title: 'Third' };
+            const { communityId } = yield* seedCommunity(seedConfig('cancel-fc'));
+            const sessionId = yield* createSession({
+                communityId,
+                timezone: 'Europe/Vienna',
+                localDate: '2025-11-30',
+                localTime: '19:00',
+                venueId: null,
+                capacityMax: null,
+                title: null,
+                actorPersonId: null
+            });
+            yield* handleUpdate(message(owner, group, '/link cancel-fc'));
+            const before = recorder.calls.length;
+            yield* handleUpdate(message(player, group, 'Сегодня отмена, дождь'));
+            const ignored = recorder.calls.length;
+            yield* handleUpdate(message(owner, group, 'Сегодня отмена, дождь'));
+            const proposal = recorder.calls.at(-1);
+            const [open] = yield* db.select().from(session).where(eq(session.id, sessionId));
+            const keyboard = proposal?.payload.reply_markup as { inline_keyboard: { callback_data: string }[][] } | undefined;
+            yield* handleUpdate(
+                nextUpdate({
+                    callback_query: {
+                        id: 'cb-4',
+                        from: owner,
+                        chat_instance: 'x',
+                        data: keyboard?.inline_keyboard[0]?.[0]?.callback_data ?? '',
+                        message: { message_id: 11, date: 0, chat: { id: owner.id, type: 'private', first_name: 'Alex' } }
+                    }
+                })
+            );
+            const [done] = yield* db.select().from(session).where(eq(session.id, sessionId));
+
+            expect(ignored).toBe(before);
+            expect(proposal?.payload.chat_id).toBe(owner.id);
+            expect(open?.status).toBe('open');
+            expect(done).toMatchObject({ status: 'cancelled', cancelReason: 'weather' });
         })
     );
 });

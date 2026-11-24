@@ -12,20 +12,12 @@ import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
+import { sendProposal } from '../context/send-proposal';
 import { toTelegramUser } from '../context/telegram-user.mapper';
 
 import type { Message } from 'grammy/types';
 
 const telegramMessageLimit = 4000;
-
-const confirmationKeyboard = (locale: 'uk' | 'ru', actionId: string) => ({
-    inline_keyboard: [
-        [
-            { text: text(locale, 'confirm'), callback_data: `act:${actionId}:y` },
-            { text: text(locale, 'reject'), callback_data: `act:${actionId}:n` }
-        ]
-    ]
-});
 
 export const handlePrivateMessage = Effect.fn('Bot.handlePrivateMessage')(function* (message: Message) {
     const telegram = yield* Telegram;
@@ -90,10 +82,6 @@ export const handlePrivateMessage = Effect.fn('Bot.handlePrivateMessage')(functi
     }
 
     for (const proposal of reply.proposals) {
-        yield* telegram.call('sendMessage', api =>
-            api.sendMessage(chatId, `${proposal.summary}\n\n${text(locale, 'confirmQuestion')}`.slice(0, telegramMessageLimit), {
-                reply_markup: confirmationKeyboard(locale, proposal.actionId)
-            })
-        );
+        yield* sendProposal(chatId, locale, proposal);
     }
 });

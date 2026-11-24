@@ -9,6 +9,7 @@ import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
+import { proposeToAdmin } from '../context/propose-to-admin';
 import { toTelegramUser } from '../context/telegram-user.mapper';
 
 import type { Message } from 'grammy/types';
@@ -89,7 +90,14 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
             : {})
     });
 
-    if (result.poll || result.lineup || result.cancellation) {
+    if (isDefined(result.cancellation)) {
+        // Telegram refuses a private message to an admin who never opened the bot, and that must not fail the update
+        yield* proposeToAdmin(communityId.value, user, { _tag: 'cancel_session', ...result.cancellation, notify: false }).pipe(
+            Effect.catchTag('TelegramApiError', error => Effect.logWarning('[group] proposal not delivered', error))
+        );
+    }
+
+    if (result.poll || result.lineup || isDefined(result.cancellation)) {
         yield* Effect.logInfo('[group] extracted', result);
     }
 });

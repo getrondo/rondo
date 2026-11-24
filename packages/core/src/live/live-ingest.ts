@@ -13,10 +13,9 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { todayIn } from '../sessions/local-time';
-import { cancelSession, createSession, listSessions } from '../sessions/session.service';
-import { closePollsOf } from '../signups/signup.service';
+import { createSession, listSessions } from '../sessions/session.service';
 
-import type { SessionView } from '../sessions/session.model';
+import type { CancelReason, SessionView } from '../sessions/session.model';
 import type { CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
 import type { LineupFact, PollFact } from '@rondo/ingest-telegram/extract/fact.model';
 import type { TelegramMessage } from '@rondo/ingest-telegram/model/telegram-message.model';
@@ -36,7 +35,7 @@ export interface GroupMessage {
 interface LiveIngestResult {
     readonly poll: boolean;
     readonly lineup: boolean;
-    readonly cancellation: boolean;
+    readonly cancellation?: { readonly sessionId: string; readonly reason: CancelReason };
 }
 
 const recordAuthor = Effect.fn('Core.recordAuthor')(function* (communityId: string, message: GroupMessage) {
@@ -89,8 +88,6 @@ const minutesOf = (time: string): number => {
 };
 
 const minutesApart = (left: string, right: string): number => Math.abs(minutesOf(left) - minutesOf(right));
-
-const keepsGameSignal = /перенос|перенес|не\s+отмен/iu;
 
 const gamesOn = Effect.fn('Core.gamesOn')(function* (communityId: string, localDate: string) {
     const sessions = yield* listSessions(communityId, { from: localDate, to: localDate });
@@ -258,7 +255,7 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
         media: []
     };
     if (!message.senderIsAdmin) {
-        return { poll: false, lineup: false, cancellation: false } satisfies LiveIngestResult;
+        return { poll: false, lineup: false } satisfies LiveIngestResult;
     }
 
     const venueOf = makeVenueMatcher(config);
@@ -266,9 +263,7 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
         Option.filter(fact => !fact.isReserve && !fact.isChoice && fact.sport === 'football')
     );
     const lineup = Option.fromNullishOr(extractLineup(telegramMessage, config, venueOf));
-    const cancellation = Option.fromNullishOr(extractCancellation(telegramMessage, config, new Set([message.senderName]))).pipe(
-        Option.filter(() => !keepsGameSignal.test(message.text ?? ''))
-    );
+    const cancellation = Option.fromNullishOr(extractCancellation(telegramMessage, config, new Set([message.senderName])));
 
     if (Option.isSome(poll)) {
         const sessionId = yield* ensureSession(communityId, config, poll.value);
@@ -282,18 +277,14 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
         yield* db.transaction(() => applyLineup(communityId, config, lineup.value, message));
     }
 
-    if (Option.isSome(cancellation)) {
-        const [target, ...others] = yield* gamesOn(communityId, cancellation.value.localDate);
-
-        if (isDefined(target) && isEmptyArray(others) && target.status !== 'played') {
-            yield* cancelSession(target, cancellation.value.reason, message.senderPersonId);
-            yield* closePollsOf(target.id);
-        }
-    }
+    const [target, ...others] = Option.isSome(cancellation) ? yield* gamesOn(communityId, cancellation.value.localDate) : [];
+    const toCancel = isDefined(target) && isEmptyArray(others) && target.status !== 'played' ? target : null;
 
     return {
         poll: Option.isSome(poll),
         lineup: Option.isSome(lineup),
-        cancellation: Option.isSome(cancellation)
+        ...(isDefined(toCancel) && Option.isSome(cancellation)
+            ? { cancellation: { sessionId: toCancel.id, reason: cancellation.value.reason } }
+            : {})
     } satisfies LiveIngestResult;
 });

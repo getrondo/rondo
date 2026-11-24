@@ -15,7 +15,7 @@ import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 const config = seedConfig('live-fc');
 
 layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it => {
-    it.effect('turns a poll, a line-up and an organizer cancellation into session data', () =>
+    it.effect('turns a poll and a line-up into session data and only suggests a cancellation', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(config);
@@ -76,8 +76,8 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             expect(members).toHaveLength(6);
             expect(isDefined(selfMember)).toBe(true);
             expect(aliases.map(alias => alias.aliasNorm).toSorted()).toEqual(['иван', 'олег', 'павел', 'петр', 'семен']);
-            expect(cancellation).toMatchObject({ cancellation: true });
-            expect(cancelled).toMatchObject({ status: 'cancelled', cancelReason: 'weather' });
+            expect(cancellation.cancellation).toEqual({ sessionId: cancelled?.id, reason: 'weather' });
+            expect(cancelled?.status).toBe('open');
             expect(stillPlayed).toHaveLength(6);
         })
     );
@@ -126,7 +126,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             });
             const [kept] = yield* db.select().from(session).where(eq(session.communityId, communityId));
 
-            expect(result.cancellation).toBe(false);
+            expect(isDefined(result.cancellation)).toBe(false);
             expect(lineup.lineup).toBe(false);
             expect(kept?.status).toBe('open');
         })
