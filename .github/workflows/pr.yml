@@ -18,7 +18,7 @@ env:
 jobs:
     quality:
         name: Quality Checks
-        runs-on: [self-hosted, linux-portable-4x8]
+        runs-on: ubuntu-latest
         timeout-minutes: 30
         steps:
             - name: Checkout repository
@@ -125,7 +125,7 @@ jobs:
 
     lint-workflows:
         name: Lint workflows
-        runs-on: [self-hosted, linux-portable-2x4]
+        runs-on: ubuntu-latest
         timeout-minutes: 5
         steps:
             - name: Checkout repository

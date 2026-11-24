@@ -18,13 +18,8 @@ concurrency:
 
 jobs:
     claude-review:
-        # Optional: Filter by PR author
-        # if: |
-        #   github.event.pull_request.user.login == 'external-contributor' ||
-        #   github.event.pull_request.user.login == 'new-developer' ||
-        #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
-
-        runs-on: [self-hosted, linux-portable-2x4]
+        if: vars.CLAUDE_ENABLED == 'true'
+        runs-on: ubuntu-latest
         timeout-minutes: 30
         permissions:
             contents: read
