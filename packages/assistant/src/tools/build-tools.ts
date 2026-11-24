@@ -43,6 +43,16 @@ const Limit = optionalNullable(Schema.Int.check(Schema.isBetween({ minimum: 1, m
 const SessionRef = Schema.Struct({ sessionId: Schema.String.annotate({ description: 'session id from list_sessions' }) });
 const CancelReason = Schema.Literals(['weather', 'low_turnout', 'venue', 'holiday', 'organizer', 'other']);
 
+const knownDetails = (details: {
+    readonly address?: string | null;
+    readonly district?: number | null;
+    readonly indoor?: boolean | null;
+}) => ({
+    ...(isNotEmptyString(details.address) ? { address: details.address } : {}),
+    ...(isDefined(details.district) ? { district: details.district } : {}),
+    ...(isDefined(details.indoor) ? { indoor: details.indoor } : {})
+});
+
 const withCoverage = <Value, Failure, Requirements>(
     scope: ToolScope,
     query: Effect.Effect<Value, Failure, Requirements>,
@@ -215,7 +225,7 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
     propose_create_venue: tool({
         description: 'Propose adding a venue (football field). Check list_venues first.',
         inputSchema: toolSchema(Schema.Struct({ name: Schema.String, ...venueFields })),
-        execute: async input => await run(propose(scope, { _tag: 'create_venue', ...input }))
+        execute: async ({ name, ...details }) => await run(propose(scope, { _tag: 'create_venue', name, ...knownDetails(details) }))
     }),
     propose_update_venue: tool({
         description:
@@ -234,7 +244,7 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
                 propose(scope, {
                     _tag: 'update_venue',
                     venueId,
-                    ...details,
+                    ...knownDetails(details),
                     ...(isNotEmptyString(name) ? { name } : {}),
                     ...(isNotEmptyString(alias) ? { alias } : {}),
                     ...(isDefined(active) ? { active } : {})

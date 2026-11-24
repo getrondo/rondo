@@ -51,7 +51,6 @@ export const upsertTelegramUser = Effect.fn('Core.upsertTelegramUser')(function*
 
             if (isDefined(account?.personId)) {
                 if (isDefined(before)) {
-                    // Follow a Telegram rename only while the player still carries the old Telegram name, so an admin's rename wins
                     const previousName = [before.firstName, before.lastName].filter(part => isNotEmptyString(part)).join(' ');
                     yield* transaction
                         .update(person)

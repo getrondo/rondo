@@ -26,7 +26,5 @@ export const extractPlace = Effect.fn('Assistant.extractPlace')(function* (title
             })
     );
     const place = result.text.trim();
-
-    // Only a name that really appears in the poll is accepted, so the model cannot invent one
     return place.length >= 3 && place.length <= maxPlaceLength && title.toLowerCase().includes(place.toLowerCase()) ? place : null;
 });

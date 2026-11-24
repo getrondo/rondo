@@ -49,9 +49,9 @@ const SetRatingAction = Schema.TaggedStruct('set_rating', {
 const CreatePersonAction = Schema.TaggedStruct('create_person', { displayName: Schema.NonEmptyString });
 
 const venueDetails = {
-    address: Schema.optional(Schema.NullOr(Schema.String)),
-    district: Schema.optional(Schema.NullOr(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 23 })))),
-    indoor: Schema.optional(Schema.NullOr(Schema.Boolean))
+    address: Schema.optional(Schema.String),
+    district: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 23 }))),
+    indoor: Schema.optional(Schema.Boolean)
 };
 
 const CreateVenueAction = Schema.TaggedStruct('create_venue', {

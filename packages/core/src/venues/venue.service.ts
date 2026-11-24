@@ -11,9 +11,9 @@ import { ActionFailedError } from '../error/action-failed.error';
 import type { CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
 
 export interface VenueDetails {
-    readonly address?: string | null;
-    readonly district?: number | null;
-    readonly indoor?: boolean | null;
+    readonly address?: string;
+    readonly district?: number;
+    readonly indoor?: boolean;
     readonly lat?: number | null;
     readonly lng?: number | null;
 }
@@ -200,8 +200,6 @@ export const learnVenuePin = Effect.fn('Core.learnVenuePin')(function* (input: {
     if (!isDefined(known)) {
         return yield* createVenue({ communityId, actorPersonId, name: title, address, lat, lng });
     }
-
-    // A pin only completes a venue: another place can share the name, so known details are never replaced
     yield* db
         .update(venue)
         .set({
