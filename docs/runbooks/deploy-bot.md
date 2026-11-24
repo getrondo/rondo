@@ -38,7 +38,8 @@ isec run getrondo prod -- sh -c 'RONDO_WEBHOOK_URL=https://<production-domain>/a
 ## Connect the community group
 
 1. In @BotFather: `/setprivacy` → **Disable** for the bot, so it sees every group message.
-2. Add the bot to the group (as admin if it should pin polls later).
+2. Add the bot to the group as an admin: Telegram sends reliable join and leave updates only to admin bots.
+   Bots cannot list existing members, so people appear once they write, vote or join.
 3. An owner sends `/link <community-slug>` in the group (the slug from the import config).
 
 4. Make every organizer an admin through the assistant (they must have written in the group first). Polls, line-ups and cancellations posted by anyone else are ignored.

@@ -46,6 +46,28 @@ const SetRatingAction = Schema.TaggedStruct('set_rating', {
     level: Schema.Finite.check(Schema.isBetween({ minimum: 1, maximum: 10 }))
 });
 
+const CreatePersonAction = Schema.TaggedStruct('create_person', { displayName: Schema.NonEmptyString });
+
+const venueDetails = {
+    address: Schema.optional(Schema.NullOr(Schema.String)),
+    district: Schema.optional(Schema.NullOr(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 23 })))),
+    indoor: Schema.optional(Schema.NullOr(Schema.Boolean))
+};
+
+const CreateVenueAction = Schema.TaggedStruct('create_venue', {
+    name: Schema.NonEmptyString,
+    sessionId: Schema.optional(Schema.NullOr(Schema.String)),
+    ...venueDetails
+});
+
+const UpdateVenueAction = Schema.TaggedStruct('update_venue', {
+    venueId: Schema.String,
+    name: Schema.optional(Schema.NonEmptyString),
+    alias: Schema.optional(Schema.NonEmptyString),
+    active: Schema.optional(Schema.Boolean),
+    ...venueDetails
+});
+
 export const ActionSchema = Schema.Union([
     CreateSessionAction,
     UpdateSessionAction,
@@ -55,7 +77,10 @@ export const ActionSchema = Schema.Union([
     MergePeopleAction,
     RenamePersonAction,
     GrantAdminAction,
-    SetRatingAction
+    SetRatingAction,
+    CreatePersonAction,
+    CreateVenueAction,
+    UpdateVenueAction
 ]);
 
 export type Action = typeof ActionSchema.Type;

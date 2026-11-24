@@ -3,7 +3,6 @@ import { person, personAlias, telegramAuthor } from '@rondo/db/schema/identity.s
 import { messageRef } from '@rondo/db/schema/platform.schema';
 import { team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
-import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { extractLineup } from '@rondo/ingest-telegram/extract/extract-lineup';
 import { extractPoll, makeVenueMatcher } from '@rondo/ingest-telegram/extract/extract-poll';
@@ -13,7 +12,8 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { todayIn } from '../sessions/local-time';
-import { createSession, listSessions } from '../sessions/session.service';
+import { createSession, getSession, listSessions } from '../sessions/session.service';
+import { findVenueByName, withKnownVenues } from '../venues/venue.service';
 
 import type { CancelReason, SessionView } from '../sessions/session.model';
 import type { CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
@@ -36,6 +36,7 @@ interface LiveIngestResult {
     readonly poll: boolean;
     readonly lineup: boolean;
     readonly cancellation?: { readonly sessionId: string; readonly reason: CancelReason };
+    readonly unknownPlace?: { readonly sessionId: string; readonly text: string };
 }
 
 const recordAuthor = Effect.fn('Core.recordAuthor')(function* (communityId: string, message: GroupMessage) {
@@ -64,19 +65,15 @@ const recordAuthor = Effect.fn('Core.recordAuthor')(function* (communityId: stri
 });
 
 const venueIdFor = Effect.fn('Core.venueIdFor')(function* (communityId: string, config: CommunityConfig, venueKey: string | undefined) {
-    const db = yield* Db;
     const name = config.venues.find(entry => entry.key === venueKey)?.name;
 
     if (!isDefined(name)) {
         return null;
     }
 
-    const [row] = yield* db
-        .select({ id: venue.id })
-        .from(venue)
-        .where(and(eq(venue.communityId, communityId), eq(venue.name, name)));
+    const found = yield* findVenueByName(communityId, name);
 
-    return row?.id ?? null;
+    return found?.status === 'active' ? found.id : null;
 });
 
 const gameMinutes = 90;
@@ -239,7 +236,7 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
 
 export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function* (
     communityId: string,
-    config: CommunityConfig,
+    importedConfig: CommunityConfig,
     message: GroupMessage
 ) {
     const db = yield* Db;
@@ -258,7 +255,9 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
         return { poll: false, lineup: false } satisfies LiveIngestResult;
     }
 
+    const config = yield* withKnownVenues(communityId, importedConfig);
     const venueOf = makeVenueMatcher(config);
+    let unknownPlace: LiveIngestResult['unknownPlace'] | null = null;
     const poll = Option.fromNullishOr(extractPoll(telegramMessage, config, venueOf)).pipe(
         Option.filter(fact => !fact.isReserve && !fact.isChoice && fact.sport === 'football')
     );
@@ -270,6 +269,11 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
 
         if (Option.isSome(sessionId)) {
             yield* rememberMessage(message, 'poll', sessionId.value);
+            const game = yield* getSession(sessionId.value);
+
+            if (!isDefined(poll.value.venueKey) && Option.exists(game, ({ venueId }) => !isDefined(venueId))) {
+                unknownPlace = { sessionId: sessionId.value, text: poll.value.title };
+            }
         }
     }
 
@@ -285,6 +289,7 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
         lineup: Option.isSome(lineup),
         ...(isDefined(toCancel) && Option.isSome(cancellation)
             ? { cancellation: { sessionId: toCancel.id, reason: cancellation.value.reason } }
-            : {})
+            : {}),
+        ...(isDefined(unknownPlace) ? { unknownPlace } : {})
     } satisfies LiveIngestResult;
 });

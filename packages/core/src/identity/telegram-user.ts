@@ -2,7 +2,7 @@ import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { membership } from '@rondo/db/schema/org.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
@@ -24,6 +24,10 @@ export const upsertTelegramUser = Effect.fn('Core.upsertTelegramUser')(function*
 
     return yield* db.transaction(transaction =>
         Effect.gen(function* () {
+            const [before] = yield* transaction
+                .select({ firstName: telegramAccount.firstName, lastName: telegramAccount.lastName })
+                .from(telegramAccount)
+                .where(eq(telegramAccount.tgUserId, user.id));
             const [account] = yield* transaction
                 .insert(telegramAccount)
                 .values({
@@ -46,6 +50,21 @@ export const upsertTelegramUser = Effect.fn('Core.upsertTelegramUser')(function*
                 .returning({ personId: telegramAccount.personId });
 
             if (isDefined(account?.personId)) {
+                if (isDefined(before)) {
+                    // Follow a Telegram rename only while the player still carries the old Telegram name, so an admin's rename wins
+                    const previousName = [before.firstName, before.lastName].filter(part => isNotEmptyString(part)).join(' ');
+                    yield* transaction
+                        .update(person)
+                        .set({ displayName: displayNameOf(user) })
+                        .where(
+                            and(
+                                eq(person.id, account.personId),
+                                eq(person.displayName, previousName),
+                                ne(person.displayName, displayNameOf(user))
+                            )
+                        );
+                }
+
                 return account.personId;
             }
 
@@ -66,7 +85,34 @@ export const ensureMembership = Effect.fn('Core.ensureMembership')(function* (co
 
     const joinedAt = yield* DateTime.nowAsDate;
 
-    yield* db.insert(membership).values({ communityId, personId, joinedAt }).onConflictDoNothing();
+    yield* db
+        .insert(membership)
+        .values({ communityId, personId, joinedAt })
+        .onConflictDoUpdate({
+            target: [membership.communityId, membership.personId],
+            set: { status: 'active', leftAt: null },
+            setWhere: ne(membership.status, 'active')
+        });
+});
+
+export const syncMember = Effect.fn('Core.syncMember')(function* (
+    communityId: string,
+    user: TelegramUser,
+    presence: 'active' | 'left' | 'removed'
+) {
+    const db = yield* Db;
+    const personId = yield* upsertTelegramUser(user);
+    yield* ensureMembership(communityId, personId);
+
+    if (presence !== 'active') {
+        const leftAt = yield* DateTime.nowAsDate;
+        yield* db
+            .update(membership)
+            .set({ status: presence, leftAt })
+            .where(and(eq(membership.communityId, communityId), eq(membership.personId, personId)));
+    }
+
+    return personId;
 });
 
 export const personIdOfTelegramUser = Effect.fn('Core.personIdOfTelegramUser')(function* (tgUserId: bigint) {

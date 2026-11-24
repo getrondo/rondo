@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -55,6 +55,12 @@ const words = {
         rename: '✏️ Перейменувати',
         admin: '🛡 Зробити адміністратором',
         rating: '⭐ Рівень гравця',
+        person: '👤 Новий гравець',
+        venue: '📍 Нове поле',
+        venueChange: '📍 Змінити поле',
+        venueOff: 'більше не використовувати',
+        venueOn: 'знову використовувати',
+        alias: 'також',
         places: 'місць'
     },
     ru: {
@@ -69,6 +75,12 @@ const words = {
         rename: '✏️ Переименовать',
         admin: '🛡 Сделать администратором',
         rating: '⭐ Уровень игрока',
+        person: '👤 Новый игрок',
+        venue: '📍 Новое поле',
+        venueChange: '📍 Изменить поле',
+        venueOff: 'больше не использовать',
+        venueOn: 'снова использовать',
+        alias: 'также',
         places: 'мест'
     }
 } as const;
@@ -130,6 +142,21 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
         }
         case 'set_rating': {
             return `${word.rating}: ${yield* nameOfPerson(action.personId)} = ${action.level}/10`;
+        }
+        case 'create_person': {
+            return `${word.person}: ${action.displayName}`;
+        }
+        case 'create_venue': {
+            const game = isDefined(action.sessionId) ? ` → ${yield* sessionLabel(locale, action.sessionId)}` : '';
+
+            return `${word.venue}: ${[action.name, action.address].filter(part => isNotEmptyString(part)).join(', ')}${game}`;
+        }
+        case 'update_venue': {
+            const active = isDefined(action.active) ? [action.active ? word.venueOn : word.venueOff] : [];
+            const alias = isDefined(action.alias) ? [`${word.alias} «${action.alias}»`] : [];
+            const details = [action.name, action.address, action.district, action.indoor].filter(part => isDefined(part));
+
+            return `${word.venueChange}: ${yield* nameOfVenue(action.venueId)} → ${[...details, ...alias, ...active].join(', ')}`;
         }
         default: {
             return '';
