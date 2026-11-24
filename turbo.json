@@ -1,0 +1,38 @@
+{
+    "$schema": "https://turborepo.dev/schema.json",
+    "globalDependencies": ["tsconfig.base.json"],
+    "tasks": {
+        "build": {
+            "dependsOn": ["^build"],
+            "outputs": ["dist/**"],
+            "inputs": ["$TURBO_DEFAULT$", "!test/**", "!**/*.md", "!vitest.config.ts"]
+        },
+        "ts": {
+            "dependsOn": ["transit"],
+            "outputs": ["*.tsbuildinfo"],
+            "inputs": ["$TURBO_DEFAULT$", "!**/*.md"],
+            "env": ["TSRS_*"]
+        },
+        "dev": {
+            "cache": false,
+            "persistent": true
+        },
+        "transit": {
+            "dependsOn": ["^transit"],
+            "inputs": ["$TURBO_DEFAULT$", "!**/*.md"]
+        },
+        "test": {
+            "dependsOn": ["transit"],
+            "inputs": ["$TURBO_DEFAULT$", "!**/*.md"],
+            "env": ["CI", "NODE_ENV", "TZ", "LANG"],
+            "outputs": []
+        },
+        "//#ts:root": {
+            "dependsOn": ["^transit"],
+            "inputs": ["tsconfig.json", "tsconfig.base.json", "*.config.ts", "lint-rules/**", "package.json"],
+            "outputs": ["*.tsbuildinfo"],
+            "env": ["TSRS_*"]
+        }
+    },
+    "globalPassThroughEnv": ["NODE_OPTIONS"]
+}

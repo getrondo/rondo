@@ -1,0 +1,32 @@
+{
+    "name": "@rondo/db",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./*": "./src/*.ts"
+    },
+    "scripts": {
+        "ts": "tsrs -p .",
+        "test": "vitest run",
+        "db:generate": "drizzle-kit generate",
+        "db:custom": "drizzle-kit generate --custom",
+        "db:check": "drizzle-kit check",
+        "db:migrate": "node --env-file-if-exists=../../.env --import tsx src/migration/migrate.main.ts"
+    },
+    "dependencies": {
+        "@effect/sql-pg": "4.1.5",
+        "drizzle-orm": "1.0.0-rc.6",
+        "effect": "4.1.5",
+        "uuid": "14.0.3"
+    },
+    "devDependencies": {
+        "@effect/vitest": "4.1.5",
+        "@electric-sql/pglite": "0.6.0",
+        "@electric-sql/pglite-socket": "0.3.0",
+        "@rondo/test-kit": "workspace:*",
+        "drizzle-kit": "1.0.0-rc.6",
+        "tsx": "4.23.15",
+        "vitest": "5.1.0"
+    }
+}

@@ -1,0 +1,877 @@
+{
+    "$schema": "./node_modules/@effect/tsgo/oxlint-schema.json",
+    "extends": ["./node_modules/@effect/tsgo/oxlint-presets/strict.json"],
+    "plugins": ["typescript", "import", "promise", "node", "unicorn", "oxc"],
+    "jsPlugins": [
+        {
+            "name": "slop",
+            "specifier": "eslint-plugin-slop"
+        },
+        {
+            "name": "no-comment-slop",
+            "specifier": "eslint-plugin-no-comment-slop"
+        },
+        {
+            "name": "regexp",
+            "specifier": "eslint-plugin-regexp"
+        },
+        {
+            "name": "rondo",
+            "specifier": "./lint-rules/index.mjs"
+        },
+        {
+            "name": "ts-eslint",
+            "specifier": "@typescript-eslint/eslint-plugin"
+        },
+        {
+            "name": "eslint-js",
+            "specifier": "./lint-rules/eslint-js.mjs"
+        },
+        {
+            "name": "n",
+            "specifier": "eslint-plugin-n"
+        }
+    ],
+    "categories": {
+        "correctness": "error",
+        "suspicious": "error",
+        "pedantic": "error",
+        "style": "off",
+        "perf": "error",
+        "restriction": "off"
+    },
+    "options": {
+        "typeAware": true,
+        "reportUnusedDisableDirectives": "error"
+    },
+    "env": {
+        "builtin": true
+    },
+    "settings": {
+        "n": {
+            "version": ">=26.13.0"
+        }
+    },
+    "ignorePatterns": [".turbo/**", "dist/**", "coverage/**", "node_modules/**", ".claude/**", ".agents/**", "**/*.d.ts", "drizzle/**"],
+    "rules": {
+        "arrow-body-style": ["error", "as-needed"],
+        "capitalized-comments": "off",
+        "class-methods-use-this": "off",
+        "complexity": ["error", 25],
+        "curly": ["error", "all"],
+        "default-case": "error",
+        "default-case-last": "error",
+        "default-param-last": "error",
+        "func-name-matching": "error",
+        "func-names": [
+            "error",
+            "always",
+            {
+                "generators": "never"
+            }
+        ],
+        "func-style": "off",
+        "grouped-accessor-pairs": "error",
+        "guard-for-in": "error",
+        "id-denylist": "error",
+        "id-length": [
+            "error",
+            {
+                "min": 2,
+                "exceptions": [
+                    "i",
+                    "j",
+                    "k",
+                    "x",
+                    "y",
+                    "z",
+                    "t",
+                    "s",
+                    "e",
+                    "p",
+                    "m",
+                    "n",
+                    "a",
+                    "b",
+                    "v",
+                    "r",
+                    "w",
+                    "h",
+                    "_",
+                    "o",
+                    "d",
+                    "g",
+                    "f",
+                    "l",
+                    "c",
+                    "q",
+                    "T"
+                ]
+            }
+        ],
+        "id-match": "error",
+        "init-declarations": "off",
+        "logical-assignment-operators": "error",
+        "max-lines": [
+            "error",
+            {
+                "max": 300,
+                "skipBlankLines": true
+            }
+        ],
+        "max-lines-per-function": [
+            "error",
+            {
+                "max": 250,
+                "skipBlankLines": true
+            }
+        ],
+        "max-params": [
+            "error",
+            {
+                "max": 4
+            }
+        ],
+        "max-statements": "off",
+        "new-cap": "off",
+        "no-alert": "error",
+        "no-bitwise": "error",
+        "no-console": "error",
+        "no-continue": "off",
+        "no-div-regex": "error",
+        "no-duplicate-imports": "error",
+        "no-empty": "error",
+        "no-empty-function": [
+            "error",
+            {
+                "allow": ["constructors"]
+            }
+        ],
+        "no-eq-null": "error",
+        "no-extra-label": "error",
+        "no-implicit-coercion": "error",
+        "no-implicit-globals": "error",
+        "no-implied-eval": "error",
+        "no-label-var": "error",
+        "no-labels": "error",
+        "no-lone-blocks": "error",
+        "no-magic-numbers": "off",
+        "no-multi-assign": "error",
+        "no-multi-str": "error",
+        "no-nested-ternary": "error",
+        "no-new-func": "error",
+        "no-param-reassign": "error",
+        "no-plusplus": "error",
+        "no-proto": "error",
+        "no-regex-spaces": "error",
+        "no-restricted-imports": [
+            "error",
+            {
+                "paths": [
+                    {
+                        "name": "effect",
+                        "message": "Import Effect modules by subpath, e.g. import * as Effect from 'effect/Effect'"
+                    },
+                    {
+                        "name": "zod",
+                        "message": "Use effect/Schema."
+                    }
+                ]
+            }
+        ],
+        "no-restricted-properties": [
+            "error",
+            {
+                "object": "Reflect",
+                "property": "get",
+                "message": "Use typed property access, `in` narrowing, or decode the value with Schema."
+            },
+            {
+                "object": "Reflect",
+                "property": "apply",
+                "message": "Call the function directly with typed arguments."
+            },
+            {
+                "object": "vi",
+                "property": "mock",
+                "message": "Replace module mocking with a real dependency seam such as a test Layer."
+            },
+            {
+                "object": "vi",
+                "property": "doMock",
+                "message": "Replace module mocking with a real dependency seam such as a test Layer."
+            },
+            {
+                "object": "Map",
+                "property": "groupBy",
+                "message": "Needs Chrome 117, Firefox 119, Safari 17.4 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "object": "Object",
+                "property": "groupBy",
+                "message": "Needs Chrome 117, Firefox 119, Safari 17.4 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "object": "Array",
+                "property": "fromAsync",
+                "message": "Needs Chrome 121, Firefox 115, Safari 16.4 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "object": "Promise",
+                "property": "withResolvers",
+                "message": "Needs Chrome 119, Firefox 121, Safari 17.4 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "object": "Promise",
+                "property": "try",
+                "message": "Needs Chrome 128, Firefox 134, Safari 18.2 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "object": "Iterator",
+                "property": "from",
+                "message": "Needs Chrome 122, Firefox 131, Safari 18.4 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "object": "RegExp",
+                "property": "escape",
+                "message": "Needs Chrome 136, Firefox 134, Safari 18.2 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "object": "Uint8Array",
+                "property": "fromBase64",
+                "message": "Needs Chrome 140, Firefox 133, Safari 18.2 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "object": "Uint8Array",
+                "property": "fromHex",
+                "message": "Needs Chrome 140, Firefox 133, Safari 18.2 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "property": "toBase64",
+                "message": "Needs Chrome 140, Firefox 133, Safari 18.2 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "property": "toHex",
+                "message": "Needs Chrome 140, Firefox 133, Safari 18.2 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "property": "symmetricDifference",
+                "message": "Needs Chrome 122, Firefox 127, Safari 17 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "property": "isSubsetOf",
+                "message": "Needs Chrome 122, Firefox 127, Safari 17 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "property": "isSupersetOf",
+                "message": "Needs Chrome 122, Firefox 127, Safari 17 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "property": "isDisjointFrom",
+                "message": "Needs Chrome 122, Firefox 127, Safari 17 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "property": "toReversed",
+                "message": "Needs Chrome 110, Firefox 115, Safari 16 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "property": "toSpliced",
+                "message": "Needs Chrome 110, Firefox 115, Safari 16 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            },
+            {
+                "property": "with",
+                "message": "Needs Chrome 110, Firefox 115, Safari 16 but the browserslist floor is Chrome 100, Firefox 100, Safari 16."
+            }
+        ],
+        "no-return-assign": "error",
+        "no-script-url": "error",
+        "no-sequences": "error",
+        "no-template-curly-in-string": "error",
+        "no-ternary": "off",
+        "no-throw-literal": "error",
+        "no-undef": "off",
+        "no-undefined": "error",
+        "no-underscore-dangle": "off",
+        "no-unreachable-loop": "error",
+        "no-unused-vars": [
+            "error",
+            {
+                "args": "all",
+                "argsIgnorePattern": "^_",
+                "caughtErrors": "all",
+                "caughtErrorsIgnorePattern": "^_",
+                "destructuredArrayIgnorePattern": "^_",
+                "varsIgnorePattern": "(^_)|(Fields$)",
+                "ignoreRestSiblings": true
+            }
+        ],
+        "no-use-before-define": "error",
+        "no-useless-assignment": "error",
+        "no-useless-computed-key": "error",
+        "no-var": "error",
+        "no-void": "off",
+        "no-warning-comments": [
+            "error",
+            {
+                "terms": ["fixme", "xxx"],
+                "location": "start"
+            }
+        ],
+        "object-shorthand": "error",
+        "one-var": "off",
+        "operator-assignment": "error",
+        "prefer-arrow-callback": [
+            "error",
+            {
+                "allowNamedFunctions": true
+            }
+        ],
+        "prefer-const": "error",
+        "prefer-destructuring": "error",
+        "prefer-exponentiation-operator": "error",
+        "prefer-named-capture-group": "off",
+        "prefer-numeric-literals": "error",
+        "prefer-object-has-own": "error",
+        "prefer-object-spread": "error",
+        "prefer-promise-reject-errors": "error",
+        "prefer-regex-literals": "error",
+        "prefer-rest-params": "error",
+        "prefer-spread": "error",
+        "prefer-template": "error",
+        "require-await": "off",
+        "require-unicode-regexp": "off",
+        "sort-keys": "off",
+        "unicode-bom": "error",
+        "vars-on-top": "error",
+        "yoda": "error",
+        "typescript/dot-notation": "error",
+        "typescript/ban-ts-comment": [
+            "error",
+            {
+                "ts-expect-error": "allow-with-description",
+                "minimumDescriptionLength": 5
+            }
+        ],
+        "typescript/no-confusing-void-expression": [
+            "error",
+            {
+                "ignoreArrowShorthand": true,
+                "ignoreVoidOperator": true
+            }
+        ],
+        "typescript/no-deprecated": "off",
+        "typescript/no-dynamic-delete": "error",
+        "typescript/no-empty-object-type": "error",
+        "typescript/no-explicit-any": "error",
+        "typescript/no-invalid-void-type": "error",
+        "typescript/no-meaningless-void-operator": "error",
+        "typescript/no-misused-promises": "error",
+        "typescript/no-namespace": "error",
+        "typescript/no-non-null-asserted-nullish-coalescing": "error",
+        "typescript/no-non-null-assertion": "off",
+        "typescript/no-require-imports": "error",
+        "typescript/no-unnecessary-condition": "error",
+        "typescript/no-unnecessary-type-parameters": "error",
+        "typescript/prefer-literal-enum-member": "error",
+        "typescript/prefer-reduce-type-parameter": "error",
+        "typescript/prefer-return-this-type": "error",
+        "typescript/require-await": "off",
+        "typescript/restrict-plus-operands": [
+            "error",
+            {
+                "allowAny": false,
+                "allowBoolean": false,
+                "allowNullish": false,
+                "allowNumberAndString": false,
+                "allowRegExp": false
+            }
+        ],
+        "typescript/restrict-template-expressions": [
+            "error",
+            {
+                "allowNumber": true
+            }
+        ],
+        "typescript/return-await": ["error", "error-handling-correctness-only"],
+        "typescript/unified-signatures": "error",
+        "typescript/use-unknown-in-catch-callback-variable": "error",
+        "typescript/explicit-member-accessibility": [
+            "error",
+            {
+                "accessibility": "no-public"
+            }
+        ],
+        "typescript/promise-function-async": "off",
+        "typescript/explicit-function-return-type": "off",
+        "import/named": "error",
+        "import/namespace": "error",
+        "import/default": "error",
+        "import/export": "error",
+        "import/no-named-as-default": "off",
+        "import/no-named-as-default-member": "error",
+        "import/no-duplicates": "error",
+        "import/no-cycle": "error",
+        "import/extensions": "off",
+        "slop/no-chained-type-assertions": "error",
+        "slop/no-trivial-type-aliases": "error",
+        "no-comment-slop/max-comment-lines": "error",
+        "no-comment-slop/multiline-jsdoc-format": "error",
+        "no-comment-slop/no-banner-comment": "error",
+        "no-comment-slop/no-em-dash": "error",
+        "no-comment-slop/no-foreign-syntax": "error",
+        "no-comment-slop/no-jargon": "error",
+        "no-comment-slop/no-prose-semicolon": "error",
+        "no-comment-slop/no-trailing-period": "error",
+        "no-comment-slop/prefer-jsdoc-for-exports": "off",
+        "no-comment-slop/prefer-jsdoc-for-members": "off",
+        "regexp/confusing-quantifier": "error",
+        "regexp/control-character-escape": "error",
+        "regexp/match-any": "error",
+        "regexp/negation": "error",
+        "regexp/no-contradiction-with-assertion": "error",
+        "regexp/no-dupe-characters-character-class": "error",
+        "regexp/no-dupe-disjunctions": "error",
+        "regexp/no-empty-alternative": "error",
+        "regexp/no-empty-capturing-group": "error",
+        "regexp/no-empty-group": "error",
+        "regexp/no-empty-lookarounds-assertion": "error",
+        "regexp/no-empty-string-literal": "error",
+        "regexp/no-escape-backspace": "error",
+        "regexp/no-extra-lookaround-assertions": "error",
+        "regexp/no-invisible-character": "error",
+        "regexp/no-lazy-ends": "error",
+        "regexp/no-legacy-features": "error",
+        "regexp/no-misleading-capturing-group": "error",
+        "regexp/no-misleading-unicode-character": "error",
+        "regexp/no-missing-g-flag": "error",
+        "regexp/no-non-standard-flag": "error",
+        "regexp/no-obscure-range": "error",
+        "regexp/no-optional-assertion": "error",
+        "regexp/no-potentially-useless-backreference": "error",
+        "regexp/no-super-linear-backtracking": "error",
+        "regexp/no-trivially-nested-assertion": "error",
+        "regexp/no-trivially-nested-quantifier": "error",
+        "regexp/no-unused-capturing-group": "error",
+        "regexp/no-useless-assertions": "error",
+        "regexp/no-useless-backreference": "error",
+        "regexp/no-useless-character-class": "error",
+        "regexp/no-useless-dollar-replacements": "error",
+        "regexp/no-useless-flag": "error",
+        "regexp/no-useless-lazy": "error",
+        "regexp/no-useless-non-capturing-group": "error",
+        "regexp/no-useless-quantifier": "error",
+        "regexp/no-useless-range": "error",
+        "regexp/no-useless-set-operand": "error",
+        "regexp/no-useless-string-literal": "error",
+        "regexp/no-useless-two-nums-quantifier": "error",
+        "regexp/no-zero-quantifier": "error",
+        "regexp/optimal-lookaround-quantifier": "error",
+        "regexp/optimal-quantifier-concatenation": "error",
+        "regexp/prefer-character-class": "error",
+        "regexp/prefer-d": "error",
+        "regexp/prefer-plus-quantifier": "error",
+        "regexp/prefer-predefined-assertion": "error",
+        "regexp/prefer-question-quantifier": "error",
+        "regexp/prefer-range": "error",
+        "regexp/prefer-set-operation": "error",
+        "regexp/prefer-star-quantifier": "error",
+        "regexp/prefer-unicode-codepoint-escapes": "error",
+        "regexp/prefer-w": "error",
+        "regexp/simplify-set-operations": "error",
+        "regexp/sort-flags": "error",
+        "regexp/strict": "error",
+        "regexp/use-ignore-case": "error",
+        "regexp/no-super-linear-move": "error",
+        "promise/no-return-wrap": "error",
+        "promise/param-names": "error",
+        "promise/catch-or-return": "error",
+        "promise/no-nesting": "error",
+        "promise/no-promise-in-callback": "error",
+        "promise/no-callback-in-promise": "error",
+        "promise/avoid-new": "off",
+        "promise/no-return-in-finally": "error",
+        "promise/valid-params": "error",
+        "unicorn/prefer-object-from-entries": "error",
+        "unicorn/prefer-response-static-json": "error",
+        "sort-imports": "off",
+        "import/no-default-export": "off",
+        "import/consistent-type-specifier-style": "off",
+        "import/no-nodejs-modules": "off",
+        "unicorn/filename-case": [
+            "error",
+            {
+                "case": "kebabCase"
+            }
+        ],
+        "unicorn/no-null": "off",
+        "unicorn/prefer-top-level-await": "off",
+        "unicorn/no-nested-ternary": "error",
+        "unicorn/prefer-query-selector": "off",
+        "unicorn/no-array-for-each": "error",
+        "unicorn/no-array-reduce": "off",
+        "unicorn/switch-case-braces": "error",
+        "unicorn/prefer-number-properties": "error",
+        "unicorn/prefer-dom-node-text-content": "off",
+        "unicorn/prefer-global-this": "off",
+        "unicorn/catch-error-name": "error",
+        "typescript/consistent-type-definitions": "error",
+        "typescript/array-type": "error",
+        "typescript/no-inferrable-types": "error",
+        "unicorn/numeric-separators-style": "error",
+        "unicorn/prefer-spread": "error",
+        "unicorn/consistent-existence-index-check": "error",
+        "promise/prefer-await-to-then": "error",
+        "import/max-dependencies": [
+            "error",
+            {
+                "max": 25
+            }
+        ],
+        "typescript/no-unsafe-type-assertion": "off",
+        "typescript/prefer-readonly-parameter-types": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "typescript/prefer-nullish-coalescing": "off",
+        "typescript/strict-boolean-expressions": "off",
+        "unicorn/prefer-number-coercion": "off",
+        "import/first": "error",
+        "import/no-amd": "error",
+        "import/no-dynamic-require": "error",
+        "import/no-mutable-exports": "error",
+        "import/no-named-default": "error",
+        "import/no-webpack-loader-syntax": "error",
+        "node/global-require": "error",
+        "node/no-new-require": "error",
+        "node/no-path-concat": "error",
+        "oxc/no-barrel-file": "error",
+        "oxc/no-const-enum": "error",
+        "promise/prefer-catch": "error",
+        "typescript/adjacent-overload-signatures": "error",
+        "typescript/ban-tslint-comment": "error",
+        "typescript/consistent-type-exports": "error",
+        "typescript/consistent-type-imports": "error",
+        "typescript/no-import-type-side-effects": "error",
+        "typescript/no-unnecessary-qualifier": "error",
+        "typescript/prefer-find": "error",
+        "typescript/prefer-for-of": "error",
+        "typescript/prefer-readonly": "error",
+        "typescript/prefer-regexp-exec": "error",
+        "typescript/prefer-string-starts-ends-with": "error",
+        "unicorn/consistent-date-clone": "error",
+        "unicorn/error-message": "error",
+        "unicorn/explicit-timer-delay": "error",
+        "unicorn/no-array-method-this-argument": "error",
+        "unicorn/no-console-spaces": "error",
+        "unicorn/no-length-as-slice-end": "error",
+        "unicorn/no-magic-array-flat-depth": "error",
+        "unicorn/no-process-exit": "error",
+        "unicorn/no-useless-collection-argument": "error",
+        "unicorn/no-useless-error-capture-stack-trace": "error",
+        "unicorn/prefer-array-index-of": "error",
+        "unicorn/prefer-bigint-literals": "error",
+        "unicorn/prefer-class-fields": "error",
+        "unicorn/prefer-classlist-toggle": "error",
+        "unicorn/prefer-default-parameters": "error",
+        "unicorn/prefer-includes": "error",
+        "unicorn/prefer-keyboard-event-key": "error",
+        "unicorn/prefer-modern-dom-apis": "error",
+        "unicorn/prefer-modern-math-apis": "error",
+        "unicorn/prefer-negative-index": "error",
+        "unicorn/prefer-node-protocol": "error",
+        "unicorn/prefer-optional-catch-binding": "error",
+        "unicorn/prefer-string-trim-start-end": "error",
+        "unicorn/prefer-structured-clone": "error",
+        "unicorn/require-array-join-separator": "error",
+        "unicorn/require-module-attributes": "error",
+        "typescript/no-unsafe-enum-assignment": "error",
+        "eslint-js/no-undef-init": "error",
+        "eslint-js/require-atomic-updates": [
+            "error",
+            {
+                "allowProperties": true
+            }
+        ],
+        "n/no-deprecated-api": "error",
+        "n/no-extraneous-require": "error",
+        "n/no-missing-require": "error",
+        "n/no-process-exit": "error",
+        "n/no-unpublished-import": "error",
+        "n/no-unpublished-require": "error",
+        "n/no-unsupported-features/es-builtins": "error",
+        "n/process-exit-as-throw": "error",
+        "n/hashbang": "error",
+        "eslint-js/camelcase": [
+            "error",
+            {
+                "properties": "never",
+                "ignoreImports": true,
+                "allow": ["^[ac]_"]
+            }
+        ],
+        "ts-eslint/member-ordering": [
+            "error",
+            {
+                "default": ["field", "constructor", "method"]
+            }
+        ],
+        "n/no-unsupported-features/node-builtins": [
+            "error",
+            {
+                "allowExperimental": true
+            }
+        ],
+        "unicorn/no-useless-iterator-to-array": "error",
+        "effecttsgo/all-of-map-to-for-each": "off",
+        "effecttsgo/any-unknown-in-error-context": "error",
+        "effecttsgo/effect-try-without-catch": "off",
+        "effecttsgo/global-console-in-effect": "error",
+        "effecttsgo/global-date-in-effect": "error",
+        "effecttsgo/global-fetch": "error",
+        "effecttsgo/global-fetch-in-effect": "error",
+        "effecttsgo/global-random-in-effect": "error",
+        "effecttsgo/global-timers-in-effect": "error",
+        "effecttsgo/instance-of-schema": "error",
+        "effecttsgo/map-map-error-to-map-both": "error",
+        "effecttsgo/missing-effect-service-dependency": "error",
+        "effecttsgo/new-schema-class": "error",
+        "effecttsgo/prefer-schema-type-property": "error",
+        "effecttsgo/process-env-in-effect": "error",
+        "effecttsgo/provide-merge-all-to-array": "error",
+        "effecttsgo/schema-union-of-literals": "error",
+        "effecttsgo/service-not-as-class": "error",
+        "effecttsgo/strict-effect-provide": "error",
+        "effecttsgo/type-union-to-schema-union": "error",
+        "effecttsgo/unsafe-effect-type-assertion": "error",
+        "effecttsgo/yield-in-call-argument": "error",
+        "promise/spec-only": "error",
+        "oxc/bad-bitwise-operator": "error",
+        "unicorn/no-abusive-eslint-disable": "error",
+        "unicorn/custom-error-definition": "error",
+        "unicorn/prefer-export-from": "error",
+        "unicorn/prefer-logical-operator-over-ternary": "error",
+        "unicorn/relative-url-style": "error",
+        "unicorn/switch-case-break-position": "error",
+        "unicorn/consistent-template-literal-escape": "error",
+        "typescript/consistent-generic-constructors": "error",
+        "typescript/consistent-type-assertions": "error",
+        "typescript/no-empty-interface": "error",
+        "typescript/prefer-function-type": "error",
+        "typescript/parameter-properties": "error",
+        "typescript/class-literal-property-style": "error",
+        "typescript/no-var-requires": "error",
+        "effecttsgo/effect-do-notation": "error",
+        "effecttsgo/extends-native-error": "error",
+        "effecttsgo/nested-effect-gen-yield": "error",
+        "effecttsgo/prefer-schema-tagged-error": "error",
+        "effecttsgo/unnecessary-arrow-block": "error",
+        "eslint-js/no-invalid-this": "error",
+        "regexp/grapheme-string-literal": "error",
+        "regexp/hexadecimal-escape": "error",
+        "regexp/no-control-character": "error",
+        "regexp/no-empty-character-class": "error",
+        "regexp/no-invalid-regexp": "error",
+        "regexp/no-octal": "error",
+        "regexp/no-standalone-backslash": "error",
+        "regexp/no-useless-escape": "error",
+        "regexp/prefer-escape-replacement-dollar-char": "error",
+        "regexp/prefer-lookaround": "error",
+        "regexp/prefer-named-backreference": "error",
+        "regexp/prefer-named-replacement": "error",
+        "regexp/prefer-regexp-exec": "error",
+        "regexp/prefer-regexp-test": "error",
+        "regexp/prefer-result-array-groups": "error",
+        "regexp/unicode-escape": "error",
+        "regexp/unicode-property": "error",
+        "n/prefer-global/buffer": "error",
+        "n/prefer-global/console": "error",
+        "n/prefer-global/crypto": "error",
+        "n/prefer-global/process": "error",
+        "n/prefer-global/text-decoder": "error",
+        "n/prefer-global/text-encoder": "error",
+        "n/prefer-global/url-search-params": "error",
+        "n/prefer-global/url": "error",
+        "n/prefer-global/timers": "error",
+        "n/prefer-promises/dns": "error",
+        "n/prefer-promises/fs": "error"
+    },
+    "overrides": [
+        {
+            "files": ["**/*.service.ts", "**/service/**/*.ts"],
+            "rules": {
+                "max-lines-per-function": "off",
+                "rondo/effect-no-imperative": "error",
+                "rondo/effect-no-run": "error"
+            }
+        },
+        {
+            "files": ["**/*.test.ts"],
+            "plugins": ["vitest"],
+            "rules": {
+                "vitest/expect-expect": "off",
+                "vitest/no-commented-out-tests": "error",
+                "vitest/no-conditional-expect": "error",
+                "vitest/no-disabled-tests": "warn",
+                "vitest/no-focused-tests": "error",
+                "vitest/no-identical-title": "error",
+                "vitest/no-import-node-test": "error",
+                "vitest/no-interpolation-in-snapshots": "error",
+                "vitest/no-mocks-import": "error",
+                "vitest/no-standalone-expect": "off",
+                "vitest/no-unneeded-async-expect-function": "error",
+                "vitest/prefer-called-exactly-once-with": "error",
+                "vitest/require-local-test-context-for-concurrent-snapshots": "error",
+                "vitest/valid-describe-callback": "error",
+                "vitest/valid-expect": "error",
+                "vitest/valid-expect-in-promise": "error",
+                "vitest/valid-title": "error",
+                "no-await-in-loop": "off",
+                "no-undefined": "off",
+                "max-classes-per-file": "off",
+                "max-lines-per-function": "off",
+                "max-lines": "off",
+                "func-names": "off",
+                "promise/no-nesting": "off",
+                "typescript/unbound-method": "off",
+                "vitest/consistent-test-it": [
+                    "error",
+                    {
+                        "fn": "it"
+                    }
+                ],
+                "vitest/require-mock-type-parameters": "off",
+                "vitest/no-conditional-in-test": "off"
+            }
+        },
+        {
+            "files": ["**/*.{ts,tsx}"],
+            "rules": {
+                "rondo/effect-fn-name": "error",
+                "rondo/effect-service-id": "error",
+                "rondo/shared-guards": "error"
+            }
+        },
+        {
+            "files": ["**/type/*.type.ts"],
+            "rules": {
+                "no-redeclare": "off"
+            }
+        },
+        {
+            "files": ["**/*.{js,mjs,cjs}"],
+            "rules": {
+                "typescript/no-unsafe-argument": "off",
+                "typescript/no-unsafe-assignment": "off",
+                "typescript/no-unsafe-call": "off",
+                "typescript/no-unsafe-member-access": "off",
+                "typescript/no-unsafe-return": "off"
+            }
+        },
+        {
+            "files": ["**/src/**/service/*.service.ts", "**/src/**/program/*.program.ts"],
+            "rules": {
+                "effecttsgo/global-console": "error",
+                "effecttsgo/global-random": "error",
+                "effecttsgo/global-timers": "error",
+                "effecttsgo/new-promise": "error",
+                "effecttsgo/process-env": "error"
+            }
+        },
+        {
+            "files": ["**/test/**", "tests/**", "**/worker/*.worker.ts"],
+            "rules": {
+                "effecttsgo/strict-effect-provide": "off",
+                "effecttsgo/yield-in-call-argument": "off",
+                "effecttsgo/global-date-in-effect": "off"
+            }
+        },
+        {
+            "files": ["**/test/**", "tests/**", "lint-rules/**"],
+            "rules": {
+                "no-restricted-properties": [
+                    "error",
+                    {
+                        "object": "Reflect",
+                        "property": "get",
+                        "message": "Use typed property access, `in` narrowing, or decode the value with Schema."
+                    },
+                    {
+                        "object": "Reflect",
+                        "property": "apply",
+                        "message": "Call the function directly with typed arguments."
+                    },
+                    {
+                        "object": "vi",
+                        "property": "mock",
+                        "message": "Replace module mocking with a real dependency seam such as a test Layer."
+                    },
+                    {
+                        "object": "vi",
+                        "property": "doMock",
+                        "message": "Replace module mocking with a real dependency seam such as a test Layer."
+                    }
+                ]
+            }
+        },
+        {
+            "files": ["scripts/**"],
+            "rules": {
+                "no-console": "off",
+                "n/no-process-exit": "off",
+                "effecttsgo/global-fetch": "off",
+                "rondo/shared-guards": "off"
+            }
+        },
+        {
+            "files": ["apps/*/test/**", "packages/*/test/**", "tests/test-kit/**", "scripts/**/*.test.ts"],
+            "rules": {
+                "no-restricted-properties": [
+                    "error",
+                    {
+                        "object": "Reflect",
+                        "property": "get",
+                        "message": "Use typed property access, `in` narrowing, or decode the value with Schema."
+                    },
+                    {
+                        "object": "Reflect",
+                        "property": "apply",
+                        "message": "Call the function directly with typed arguments."
+                    },
+                    {
+                        "object": "vi",
+                        "property": "mock",
+                        "message": "Replace module mocking with a real dependency seam such as a test Layer."
+                    },
+                    {
+                        "object": "vi",
+                        "property": "doMock",
+                        "message": "Replace module mocking with a real dependency seam such as a test Layer."
+                    },
+                    {
+                        "object": "Date",
+                        "property": "now",
+                        "message": "Real time makes a test depend on when it runs. Use TestClock, or fake timers with a fixed system time."
+                    }
+                ]
+            }
+        },
+        {
+            "files": ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts"],
+            "rules": {
+                "no-restricted-imports": [
+                    "error",
+                    {
+                        "paths": [
+                            {
+                                "name": "effect",
+                                "message": "Import Effect modules by subpath, e.g. import * as Effect from 'effect/Effect'"
+                            },
+                            {
+                                "name": "zod",
+                                "message": "Use effect/Schema."
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    ]
+}

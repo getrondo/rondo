@@ -1,0 +1,54 @@
+{
+    "compilerOptions": {
+        "target": "ES2023",
+        "lib": ["esnext"],
+        "types": ["node"],
+        "skipLibCheck": true,
+        "noEmit": true,
+        "module": "esnext",
+        "moduleResolution": "bundler",
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "verbatimModuleSyntax": true,
+        "allowUnreachableCode": false,
+        "allowUnusedLabels": false,
+        "incremental": true,
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noImplicitReturns": true,
+        "noFallthroughCasesInSwitch": true,
+        "noImplicitOverride": true,
+        "forceConsistentCasingInFileNames": true,
+        "plugins": [
+            {
+                "name": "@effect/language-service",
+                "diagnosticSeverity": {
+                    "floatingEffect": "error",
+                    "outdatedApi": "error",
+                    "globalFetch": "error",
+                    "globalFetchInEffect": "error",
+                    "missingReturnYieldStar": "error",
+                    "missingStarInYieldEffectGen": "error",
+                    "effectFnIife": "error",
+                    "effectGenUsesAdapter": "error",
+                    "effectInFailure": "error",
+                    "effectInVoidSuccess": "error",
+                    "lazyPromiseInEffectSync": "error",
+                    "multipleEffectProvide": "error",
+                    "returnEffectInGen": "error",
+                    "runEffectInsideEffect": "error",
+                    "unknownInEffectCatch": "error",
+                    "globalErrorInEffectCatch": "error",
+                    "globalErrorInEffectFailure": "error",
+                    "layerMergeAllWithDependencies": "error",
+                    "unsafeEffectTypeAssertion": "error",
+                    "effectFnImplicitAny": "error",
+                    "serviceNotAsClass": "error"
+                },
+                "allowedUnstableApis": ["@effect/vitest", "effect/http", "@effect/sql-pg", "effect/FileSystem", "@effect/platform-node"]
+            }
+        ]
+    }
+}
