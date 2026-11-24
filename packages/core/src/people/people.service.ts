@@ -5,7 +5,7 @@ import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { normalizeAlias } from '@rondo/ingest-telegram/extract/normalize';
 import { refreshNames } from '@rondo/ingest-telegram/identity/refresh-names';
-import { and, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
@@ -97,6 +97,10 @@ export const mergePeople = Effect.fn('Core.mergePeople')(function* (input: {
 
     yield* db.transaction(transaction =>
         Effect.gen(function* () {
+            const merged = yield* transaction
+                .select({ id: personAlias.id })
+                .from(personAlias)
+                .where(and(eq(personAlias.communityId, input.communityId), eq(personAlias.personId, input.fromPersonId)));
             yield* transaction.execute(sql`select identity.merge_person(${input.fromPersonId}::uuid, ${input.intoPersonId}::uuid)`).pipe(
                 Effect.tapError(error => Effect.logWarning('[merge] refused', error)),
                 Effect.mapError(() =>
@@ -107,12 +111,15 @@ export const mergePeople = Effect.fn('Core.mergePeople')(function* (input: {
             );
             yield* transaction
                 .update(personAlias)
-                .set({ resolution: 'confirmed', confidence: 1, guestPersonId: null })
+                .set({
+                    resolution: 'confirmed',
+                    confidence: 1,
+                    guestPersonId: sql`nullif(${personAlias.guestPersonId}, ${input.intoPersonId}::uuid)`
+                })
                 .where(
-                    and(
-                        eq(personAlias.communityId, input.communityId),
-                        eq(personAlias.personId, input.intoPersonId),
-                        ne(personAlias.kind, 'placeholder')
+                    inArray(
+                        personAlias.id,
+                        merged.map(({ id }) => id)
                     )
                 );
             yield* refreshNames([input.intoPersonId]);

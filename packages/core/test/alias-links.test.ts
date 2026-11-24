@@ -4,8 +4,10 @@ import { auditLog, pollVote } from '@rondo/db/schema/platform.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq } from 'drizzle-orm';
+import { removeUnusedNicknames } from '@rondo/ingest-telegram/load/remove-unused-nicknames';
+import { and, eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
+import * as Exit from 'effect/Exit';
 
 import { syncMember, upsertTelegramUser } from '../src/identity/telegram-user';
 import { ingestGroupMessage } from '../src/live/live-ingest';
@@ -14,7 +16,7 @@ import { mergePeople, renamePerson, searchPeople } from '../src/people/people.se
 import { createSession, updateSession, requireSession } from '../src/sessions/session.service';
 import { signedUpByVotes } from '../src/signups/signed-up-by-votes';
 import { applyPollAnswer } from '../src/signups/signup.service';
-import { playerHistory, topAttendance } from '../src/stats/stats.service';
+import { inactivePlayers, playerHistory, topAttendance } from '../src/stats/stats.service';
 import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -245,6 +247,67 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
 
             expect(voters.map(({ personId }) => personId)).toEqual([organizer, account]);
             expect(yield* playerHistory(communityId, account)).toMatchObject({ games: 0, signedUp: 1 });
+        })
+    );
+
+    it.effect('confirms only the nicknames of the merged person and leaves vote links of the other alone', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, account, aliasId } = yield* seeded('merge-names-fc', 190n, '🟢Я, Гонзо\n🔵Олег, Семён');
+            const byId = (norm: string) => eq(personAlias.id, aliasId(norm));
+            const [merged] = yield* db.select().from(personAlias).where(byId('олег'));
+            yield* db.update(personAlias).set({ personId: account, resolution: 'vote' }).where(byId('гонзо'));
+            yield* mergePeople({ communityId, fromPersonId: merged?.personId ?? '', intoPersonId: account, actorPersonId: null });
+            const [kept] = yield* db.select().from(personAlias).where(byId('гонзо'));
+            const [confirmed] = yield* db.select().from(personAlias).where(byId('олег'));
+
+            expect(kept).toMatchObject({ personId: account, resolution: 'vote' });
+            expect(kept?.guestPersonId).not.toBeNull();
+            expect(confirmed).toMatchObject({ personId: account, resolution: 'confirmed' });
+        })
+    );
+
+    it.effect('hides persons left behind by a removed nickname from search and rankings', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seeded('orphan-fc', 200n, '🟢Я, Гонзо\n🔵Олег, Семён');
+            const [orphan] = yield* db.insert(person).values({ displayName: 'Сирота', source: 'import' }).returning({ id: person.id });
+            const name = { communityId, personId: orphan?.id, guestPersonId: orphan?.id, alias: 'Сирота', aliasNorm: 'сирота' };
+            yield* db.insert(personAlias).values(name);
+            yield* db.transaction(transaction => removeUnusedNicknames({ transaction, communityId }));
+            const [stored] = yield* db
+                .select()
+                .from(person)
+                .where(eq(person.id, orphan?.id ?? ''));
+
+            expect(stored?.displayName).toBe('Сирота');
+            expect(yield* searchPeople(communityId, 'Сирота', 10)).toEqual([]);
+            expect(Object.keys(yield* gamesOf(communityId))).not.toContain('Сирота');
+            expect(yield* inactivePlayers(communityId, { notSince: '2027-01-01', minGames: 0, limit: 50 })).not.toContainEqual(
+                expect.objectContaining({ name: 'Сирота' })
+            );
+        })
+    );
+
+    it.effect('stores a live line-up only under the community lock', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            yield* db.execute(sql`
+                create function play.require_lock() returns trigger language plpgsql as $$
+                begin
+                    if not exists (select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() and granted) then
+                        raise exception 'no community lock';
+                    end if;
+                    return new;
+                end $$`);
+            yield* db.execute(
+                sql`create trigger require_lock before insert on play.team for each row execute function play.require_lock()`
+            );
+            const outcome = yield* Effect.exit(seeded('live-lock-fc', 210n, '🟢Я, Гонзо\n🔵Олег, Семён'));
+            yield* db.execute(sql`drop trigger require_lock on play.team`);
+            yield* db.execute(sql`drop function play.require_lock`);
+
+            expect(Exit.isSuccess(outcome)).toBe(true);
         })
     );
 });
