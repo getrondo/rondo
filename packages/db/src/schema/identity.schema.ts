@@ -7,7 +7,7 @@ export const identity = pgSchema('identity');
 
 export const localeEnum = identity.enum('locale', ['uk', 'ru', 'en', 'de']);
 export const aliasKindEnum = identity.enum('alias_kind', ['nickname', 'first_name', 'full_name', 'placeholder', 'self']);
-export const aliasResolutionEnum = identity.enum('alias_resolution', ['unresolved', 'suggested', 'confirmed', 'guest', 'ignored']);
+export const aliasResolutionEnum = identity.enum('alias_resolution', ['unresolved', 'suggested', 'confirmed', 'guest', 'ignored', 'vote']);
 export const consentPurposeEnum = identity.enum('consent_purpose', ['processing', 'birthday', 'stats_public', 'dm_notifications']);
 export const recordSourceEnum = identity.enum('record_source', ['bot', 'import', 'manual']);
 
@@ -64,6 +64,7 @@ export const personAlias = identity.table(
         id: id(),
         communityId: ref('community_id').notNull(),
         personId: ref('person_id').references(() => person.id, { onDelete: 'set null' }),
+        guestPersonId: ref('guest_person_id').references(() => person.id, { onDelete: 'set null' }),
         alias: text('alias').notNull(),
         aliasNorm: text('alias_norm').notNull(),
         kind: aliasKindEnum('kind').notNull().default('nickname'),
