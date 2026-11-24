@@ -27,6 +27,7 @@ CREATE TABLE "play"."lineup_entry" (
 --> statement-breakpoint
 DROP INDEX "identity"."telegram_account_person_uq";--> statement-breakpoint
 CREATE INDEX "telegram_account_person_idx" ON "identity"."telegram_account" ("person_id");--> statement-breakpoint
+UPDATE "identity"."telegram_account" AS older SET "username" = NULL WHERE EXISTS (SELECT 1 FROM "identity"."telegram_account" newer WHERE lower(newer."username") = lower(older."username") AND (newer."last_seen_at", newer."tg_user_id") > (older."last_seen_at", older."tg_user_id"));--> statement-breakpoint
 CREATE UNIQUE INDEX "telegram_account_username_uq" ON "identity"."telegram_account" (lower("username")) WHERE "username" is not null;--> statement-breakpoint
 CREATE INDEX "poll_vote_session_idx" ON "comms"."poll_vote" ("session_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "lineup_entry_position_uq" ON "play"."lineup_entry" ("session_id","team_ordinal","position");--> statement-breakpoint
