@@ -9,7 +9,8 @@ describe('system prompt', () => {
         today: '2026-12-04',
         weekday: 'Friday',
         locale: 'uk',
-        adminName: 'Alex'
+        adminName: 'Alex',
+        adminPersonId: 'person-1'
     } as const;
 
     it('carries the community, admin and date context', () => {

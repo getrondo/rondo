@@ -1,5 +1,7 @@
 # E07 · Payments ledger (track only)
 
+> **Dropped (2026-11-24):** payments are out of scope. Kept for reference.
+
 **Milestone:** M1 Replace the poll · **Priority:** P0
 
 ## Goal

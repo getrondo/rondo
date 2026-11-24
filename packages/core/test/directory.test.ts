@@ -1,7 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { membership } from '@rondo/db/schema/org.schema';
-import { session } from '@rondo/db/schema/scheduling.schema';
+import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { eq } from 'drizzle-orm';
@@ -10,6 +10,8 @@ import * as Effect from 'effect/Effect';
 import { syncMember, upsertTelegramUser } from '../src/identity/telegram-user';
 import { ingestGroupMessage } from '../src/live/live-ingest';
 import { createPerson, renamePerson } from '../src/people/people.service';
+import { createSession } from '../src/sessions/session.service';
+import { attendanceCoverage } from '../src/stats/stats.service';
 import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 import { createVenue, learnVenuePin, updateVenue } from '../src/venues/venue.service';
@@ -91,6 +93,35 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('players and venues learned 
             expect(duplicate).toMatchObject({ reason: 'this venue already exists' });
             expect(games.map(game => game.venueId)).toEqual([pinned, parkId, parkId, null]);
             expect(unknown.unknownPlace?.text).toContain('Stadlau');
+        })
+    );
+
+    it.effect('reports how many played games have known players', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig('coverage-fc'));
+            const personId = yield* syncMember(communityId, { id: 503n, firstName: 'Solo' }, 'active');
+            const ids = yield* Effect.all(
+                ['2026-10-01', '2026-10-02', '2026-11-02'].map(localDate =>
+                    createSession({
+                        communityId,
+                        timezone: 'Europe/Vienna',
+                        localDate,
+                        localTime: '19:00',
+                        venueId: null,
+                        capacityMax: null,
+                        title: null,
+                        actorPersonId: null
+                    })
+                )
+            );
+            yield* db.update(session).set({ status: 'played' }).where(eq(session.communityId, communityId));
+            yield* db.insert(attendance).values({ sessionId: ids[0] ?? '', personId, outcome: 'attended' });
+            const all = yield* attendanceCoverage(communityId);
+            const october = yield* attendanceCoverage(communityId, { from: '2026-10-01', to: '2026-10-31' });
+
+            expect(all).toEqual({ playedGames: 3, gamesWithKnownPlayers: 1 });
+            expect(october).toEqual({ playedGames: 2, gamesWithKnownPlayers: 1 });
         })
     );
 });

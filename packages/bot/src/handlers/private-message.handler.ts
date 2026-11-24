@@ -5,7 +5,7 @@ import { adminCommunityIds } from '@rondo/core/access/admin-access';
 import { communityProfile } from '@rondo/core/community/community.repository';
 import { resolveLocale } from '@rondo/core/i18n/locale';
 import { text } from '@rondo/core/i18n/messages';
-import { displayNameOf, upsertTelegramUser } from '@rondo/core/identity/telegram-user';
+import { displayNameOf, syncMember, upsertTelegramUser } from '@rondo/core/identity/telegram-user';
 import { todayIn } from '@rondo/core/sessions/local-time';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
 import * as DateTime from 'effect/DateTime';
@@ -54,6 +54,7 @@ export const handlePrivateMessage = Effect.fn('Bot.handlePrivateMessage')(functi
         return;
     }
 
+    const personId = yield* syncMember(communityId, user, 'active');
     const profile = yield* communityProfile(communityId);
     const timezone = Option.match(profile, { onNone: () => 'Europe/Vienna', onSome: value => value.timezone });
     const now = yield* DateTime.nowAsDate;
@@ -70,7 +71,8 @@ export const handlePrivateMessage = Effect.fn('Bot.handlePrivateMessage')(functi
             today: todayIn(timezone, now),
             weekday: new Intl.DateTimeFormat('en-GB', { timeZone: timezone, weekday: 'long' }).format(now),
             locale,
-            adminName: displayNameOf(user)
+            adminName: displayNameOf(user),
+            adminPersonId: personId
         }
     }).pipe(
         Effect.tapCause(Effect.logError),

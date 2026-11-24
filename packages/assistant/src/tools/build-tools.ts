@@ -5,7 +5,15 @@ import { proposeAction } from '@rondo/core/actions/pending-action.service';
 import { searchPeople, unresolvedAliases } from '@rondo/core/people/people.service';
 import { listSessions, listVenues, requireSession } from '@rondo/core/sessions/session.service';
 import { rosterOf } from '@rondo/core/signups/signup.service';
-import { communitySummary, inactivePlayers, playerHistory, topAttendance, venueUsage } from '@rondo/core/stats/stats.service';
+import {
+    attendanceCoverage,
+    communitySummary,
+    inactivePlayers,
+    playerHistory,
+    topAttendance,
+    venueUsage,
+    type DateRange
+} from '@rondo/core/stats/stats.service';
 import { proposeTeams } from '@rondo/core/teams/team.service';
 import { tool } from 'ai';
 import * as Effect from 'effect/Effect';
@@ -34,6 +42,12 @@ const Range = Schema.Struct({ from: IsoDate, to: IsoDate });
 const Limit = optionalNullable(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 50 })));
 const SessionRef = Schema.Struct({ sessionId: Schema.String.annotate({ description: 'session id from list_sessions' }) });
 const CancelReason = Schema.Literals(['weather', 'low_turnout', 'venue', 'holiday', 'organizer', 'other']);
+
+const withCoverage = <Value, Failure, Requirements>(
+    scope: ToolScope,
+    query: Effect.Effect<Value, Failure, Requirements>,
+    range?: DateRange
+) => Effect.all({ result: query, coverage: attendanceCoverage(scope.communityId, range) });
 
 const venueFields = {
     address: optionalNullable(Schema.String),
@@ -66,7 +80,7 @@ const readTools = (scope: ToolScope, run: ToolRunner) => ({
     top_players: tool({
         description: 'Players ranked by number of games played in a date range.',
         inputSchema: toolSchema(Schema.Struct({ ...Range.fields, limit: Limit })),
-        execute: async input => await run(topAttendance(scope.communityId, input, input.limit ?? 10))
+        execute: async input => await run(withCoverage(scope, topAttendance(scope.communityId, input, input.limit ?? 10), input))
     }),
     inactive_players: tool({
         description: 'Regular players (at least minGames games) who have not played since a date.',
@@ -82,7 +96,7 @@ const readTools = (scope: ToolScope, run: ToolRunner) => ({
     community_summary: tool({
         description: 'Totals for a date range: games, played, cancelled, distinct players, appearances.',
         inputSchema: toolSchema(Range),
-        execute: async input => await run(communitySummary(scope.communityId, input))
+        execute: async input => await run(withCoverage(scope, communitySummary(scope.communityId, input), input))
     }),
     search_people: tool({
         description: 'Find players by name, nickname or Telegram username. Returns person ids, aliases and games played.',
@@ -92,7 +106,7 @@ const readTools = (scope: ToolScope, run: ToolRunner) => ({
     player_history: tool({
         description: 'Games played, first and last game and nicknames of one player.',
         inputSchema: toolSchema(Schema.Struct({ personId: Schema.String })),
-        execute: async input => await run(playerHistory(scope.communityId, input.personId))
+        execute: async input => await run(withCoverage(scope, playerHistory(scope.communityId, input.personId)))
     }),
     unresolved_aliases: tool({
         description: 'Line-up nicknames not yet confirmed as a known person, most frequent first. Useful to clean up duplicates.',

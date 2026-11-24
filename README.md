@@ -4,7 +4,7 @@
 
 Rondo runs the boring half of a pickup-football community so the organizer can play:
 signups with a real waitlist, venue and match-day logistics, weather go/no-go, fair
-teams, results, feedback, attendance stats and a "who paid" ledger. All of this runs inside the
+teams, results, feedback and attendance stats. All of this runs inside the
 Telegram group the community already lives in.
 
 > *Rondo*: the passing circle every football session starts with. Everyone touches the ball, nobody is left out.
@@ -58,7 +58,6 @@ pnpm check                      # format, types, lint, dead code, duplication, t
 2. **Organizer stays in charge.** The bot proposes and automates; a human decides.
 3. **Speaks the players' language.** Ukrainian or Russian based on each user's Telegram language, falling back to Ukrainian.
 4. **Private by default.** Skill ratings are admin-only. GDPR (Austria/EU) is built in, not bolted on.
-5. **Money is tracked, never moved.** Rondo knows who paid; it doesn't process payments.
 
 ## License
 
