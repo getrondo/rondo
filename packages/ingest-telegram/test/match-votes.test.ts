@@ -1,7 +1,9 @@
 import { describe, expect, it } from '@effect/vitest';
+import { isDefined } from '@rnw-community/shared';
 import * as Option from 'effect/Option';
 
-import { isCertainSet, matchSegments, matchSet, type AliasGame, type Squad } from '../src/identity/match-votes';
+import { isCertainSet, matchSet } from '../src/identity/match-set';
+import { indexVotes, matchSegments, type AliasGame, type Squad } from '../src/identity/match-votes';
 
 const accountsOf = (found: ReturnType<typeof matchSet>): readonly string[] =>
     found.pipe(
@@ -36,7 +38,7 @@ const certain = (
     };
 
     return (aliasId: string) =>
-        matchSegments(evidence, aliasId).matches.map(({ personId, sessionIds }) => [personId, sessionIds.length] as const);
+        matchSegments(indexVotes(evidence), aliasId).matches.map(({ personId, sessionIds }) => [personId, sessionIds.length] as const);
 };
 
 describe('matching one nickname to one account', () => {
@@ -148,6 +150,69 @@ describe('a player change inside one period', () => {
             ['p1', 200],
             ['p3', 10]
         ]);
+    });
+});
+
+describe('several players in one period', () => {
+    const everyone = (days: number, playerOn: (day: number) => string | null) =>
+        certain(
+            squadsOf(range(0, days), day => [playerOn(day)].filter(personId => isDefined(personId))),
+            { gonzo: range(0, days) }
+        );
+
+    it('cuts out a stint in the middle', () => {
+        expect(everyone(100, day => (day >= 45 && day < 55 ? 'p2' : 'p1'))('gonzo')).toEqual([
+            ['p1', 45],
+            ['p2', 10],
+            ['p1', 45]
+        ]);
+    });
+
+    it('finds three stints of ten games', () => {
+        expect(everyone(30, day => `p${Math.floor(day / 10) + 1}`)('gonzo')).toEqual([
+            ['p1', 10],
+            ['p2', 10],
+            ['p3', 10]
+        ]);
+    });
+
+    it('leaves games next to a stint that nobody explains unlinked', () => {
+        const silent = new Set([43, 44, 55, 56]);
+        const link = everyone(100, day => {
+            if (silent.has(day)) {
+                return null;
+            }
+
+            return day >= 45 && day < 55 ? 'p2' : 'p1';
+        });
+
+        expect(link('gonzo')).toEqual([
+            ['p1', 43],
+            ['p2', 10],
+            ['p1', 43]
+        ]);
+    });
+
+    it('does not split on missed votes, even when others vote in those games', () => {
+        const missed = new Set([5, 17, 30, 31, 52, 70, 71, 72]);
+        const link = certain(
+            squadsOf(range(0, 100), day => [
+                ...(missed.has(day) ? [] : ['p1']),
+                ...(day >= 64 && day < 78 ? ['p2'] : []),
+                ...(day % 3 === 0 ? ['p3'] : [])
+            ]),
+            { gonzo: range(0, 100), other: range(60, 22) }
+        );
+
+        expect(link('gonzo')).toEqual([['p1', 100]]);
+    });
+
+    it('does not split on a short stint', () => {
+        expect(everyone(100, day => (day >= 45 && day < 53 ? 'p2' : 'p1'))('gonzo')).toEqual([['p1', 100]]);
+    });
+
+    it('keeps a period unlinked when only a part of it has a clear player', () => {
+        expect(everyone(40, day => (day < 20 ? 'p1' : null))('gonzo')).toEqual([]);
     });
 });
 

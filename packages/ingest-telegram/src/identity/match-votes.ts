@@ -29,24 +29,17 @@ export interface VoteMatch {
     readonly conflict: boolean;
 }
 
-export interface PersonSet {
-    readonly personIds: readonly string[];
-    readonly games: number;
-    readonly score: number;
-    readonly margin: number;
-}
-
-const minGames = 10;
+export const minGames = 10;
 const minShare = 0.9;
 const minMargin = 0.12;
-const minSetScore = 0.85;
-const minSetMargin = 0.08;
 const maxGapDays = 180;
-const maxCandidates = 40;
-const maxCombinations = 10_000;
-const minSquads = 2;
-const minSharedPlayers = 2;
+const runCost = 1;
 const dayMs = 24 * 60 * 60_000;
+
+interface Range {
+    readonly start: number;
+    readonly end: number;
+}
 
 const daysBetween = (from: string, to: string): number => (Date.parse(to) - Date.parse(from)) / dayMs;
 
@@ -67,207 +60,194 @@ export const splitByGaps = (timeline: readonly AliasGame[]): AliasGame[][] => {
     return segments;
 };
 
-const votesPerPerson = (squads: readonly Squad[]): Map<string, number> => {
-    const counts = new Map<string, number>();
+const cumulative = (flags: readonly boolean[]): number[] => {
+    const totals = [0];
 
-    for (const { yes } of squads) {
-        for (const personId of yes ?? []) {
-            counts.set(personId, (counts.get(personId) ?? 0) + 1);
+    for (const flag of flags) {
+        totals.push((totals.at(-1) ?? 0) + Number(flag));
+    }
+
+    return totals;
+};
+
+const between = (totals: readonly number[], { start, end }: Range): number => (totals[end] ?? 0) - (totals[start] ?? 0);
+
+export const scoreOf = (shared: number, left: number, right: number): number => (2 * shared) / (left + right);
+
+const personsIn = (games: readonly Squad[]): Set<string> => new Set(games.flatMap(({ yes }) => [...(yes ?? [])]));
+
+const hasVoted = (games: readonly Squad[], personId: string): number[] => cumulative(games.map(({ yes }) => yes?.has(personId) === true));
+
+const makeCache = <Value>(create: (key: string) => Value): ((key: string) => Value) => {
+    const values = new Map<string, Value>();
+
+    return key => {
+        const known = values.get(key);
+
+        if (isDefined(known)) {
+            return known;
         }
-    }
 
-    return counts;
+        const created = create(key);
+        values.set(key, created);
+
+        return created;
+    };
 };
 
-const squadsWithin = <Game extends Squad>(squads: readonly Game[], segment: readonly Squad[]): Game[] => {
-    const from = segment[0]?.date ?? '';
-    const to = segment.at(-1)?.date ?? '';
+export const indexVotes = (evidence: VoteEvidence) => {
+    const squads = evidence.squads.filter(({ yes }) => isDefined(yes)).toSorted((left, right) => left.date.localeCompare(right.date));
+    const presenceOf = makeCache(aliasId => {
+        const present = new Set((evidence.timelines.get(aliasId) ?? []).map(({ sessionId }) => sessionId));
 
-    return squads.filter(({ yes, date }) => isDefined(yes) && date >= from && date <= to);
-};
-
-const overlap = (games: readonly Squad[], personId: string): number => games.filter(({ yes }) => yes?.has(personId) === true).length;
-
-const scoreOf = (shared: number, left: number, right: number): number => (2 * shared) / (left + right);
-
-export const judge = (evidence: VoteEvidence, aliasId: string, segment: readonly AliasGame[]): Option.Option<VoteMatch> => {
-    const judged = segment.filter(({ yes }) => isDefined(yes));
-    const yesTotals = votesPerPerson(squadsWithin(evidence.squads, segment));
-    const [best, runnerUp] = [...votesPerPerson(judged)]
-        .map(([personId, shared]) => ({ personId, shared, score: scoreOf(shared, judged.length, yesTotals.get(personId) ?? 0) }))
-        .toSorted((left, right) => right.score - left.score);
-
-    if (!isDefined(best)) {
-        return Option.none();
-    }
-
-    const rivalScore = Math.max(
-        0,
-        ...[...evidence.timelines]
-            .filter(([other]) => other !== aliasId)
-            .map(([, timeline]) => {
-                const games = squadsWithin(timeline, segment);
-
-                return scoreOf(overlap(games, best.personId), games.length, yesTotals.get(best.personId) ?? 0);
-            })
-    );
-    const otherGames = evidence.gamesUnderOtherName(best.personId, aliasId);
-
-    return Option.some({
-        aliasId,
-        personId: best.personId,
-        sessionIds: segment.map(({ sessionId }) => sessionId),
-        games: judged.length,
-        shared: best.shared,
-        score: best.score,
-        margin: best.score - Math.max(rivalScore, runnerUp?.score ?? 0),
-        mutual: best.score > rivalScore,
-        conflict: segment.some(({ sessionId }) => otherGames.has(sessionId))
+        return cumulative(squads.map(({ sessionId }) => present.has(sessionId)));
     });
+    const rivalsOf = makeCache((personId: string) =>
+        [...evidence.timelines].map(([aliasId, timeline]) => {
+            const shared = new Set(timeline.filter(({ yes }) => yes?.has(personId) === true).map(({ sessionId }) => sessionId));
+
+            return { aliasId, presence: presenceOf(aliasId), shared: cumulative(squads.map(({ sessionId }) => shared.has(sessionId))) };
+        })
+    );
+
+    return {
+        evidence,
+        yesOf: makeCache(personId => hasVoted(squads, personId)),
+        rivalsOf,
+        windowOf: (games: readonly Squad[]): Range => {
+            const from = games[0]?.date ?? '';
+            const to = games.at(-1)?.date ?? '';
+            const first = squads.findIndex(({ date }) => date >= from);
+            const after = squads.findIndex(({ date }) => date > to);
+
+            return { start: first === -1 ? squads.length : first, end: after === -1 ? squads.length : after };
+        }
+    };
+};
+
+export type VoteIndex = ReturnType<typeof indexVotes>;
+
+const judgeTimeline = (index: VoteIndex, aliasId: string, timeline: readonly AliasGame[]) => {
+    const judgedGames = cumulative(timeline.map(({ yes }) => isDefined(yes)));
+    const voters = [...personsIn(timeline)].map(personId => ({
+        personId,
+        voted: hasVoted(timeline, personId),
+        yes: index.yesOf(personId)
+    }));
+    const otherGames = makeCache(personId => index.evidence.gamesUnderOtherName(personId, aliasId));
+
+    return (range: Range): Option.Option<VoteMatch> => {
+        const segment = timeline.slice(range.start, range.end);
+        const window = index.windowOf(segment);
+        const games = between(judgedGames, range);
+        const ranked = voters
+            .map(({ personId, voted, yes }) => ({ personId, shared: between(voted, range), yes: between(yes, window) }))
+            .filter(({ shared }) => shared > 0)
+            .map(({ personId, shared, yes }) => ({ personId, shared, yes, score: scoreOf(shared, games, yes) }))
+            .toSorted((left, right) => right.score - left.score);
+        const [best, runnerUp] = ranked;
+
+        if (!isDefined(best)) {
+            return Option.none();
+        }
+
+        const rivalScore = index
+            .rivalsOf(best.personId)
+            .filter(rival => rival.aliasId !== aliasId)
+            .reduce((top, rival) => Math.max(top, scoreOf(between(rival.shared, window), between(rival.presence, window), best.yes)), 0);
+        const others = otherGames(best.personId);
+
+        return Option.some({
+            aliasId,
+            personId: best.personId,
+            sessionIds: segment.map(({ sessionId }) => sessionId),
+            games,
+            shared: best.shared,
+            score: best.score,
+            margin: best.score - Math.max(rivalScore, runnerUp?.score ?? 0),
+            mutual: best.score > rivalScore,
+            conflict: segment.some(({ sessionId }) => others.has(sessionId))
+        });
+    };
+};
+
+export const judge = (index: VoteIndex, aliasId: string): Option.Option<VoteMatch> => {
+    const timeline = index.evidence.timelines.get(aliasId) ?? [];
+
+    return judgeTimeline(index, aliasId, timeline)({ start: 0, end: timeline.length });
 };
 
 const isCertain = ({ games, shared, margin, mutual, conflict }: VoteMatch): boolean =>
     games >= minGames && shared / games >= minShare && mutual && margin >= minMargin && !conflict;
 
-const certainMatch = (evidence: VoteEvidence, aliasId: string, segment: readonly AliasGame[]): VoteMatch[] =>
-    judge(evidence, aliasId, segment).pipe(
-        Option.filter(match => isCertain(match)),
-        Option.toArray
-    );
+interface Run {
+    readonly range: Range;
+    readonly match: VoteMatch | null;
+}
 
-type Segment = readonly AliasGame[];
+interface Partition {
+    readonly value: number;
+    readonly runs: readonly Run[];
+}
 
-const sharedIn = (matches: readonly VoteMatch[]): number => matches.reduce((total, { shared }) => total + shared, 0);
+const extended = (before: Partition, range: Range, match: VoteMatch | null): Partition => ({
+    value: before.value + (match?.shared ?? 0) - runCost,
+    runs: [...before.runs, { range, match }]
+});
 
-const bestSplit = (
-    evidence: VoteEvidence,
-    aliasId: string,
-    segment: Segment,
-    whole: VoteMatch | undefined
-): readonly [Segment, Segment] | undefined => {
-    const splits = segment.flatMap((_, index) => {
-        const halves = [segment.slice(0, index), segment.slice(index)] as const;
+const bestPartition = (length: number, certain: (range: Range) => VoteMatch | null): readonly Run[] => {
+    const partitions: Partition[] = [{ value: 0, runs: [] }];
 
-        if (halves.some(half => half.length < minGames)) {
+    for (let end = 1; end <= length; end += 1) {
+        const options = partitions.flatMap((before, start) => {
+            const match = end - start >= minGames ? certain({ start, end }) : null;
+            const last = before.runs.at(-1);
+            const isAfterGap = isDefined(last) && !isDefined(last.match);
+
+            return isDefined(match) || !isAfterGap ? [extended(before, { start, end }, match)] : [];
+        });
+        const [best] = options.toSorted((left, right) => right.value - left.value);
+        partitions.push(best ?? { value: 0, runs: [] });
+    }
+
+    return partitions[length]?.runs ?? [];
+};
+
+const withoutUnexplainedEdges = (timeline: readonly AliasGame[], runs: readonly Run[]): VoteMatch[] =>
+    runs.flatMap(({ range, match }, position) => {
+        if (!isDefined(match)) {
             return [];
         }
 
-        const matches = halves.flatMap(half => certainMatch(evidence, aliasId, half));
-        const persons = new Set(matches.map(({ personId }) => personId));
-        const changes = isDefined(whole) ? [...persons].some(personId => personId !== whole.personId) : persons.size > 1;
+        const games = timeline.slice(range.start, range.end);
+        const explained = games.map(({ yes }) => yes?.has(match.personId) === true);
+        const first = position === 0 ? 0 : explained.indexOf(true);
+        const last = position === runs.length - 1 ? games.length : explained.lastIndexOf(true) + 1;
 
-        return changes ? [{ halves, shared: sharedIn(matches) }] : [];
+        return [{ ...match, sessionIds: games.slice(first, last).map(({ sessionId }) => sessionId) }];
     });
 
-    return splits.toSorted((left, right) => right.shared - left.shared)[0]?.halves;
-};
+export const matchSegments = (index: VoteIndex, aliasId: string): { readonly segments: number; readonly matches: VoteMatch[] } => {
+    const results = splitByGaps(index.evidence.timelines.get(aliasId) ?? []).map(period => {
+        const judgeRange = judgeTimeline(index, aliasId, period);
+        const certain = (range: Range): VoteMatch | null =>
+            judgeRange(range).pipe(
+                Option.filter(match => isCertain(match)),
+                Option.getOrNull
+            );
+        const whole = certain({ start: 0, end: period.length });
+        const runs = bestPartition(period.length, certain);
+        const persons = new Set(runs.flatMap(({ match }) => (isDefined(match) ? [match.personId] : [])));
 
-const splitByPerson = (evidence: VoteEvidence, aliasId: string, segment: Segment): Segment[] => {
-    const [whole] = certainMatch(evidence, aliasId, segment);
-    const split = bestSplit(evidence, aliasId, segment, whole);
-
-    return isDefined(split) ? split.flatMap(half => splitByPerson(evidence, aliasId, half)) : [segment];
-};
-
-export const matchSegments = (evidence: VoteEvidence, aliasId: string): { readonly segments: number; readonly matches: VoteMatch[] } => {
-    const segments = splitByGaps(evidence.timelines.get(aliasId) ?? []).flatMap(segment => splitByPerson(evidence, aliasId, segment));
-
-    return { segments: segments.length, matches: segments.flatMap(segment => certainMatch(evidence, aliasId, segment)) };
-};
-
-const combinations = (items: readonly string[], size: number): string[][] => {
-    if (size === 0) {
-        return [[]];
-    }
-
-    return items.flatMap((item, index) => {
-        const tails = combinations(items.slice(index + 1), size - 1);
-
-        for (const tail of tails) {
-            tail.unshift(item);
+        if (persons.size > 1) {
+            return { segments: runs.length, matches: withoutUnexplainedEdges(period, runs) };
         }
 
-        return tails;
+        return { segments: 1, matches: isDefined(whole) ? [whole] : [] };
     });
-};
 
-const usualPlayers = (timeline: readonly AliasGame[]): number => {
-    const squadsByCount = new Map<number, number>();
-
-    for (const { players } of timeline) {
-        squadsByCount.set(players, (squadsByCount.get(players) ?? 0) + 1);
-    }
-
-    return Math.max(minSharedPlayers, ...[...squadsByCount].filter(([, squads]) => squads >= minSquads).map(([players]) => players));
-};
-
-const combinationCount = (items: number, size: number): number =>
-    Array.from({ length: size }, (_, index) => (items - index) / (index + 1)).reduce((total, factor) => total * factor, 1);
-
-const candidateCount = (size: number): number => {
-    let candidates = Math.max(size, maxCandidates);
-
-    while (candidates > size && combinationCount(candidates, size) > maxCombinations) {
-        candidates -= 1;
-    }
-
-    return candidates;
-};
-
-interface RatedSet {
-    readonly personIds: readonly string[];
-    readonly score: number;
-}
-
-const byScore = (sets: readonly RatedSet[]): RatedSet[] => sets.toSorted((left, right) => right.score - left.score);
-
-const isSameSet = (left: RatedSet, right: RatedSet): boolean => left.personIds.every(personId => right.personIds.includes(personId));
-
-export const matchSet = (
-    squads: readonly Squad[],
-    segment: readonly AliasGame[],
-    isPossible: (personId: string) => boolean
-): Option.Option<PersonSet> => {
-    const judged = segment.filter(({ yes }) => isDefined(yes));
-    const entries = judged.reduce((total, { players }) => total + players, 0);
-    const size = usualPlayers(segment);
-    const yesTotals = votesPerPerson(squadsWithin(squads, segment));
-    const possible = [...votesPerPerson(judged)]
-        .filter(([personId]) => isPossible(personId))
-        .map(([personId, shared]) => ({ personId, score: scoreOf(shared, entries / size, yesTotals.get(personId) ?? 0) }))
-        .toSorted((left, right) => right.score - left.score)
-        .map(({ personId }) => personId);
-    const rate = (personIds: readonly string[]): RatedSet => {
-        const explained = judged.reduce(
-            (total, { players, yes }) => total + Math.min(players, personIds.filter(personId => yes?.has(personId) === true).length),
-            0
-        );
-        const votes = personIds.reduce((total, personId) => total + (yesTotals.get(personId) ?? 0), 0);
-
-        return { personIds, score: scoreOf(explained, entries, votes) };
+    return {
+        segments: results.reduce((total, { segments }) => total + segments, 0),
+        matches: results.flatMap(({ matches }) => matches)
     };
-    const [found, next] = byScore(combinations(possible.slice(0, candidateCount(size)), size).map(personIds => rate(personIds)));
-
-    if (!isDefined(found)) {
-        return Option.none();
-    }
-
-    const swaps = byScore(
-        found.personIds.flatMap(out =>
-            possible
-                .filter(personId => !found.personIds.includes(personId))
-                .map(personId => rate([...found.personIds.filter(kept => kept !== out), personId]))
-        )
-    );
-    const [best = found, ...others] = byScore([found, ...swaps, ...(isDefined(next) ? [next] : [])]);
-
-    return Option.some({
-        personIds: best.personIds.toSorted(),
-        games: judged.length,
-        score: best.score,
-        margin: best.score - (others.find(other => !isSameSet(other, best))?.score ?? 0)
-    });
 };
-
-export const isCertainSet = ({ games, score, margin }: PersonSet): boolean =>
-    games >= minGames && score >= minSetScore && margin >= minSetMargin;

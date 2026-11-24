@@ -10,7 +10,8 @@ import { syncSessionRoster } from '../roster/sync-session-roster';
 
 import { assignAlias } from './assign-alias';
 import { loadEvidence, withLinks, type LinkEvidence } from './load-evidence';
-import { isCertainSet, judge, matchSegments, matchSet, splitByGaps, type VoteMatch } from './match-votes';
+import { isCertainSet, matchSet } from './match-set';
+import { indexVotes, judge, matchSegments, splitByGaps, type VoteMatch } from './match-votes';
 import { refreshNames } from './refresh-names';
 
 const openAliases = Effect.fn('IngestTelegram.openAliases')(function* (communityId: string) {
@@ -27,11 +28,13 @@ export const rankedLinks = Effect.fn('IngestTelegram.rankedLinks')(function* (co
     const evidence = yield* loadEvidence(communityId);
     const open = yield* openAliases(communityId);
 
-    return [...evidence.timelines]
-        .flatMap(([aliasId, timeline]) => {
+    const index = indexVotes(evidence);
+
+    return [...evidence.timelines.keys()]
+        .flatMap(aliasId => {
             const alias = open.get(aliasId);
 
-            return judge(evidence, aliasId, timeline).pipe(Option.toArray, matches =>
+            return judge(index, aliasId).pipe(Option.toArray, matches =>
                 isDefined(alias) ? matches.map(match => Object.assign(match, { alias })) : []
             );
         })
@@ -79,10 +82,17 @@ const assignEntries = Effect.fn('IngestTelegram.assignEntries')(function* (entry
 });
 
 const firstAliasPerPerson = (matches: readonly VoteMatch[]): VoteMatch[] => {
-    const aliasByPerson = new Map<string, string>();
+    const sharedByName = new Map<string, number>();
 
-    for (const { personId, aliasId } of matches.toSorted((left, right) => right.shared - left.shared)) {
-        aliasByPerson.set(personId, aliasByPerson.get(personId) ?? aliasId);
+    for (const { personId, aliasId, shared } of matches) {
+        sharedByName.set(`${personId}|${aliasId}`, (sharedByName.get(`${personId}|${aliasId}`) ?? 0) + shared);
+    }
+
+    const aliasByPerson = new Map<string, string>();
+    const sharedOf = ({ personId, aliasId }: VoteMatch): number => sharedByName.get(`${personId}|${aliasId}`) ?? 0;
+
+    for (const match of matches.toSorted((left, right) => sharedOf(right) - sharedOf(left))) {
+        aliasByPerson.set(match.personId, aliasByPerson.get(match.personId) ?? match.aliasId);
     }
 
     return matches.filter(({ personId, aliasId }) => aliasByPerson.get(personId) === aliasId);
@@ -102,9 +112,10 @@ const linkNicknames = Effect.fn('IngestTelegram.linkNicknames')(function* (commu
         .from(personAlias)
         .where(and(eq(personAlias.communityId, communityId), eq(personAlias.resolution, 'confirmed')));
     const taken = new Set(confirmed.map(({ personId }) => personId));
+    const index = indexVotes(evidence);
     const results = [...evidence.timelines.keys()]
         .filter(aliasId => open.has(aliasId))
-        .map(aliasId => Object.assign(matchSegments(evidence, aliasId), { aliasId }));
+        .map(aliasId => Object.assign(matchSegments(index, aliasId), { aliasId }));
     const allowed = new Set(firstAliasPerPerson(results.flatMap(({ matches }) => matches).filter(({ personId }) => !taken.has(personId))));
     const touched: string[] = [];
     const linked = new Map<string, string>();
