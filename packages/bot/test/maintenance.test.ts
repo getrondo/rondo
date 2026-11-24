@@ -192,12 +192,17 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('nightly maintenance', it =>
             const afterFailure = yield* isClosed('close-played');
             recorder.failures.set('stopPoll', refusal('stopPoll', 'Bad Request: poll has already been closed'));
             yield* runMaintenance(afterTheGame);
+            yield* addPoll(played.sessionId, 'close-deleted', 904);
+            recorder.failures.set('stopPoll', refusal('stopPoll', 'Bad Request: message to stop not found'));
+            yield* runMaintenance(afterTheGame);
             recorder.failures.delete('stopPoll');
             yield* runMaintenance(afterTheGame);
-            const closed = yield* Effect.all(['close-played', 'close-cancelled', 'close-later'].map(pollId => isClosed(pollId)));
+            const closed = yield* Effect.all(
+                ['close-played', 'close-cancelled', 'close-later', 'close-deleted'].map(pollId => isClosed(pollId))
+            );
 
             expect(afterFailure).toBe(false);
-            expect(closed).toEqual([true, true, false]);
+            expect(closed).toEqual([true, true, false, true]);
             expect([stopsOf(901), stopsOf(902), stopsOf(903)]).toEqual([2, 2, 0]);
         })
     );

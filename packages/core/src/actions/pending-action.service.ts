@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { pendingAction } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { TelegramApiError } from '@rondo/telegram/error/telegram-api.error';
@@ -132,7 +132,16 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
 
     const reason = reasonOf(Cause.squash(exit.cause));
     yield* Effect.logError('[action] failed', exit.cause);
-    yield* db.update(pendingAction).set({ status: 'failed', result: { reason } }).where(eq(pendingAction.id, claimed.id));
+    const failed = yield* db
+        .update(pendingAction)
+        .set({ status: 'failed', result: { reason } })
+        .where(and(eq(pendingAction.id, claimed.id), isNull(pendingAction.result)))
+        .returning({ id: pendingAction.id });
+
+    // The result is written by a commit whose answer was lost
+    if (!isNotEmptyArray(failed)) {
+        return { _tag: 'done', summary: claimed.summary } as const;
+    }
 
     return { _tag: 'failed', summary: claimed.summary, reason } as const;
 });

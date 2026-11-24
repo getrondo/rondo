@@ -10,6 +10,7 @@ import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
+import * as Ref from 'effect/Ref';
 
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
@@ -158,6 +159,7 @@ export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: Pub
     const db = yield* Db;
     const telegram = yield* Telegram;
     const { communityId } = input.target;
+    const isSent = yield* Ref.make(false);
     const publish = Effect.gen(function* () {
         const colors = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId)).orderBy(asc(teamColor.name));
         yield* storeTeams(
@@ -178,6 +180,7 @@ export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: Pub
                 ...topicOptions(input.group)
             })
         );
+        yield* Ref.set(isSent, true);
         yield* db
             .insert(messageRef)
             .values({
@@ -190,5 +193,17 @@ export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: Pub
             .onConflictDoNothing();
     });
 
-    yield* withCommunityLock({ id: communityId }, publish);
+    yield* withCommunityLock({ id: communityId }, publish).pipe(
+        Effect.catchCause(cause =>
+            Effect.gen(function* () {
+                if (!(yield* Ref.get(isSent))) {
+                    return yield* Effect.failCause(cause);
+                }
+
+                yield* Effect.logError('[teams] sent but not saved', cause);
+
+                return yield* ActionFailedError.make({ reason: 'the teams were sent but may not be saved, check the group' });
+            })
+        )
+    );
 });
