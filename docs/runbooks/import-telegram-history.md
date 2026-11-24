@@ -38,6 +38,7 @@ A JSON file validated by `CommunityConfigSchema` (`packages/ingest-telegram/src/
 - `organizers`: authors whose messages count as authoritative (cancellations, prices, results).
 - `selfAliases`: how the organizer lists himself in line-ups ("Я" = "me").
 - `venues[].patterns` and `squads[].patterns`: case-insensitive regexes, tried in order.
+- `guestPatterns` (optional): case-insensitive regexes for tokens that describe a one-game guest instead of naming a player; the named groups `host` and `count` are read. It replaces the generic default in `community-config.ts`.
 - `squads[].contextPatterns`: message-level hints (league level) that pick the squad.
 
 ## 3. Run
@@ -52,18 +53,30 @@ pnpm -F @rondo/ingest-telegram ingest
 psql "$DATABASE_URL" -c "select analytics.refresh_all()"
 ```
 
-The import runs in one transaction and can be repeated. Sessions are matched by local date and sport and updated in place;
-imported sessions that are gone are deleted unless they carry sign-ups, manual attendance or messages the bot handled.
+The import runs in one transaction and can be repeated. Sessions are matched by their messages, then by local date and sport,
+and updated in place. Games an admin changed keep their date, time, venue and status. Imported sessions that are gone are
+deleted unless they carry sign-ups, manual attendance, admin changes or messages the bot handled.
 Fixtures, price rules and provenance of the import are replaced. Venues are upserted by `(community_id, name)`, aliases by
 `(community_id, alias_norm)`. Messages in `comms.message_ref` are skipped, and a line-up the bot took live is left alone.
-Confirmed and undone alias links, manual line-up entries and manual attendance survive. Vote links are recomputed
+Confirmed and undone links, manual line-up entries and manual attendance survive. Vote links are recomputed
 ([ADR-0003](../adr/0003-identity.md)). A fresh snapshot overwrites account names, usernames and membership.
 
-Rehearse on a throwaway database first: import twice and compare the logged counts, they must be equal.
+### Rehearse first
+
+On a restored copy of production on localhost:
+
+```bash
+DATABASE_URL=postgres://rondo:rondo@localhost:54330/rondo \
+RONDO_EXPORT_DIR=/path/to/export RONDO_COMMUNITY_CONFIG=/path/to/community.json \
+pnpm -F @rondo/ingest-telegram rehearse
+```
+
+It migrates, imports twice and prints counts before and after. It refuses any other host and prints no names. The second
+import must report that it changed nothing.
 
 ## 4. Review
 
-- **Aliases:** `identity.person_alias` holds every line-up name. `vote` links are automatic: check them and unlink wrong ones. Ask the assistant for link suggestions. Shared nicknames (`placeholder`) are linked per line-up entry.
+- **Aliases:** `identity.person_alias` holds every line-up name. `vote` links are automatic: check them and unlink wrong ones. Ask the assistant for link suggestions. Shared nicknames (`placeholder`) are linked per line-up entry. `reviewEntries`, `linkEntry` and `unlinkEntry` in `@rondo/core` list and fix entries (no UI yet).
 - **Guest messages:** `unassignedGuestRequests` counts chat messages "+N" that reply to no game poll; they are not stored.
 - **Sessions without a line-up** are marked `played` with confidence ≤ 0.6 and have no attendance, only sign-ups from votes; cancelled ones carry `cancel_reason`.
 - **Prices** are the monthly mode of "€N on the field" messages, scoped per venue when the message names one.
