@@ -1,5 +1,5 @@
 import { isDefined, isEmptyArray } from '@rnw-community/shared';
-import { mainChatOf } from '@rondo/core/community/community.repository';
+import { mainGroupOf } from '@rondo/core/community/community.repository';
 import { notifyPromoted } from '@rondo/core/notify/notifier';
 import { getSession } from '@rondo/core/sessions/session.service';
 import { applyPollAnswer } from '@rondo/core/signups/signup.service';
@@ -27,10 +27,10 @@ export const handlePollAnswer = Effect.fn('Bot.handlePollAnswer')(function* (ans
         return;
     }
 
-    const chatId = yield* mainChatOf(target.value.communityId);
+    const group = yield* mainGroupOf(target.value.communityId);
 
-    if (Option.isSome(chatId)) {
-        yield* notifyPromoted({ target: target.value, promoted: outcome.value.promoted, chatId: chatId.value, locale: 'uk' }).pipe(
+    if (Option.isSome(group)) {
+        yield* notifyPromoted({ target: target.value, promoted: outcome.value.promoted, group: group.value, locale: 'uk' }).pipe(
             Effect.tapCause(Effect.logWarning),
             Effect.ignore
         );

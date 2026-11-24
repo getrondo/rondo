@@ -16,10 +16,12 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { formatSessionLabel, text } from '../i18n/messages';
 import { arePeopleOf } from '../people/people.service';
 import { footballActivity, requireSession } from '../sessions/session.service';
+import { topicOptions } from '../utils/topic-options.util';
 
 import { balanceTeams, type BalancedTeam, type BalancePlayer } from './balance-teams';
 
 import type { Locale } from '../i18n/locale';
+import type { GroupTarget } from '../interface/group-target.interface';
 import type { SessionView } from '../sessions/session.model';
 
 const defaultStrength = 5;
@@ -102,7 +104,7 @@ const lineupText = (locale: Locale, target: SessionView, teams: readonly Balance
 interface PublishInput {
     readonly target: SessionView;
     readonly teams: readonly BalancedTeam[];
-    readonly chatId: bigint;
+    readonly group: GroupTarget;
     readonly locale: Locale;
     readonly actorPersonId: string | null;
 }
@@ -169,11 +171,20 @@ export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: Pub
     );
     const emojis = colors.map(color => color.emoji ?? '');
     const sent = yield* telegram.call('sendMessage', api =>
-        api.sendMessage(Number(input.chatId), lineupText(input.locale, input.target, input.teams, emojis), { parse_mode: 'HTML' })
+        api.sendMessage(Number(input.group.chatId), lineupText(input.locale, input.target, input.teams, emojis), {
+            parse_mode: 'HTML',
+            ...topicOptions(input.group)
+        })
     );
     yield* db
         .insert(messageRef)
-        .values({ chatId: input.chatId, messageId: sent.message_id, purpose: 'lineup', entityType: 'session', entityId: input.target.id })
+        .values({
+            chatId: input.group.chatId,
+            messageId: sent.message_id,
+            purpose: 'lineup',
+            entityType: 'session',
+            entityId: input.target.id
+        })
         .onConflictDoNothing();
     yield* recordAudit({
         communityId,

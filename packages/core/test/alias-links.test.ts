@@ -36,7 +36,7 @@ const seeded = Effect.fn('test.seeded')(function* (slug: string, orgId: bigint, 
         senderPersonId: organizer,
         senderTgUserId: orgId,
         senderName: 'Org',
-        senderIsAdmin: true,
+        isTrusted: true,
         text: `Составы на сегодня, North:\n${lineup}`
     });
     yield* db.update(session).set({ status: 'played' }).where(eq(session.communityId, communityId));
@@ -169,7 +169,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
                 senderPersonId: organizer,
                 senderTgUserId: 120n,
                 senderName: 'Org',
-                senderIsAdmin: true,
+                isTrusted: true,
                 text: `Составы на сегодня, North:\n${lineup}`
             });
             const votedAt = new Date('2026-05-01T00:00:00Z');
@@ -402,7 +402,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
                 yield* firstStatementOf(linkEntry({ ...entryTarget, personId: account })),
                 yield* firstStatementOf(unlinkEntry(entryTarget)),
                 yield* firstStatementOf(mergePeople({ communityId, fromPersonId: other, intoPersonId: account, actorPersonId: null })),
-                yield* firstStatementOf(publishTeams({ target, teams: [], chatId: -240n, locale: 'uk', actorPersonId: null }))
+                yield* firstStatementOf(
+                    publishTeams({ target, teams: [], group: { chatId: -240n, topicId: null }, locale: 'uk', actorPersonId: null })
+                )
             ];
 
             expect(firstStatements.filter(statement => !statement.includes('pg_advisory_xact_lock'))).toEqual([]);

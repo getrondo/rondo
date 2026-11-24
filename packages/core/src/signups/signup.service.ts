@@ -13,8 +13,10 @@ import * as Option from 'effect/Option';
 import { formatSessionLabel, text } from '../i18n/messages';
 import { primaryAccount } from '../identity/primary-account';
 import { syncMember, type TelegramUser } from '../identity/telegram-user';
+import { topicOptions } from '../utils/topic-options.util';
 
 import type { Locale } from '../i18n/locale';
+import type { GroupTarget } from '../interface/group-target.interface';
 import type { SessionView } from '../sessions/session.model';
 
 type PollChoice = 'in' | 'gk' | 'out';
@@ -28,12 +30,17 @@ const pollQuestion = (locale: Locale, target: SessionView): string => {
     return `⚽ ${label}${capacity}`;
 };
 
-export const announceSession = Effect.fn('Core.announceSession')(function* (target: SessionView, chatId: bigint, locale: Locale) {
+export const announceSession = Effect.fn('Core.announceSession')(function* (target: SessionView, group: GroupTarget, locale: Locale) {
+    const { chatId } = group;
     const db = yield* Db;
     const telegram = yield* Telegram;
     const options = [text(locale, 'pollIn'), text(locale, 'pollGk'), text(locale, 'pollOut')].map(option => ({ text: option }));
     const sent = yield* telegram.call('sendPoll', api =>
-        api.sendPoll(Number(chatId), pollQuestion(locale, target), options, { is_anonymous: false, allows_multiple_answers: false })
+        api.sendPoll(Number(chatId), pollQuestion(locale, target), options, {
+            is_anonymous: false,
+            allows_multiple_answers: false,
+            ...topicOptions(group)
+        })
     );
 
     yield* db

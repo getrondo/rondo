@@ -26,7 +26,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
                 senderPersonId: organizerPersonId,
                 senderTgUserId: organizer.id,
                 senderName: 'Org',
-                senderIsAdmin: true
+                isTrusted: true
             };
 
             const poll = yield* ingestGroupMessage(communityId, config, {
@@ -89,11 +89,11 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             const { communityId } = yield* seedCommunity(scoped);
             const member = { id: 8n, firstName: 'Org' };
             const personId = yield* upsertTelegramUser(member);
-            const base = { chatId: -101n, senderPersonId: personId, senderTgUserId: member.id, senderName: 'Org', senderIsAdmin: false };
+            const base = { chatId: -101n, senderPersonId: personId, senderTgUserId: member.id, senderName: 'Org', isTrusted: false };
 
             yield* ingestGroupMessage(communityId, scoped, {
                 ...base,
-                senderIsAdmin: true,
+                isTrusted: true,
                 messageId: 1,
                 sentAt: new Date('2026-05-08T10:00:00Z'),
                 poll: { question: 'Пятница, 8 мая, 19.30 Park', answers: ['+', '-'] }
@@ -112,14 +112,14 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             });
             yield* ingestGroupMessage(communityId, scoped, {
                 ...base,
-                senderIsAdmin: true,
+                isTrusted: true,
                 messageId: 4,
                 sentAt: new Date('2026-05-08T14:00:00Z'),
                 text: 'Переносим сегодняшний футбол на завтра'
             });
             yield* ingestGroupMessage(communityId, scoped, {
                 ...base,
-                senderIsAdmin: true,
+                isTrusted: true,
                 messageId: 5,
                 sentAt: new Date('2026-05-08T15:00:00Z'),
                 text: 'Сегодня ничего не отменяем, играем, дождь небольшой'
@@ -138,7 +138,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             const scoped = seedConfig('two-games-fc');
             const { communityId } = yield* seedCommunity(scoped);
             const personId = yield* upsertTelegramUser({ id: 9n, firstName: 'Org' });
-            const base = { chatId: -103n, senderPersonId: personId, senderTgUserId: 9n, senderName: 'Org', senderIsAdmin: true };
+            const base = { chatId: -103n, senderPersonId: personId, senderTgUserId: 9n, senderName: 'Org', isTrusted: true };
             const pollAt = (messageId: number, time: string) =>
                 ingestGroupMessage(communityId, scoped, {
                     ...base,

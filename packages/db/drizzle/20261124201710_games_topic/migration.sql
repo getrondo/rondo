@@ -1,0 +1,1 @@
+ALTER TABLE "org"."telegram_chat" ADD COLUMN "topic_id" bigint;

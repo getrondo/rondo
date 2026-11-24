@@ -29,7 +29,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
                 actorPersonId: null
             });
             const target = Option.getOrThrow(yield* getSession(sessionId));
-            yield* announceSession(target, -100_123n, 'uk');
+            yield* announceSession(target, { chatId: -100_123n, topicId: null }, 'uk');
             const [poll] = yield* db
                 .select({ pollId: telegramPoll.pollId })
                 .from(telegramPoll)

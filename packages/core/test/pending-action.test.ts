@@ -21,7 +21,7 @@ const contextFor = (chatId: bigint | null) => (communityId: string) =>
     Effect.succeed({
         communityId,
         timezone: 'Europe/Vienna',
-        mainChatId: Option.fromNullishOr(chatId),
+        group: Option.fromNullishOr(chatId).pipe(Option.map(id => ({ chatId: id, topicId: null }))),
         groupLocale: 'uk' as const,
         actorPersonId: null
     });

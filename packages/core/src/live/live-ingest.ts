@@ -29,7 +29,7 @@ export interface GroupMessage {
     readonly senderPersonId: string;
     readonly senderTgUserId: bigint;
     readonly senderName: string;
-    readonly senderIsAdmin: boolean;
+    readonly isTrusted: boolean;
     readonly text?: string;
     readonly poll?: { readonly question: string; readonly answers: readonly string[] };
 }
@@ -202,7 +202,7 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
         poll: message.poll,
         media: []
     };
-    if (!message.senderIsAdmin) {
+    if (!message.isTrusted) {
         return { poll: false, lineup: false } satisfies LiveIngestResult;
     }
 
