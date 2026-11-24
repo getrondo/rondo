@@ -27,7 +27,7 @@ line-ups. It must be cheap to run for a ~200-member group with bursty traffic ar
 | Sign-ups | The bot posts non-anonymous native polls (✅ play / 🧤 goalkeeper / ❌ out), because Telegram only reports votes on polls the bot sent. Capacity overflow goes to the waitlist; a freed seat promotes the earliest waiting player and mentions them in the group |
 | Team balancing | Snake draft by confidential organizer level (1–10, default 5), keepers spread first, then pairwise swaps that minimise the strength spread |
 | Scheduled work | Daily Vercel Cron `GET /api/cron/maintenance` (bearer `CRON_SECRET`): expire proposals, finish past games (attendance from sign-ups, close polls), prune update and chat history, refresh analytics |
-| Player merges | `identity.merge_person()` moves every single-column foreign key to the surviving person, drops rows that would duplicate a unique key, refuses pairs that both have Telegram or both signed up for one game, leaves append-only history intact and keeps a tombstone (`merged_into_person_id`) |
+| Player merges | `identity.merge_person()` moves every single-column foreign key to the surviving person, refuses on conflict (see [ADR-0003](0003-identity.md)), leaves append-only history intact and keeps a tombstone (`merged_into_person_id`) |
 
 ## Consequences
 

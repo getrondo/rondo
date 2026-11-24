@@ -11,7 +11,9 @@ them outside the repository (e.g. `~/getrondo/rondo-data/`); `.gitignore` blocks
 ## 1. Export the chat
 
 Telegram Desktop → group → ⋮ → **Export chat history**. Untick photos, videos, voice and files
-(they aren't used). The format can be **HTML** or JSON (HTML is supported today).
+(they aren't used). Choose **JSON** (`result.json`): it carries author ids. HTML still works, without ids.
+
+Optional snapshot files in the same folder, read from the owner's account, add accounts, polls and voters: `messages.jsonl` (polls with `poll.id` and answers), `votes*.jsonl` and `users*.json` (schemas in `packages/ingest-telegram/src/model/telegram-snapshot.model.ts`). Without `messages.jsonl` the import runs without them.
 
 ## 2. Write the community config
 
@@ -50,18 +52,20 @@ pnpm -F @rondo/ingest-telegram ingest
 psql "$DATABASE_URL" -c "select analytics.refresh_all()"
 ```
 
-The import runs in one transaction. It replaces only the import-scoped facts of that community
-(sessions and fixtures with `source = 'import'`, price rules with `note = 'import'`, plus ingest runs) and upserts the
-rest: venues by `(community_id, name)` (venue names in the config must be unique; an existing venue keeps its `kind`), aliases by `(community_id, alias_norm)` and authors by
-`(community_id, display_name)`. Re-running it on a newer export is safe **before go-live**: imported sessions are recreated with new ids, so once the bot attaches data to imported sessions, stop re-importing. Until then, curated data (alias
-resolution and person links, manually added venues, bot-created sessions) is never overwritten, and
-persons are created only for aliases that did not exist yet. An export folder without any
-`messages*.html` page is rejected.
+The import runs in one transaction and can be repeated. Sessions are matched by local date and sport and updated in place;
+imported sessions that are gone are deleted unless they carry sign-ups, manual attendance or messages the bot handled.
+Fixtures, price rules and provenance of the import are replaced. Venues are upserted by `(community_id, name)`, aliases by
+`(community_id, alias_norm)`. Messages in `comms.message_ref` are skipped, and a line-up the bot took live is left alone.
+Confirmed and undone alias links, manual line-up entries and manual attendance survive. Vote links are recomputed
+([ADR-0003](../adr/0003-identity.md)). A fresh snapshot overwrites account names, usernames and membership.
+
+Rehearse on a throwaway database first: import twice and compare the logged counts, they must be equal.
 
 ## 4. Review
 
-- **Aliases:** `identity.person_alias` holds every line-up name with occurrences and first/last seen. Merge duplicates and typos and link them to Telegram accounts (E15 alias-resolution UI). Your resolutions survive re-imports.
-- **Sessions without a line-up** are marked `played` with confidence ≤ 0.6; cancelled ones carry `cancel_reason`.
+- **Aliases:** `identity.person_alias` holds every line-up name. `vote` links are automatic: check them and unlink wrong ones. Ask the assistant for link suggestions. Shared nicknames (`placeholder`) are linked per line-up entry.
+- **Guest messages:** `unassignedGuestRequests` counts chat messages "+N" that reply to no game poll; they are not stored.
+- **Sessions without a line-up** are marked `played` with confidence ≤ 0.6 and have no attendance, only sign-ups from votes; cancelled ones carry `cancel_reason`.
 - **Prices** are the monthly mode of "€N on the field" messages, scoped per venue when the message names one.
 
 ## What it extracts
