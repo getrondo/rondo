@@ -70,7 +70,8 @@ it privately. `/start` shows examples; `/reset` clears the conversation.
 - **Pending proposals:** `select * from comms.pending_action order by created_at desc`.
 - **Uncertain polls:** a pending action with status `failed` and the reason "uncertain, check the group" means Telegram
   did not answer in time. A new game was not stored, and nothing is sent again. If its poll is in the group, delete it,
-  then ask for the game again.
+  then ask for the game again. A game with an open poll is not announced twice: if that poll was deleted in Telegram, set
+  its `comms.telegram_poll.closed_at` first.
 - **Audit:** `select * from audit.log order by at desc`.
 - **Import again:** see [import-telegram-history](import-telegram-history.md); stop re-importing
   once the bot has run sign-ups on imported sessions.

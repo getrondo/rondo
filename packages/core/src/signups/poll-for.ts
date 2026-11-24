@@ -18,7 +18,7 @@ const PollTemplateSchema = Schema.Struct({
     question: Schema.String.check(Schema.isPattern(/^(?:[^{}]|\{(?:weekday|date|time|place|station|fields|places)\})+$/u)),
     answers: Schema.Tuple([Schema.NonEmptyString, Schema.NonEmptyString])
 });
-const decodeSettings = Schema.decodeUnknownEffect(Schema.Struct({ poll: Schema.optional(PollTemplateSchema) }));
+const decodeSettings = Schema.decodeUnknownEffect(Schema.Struct({ poll: Schema.optional(Schema.NullOr(PollTemplateSchema)) }));
 
 const defaultTemplate = (locale: Locale): typeof PollTemplateSchema.Type => ({
     question: '⚽ {weekday}, {date}, {time} {place}, {station}\n\n{fields}, {places}',

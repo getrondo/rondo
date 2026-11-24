@@ -1,9 +1,9 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
-import { lineupEntry, teamMember } from '@rondo/db/schema/play.schema';
+import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
-import { and, eq, inArray, lt, ne } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lt, ne } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import type { SessionStatus } from './session.model';
@@ -18,7 +18,11 @@ const playersOf = Effect.fn('Core.playersOf')(function* (sessionId: string) {
         .select({ personId: lineupEntry.personId })
         .from(lineupEntry)
         .where(and(eq(lineupEntry.sessionId, sessionId), ne(lineupEntry.teamOrdinal, 0)));
-    const teams = yield* db.select({ personId: teamMember.personId }).from(teamMember).where(eq(teamMember.sessionId, sessionId));
+    const teams = yield* db
+        .select({ personId: teamMember.personId })
+        .from(teamMember)
+        .innerJoin(team, eq(team.id, teamMember.teamId))
+        .where(and(eq(teamMember.sessionId, sessionId), isNotNull(team.publishedAt)));
     const signups = yield* db
         .select({ personId: signup.personId })
         .from(signup)

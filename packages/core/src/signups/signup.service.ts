@@ -130,7 +130,8 @@ export const lockSession = Effect.fn('Core.lockSession')(function* (sessionId: s
     return Option.fromNullishOr(row).pipe(Option.filter(({ status }) => !closedStatuses.includes(status)));
 });
 
-const setSignup = Effect.fn('Core.setSignup')(function* (sessionId: string, personId: string, choice: PollChoice) {
+const setSignup = Effect.fn('Core.setSignup')(function* (sessionId: string, personId: string, choice: PollChoice, asksGoalkeeper: boolean) {
+    const db = yield* Db;
     const locked = yield* lockSession(sessionId);
 
     if (Option.isNone(locked)) {
@@ -138,7 +139,12 @@ const setSignup = Effect.fn('Core.setSignup')(function* (sessionId: string, pers
     }
 
     const { capacityMax } = locked.value;
-    const role = choice === 'gk' ? 'gk' : 'field';
+    const [previous] = yield* db
+        .select({ role: signup.role })
+        .from(signup)
+        .where(and(eq(signup.sessionId, sessionId), eq(signup.personId, personId)));
+    const keptRole = previous?.role === 'gk' && !(asksGoalkeeper && choice === 'in') ? 'gk' : 'field';
+    const role = choice === 'gk' ? 'gk' : keptRole;
     const othersIn = yield* fieldPlayersIn(sessionId, personId);
     const hasSeat = role === 'gk' || !isDefined(capacityMax) || othersIn < capacityMax;
     const seatedStatus = hasSeat ? 'in' : 'waitlisted';
@@ -172,7 +178,7 @@ export const applyPollAnswer = Effect.fn('Core.applyPollAnswer')(function* (inpu
     const chosen = poll.options[input.optionIds[0] ?? -1];
     const choice = pollChoices.find(candidate => candidate === chosen) ?? 'out';
 
-    return yield* db.transaction(() => setSignup(poll.sessionId, personId, choice));
+    return yield* db.transaction(() => setSignup(poll.sessionId, personId, choice, poll.options.includes('gk')));
 });
 
 export const rosterOf = Effect.fn('Core.rosterOf')(function* (sessionId: string) {

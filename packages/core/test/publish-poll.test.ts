@@ -8,6 +8,7 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Predicate from 'effect/Predicate';
 
+import { describeAction } from '../src/actions/describe-action';
 import { decideAction, proposeAction } from '../src/actions/pending-action.service';
 import { createSession } from '../src/sessions/session.service';
 import { publishPoll } from '../src/signups/publish-poll';
@@ -55,7 +56,8 @@ const decide = (actionId: string) =>
 
 const confirm = Effect.fn('test.confirm')(function* (communityId: string, action: Action) {
     const db = yield* Db;
-    const actionId = yield* proposeAction({ communityId, tgUserId: admin, action, summary: action._tag });
+    const summary = yield* describeAction(action, 'uk', communityId).pipe(Effect.orElseSucceed(() => action._tag));
+    const actionId = yield* proposeAction({ communityId, tgUserId: admin, action, summary });
     const outcome = yield* decide(actionId);
     const [stored] = yield* db.select().from(pendingAction).where(eq(pendingAction.id, actionId));
 
@@ -119,6 +121,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
                     communityId,
                     group,
                     note: null,
+                    approvedSummary: null,
                     prepare: createSession(gameOf(communityId)),
                     settle: () => Effect.fail('the result was not written')
                 })
@@ -152,6 +155,59 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             expect(reasonIn(long.outcome)).toContain('300');
             expect(countOfCalls('sendPoll')).toBe(before);
             expect(yield* gamesOf(communityId)).toHaveLength(1);
+        })
+    );
+
+    it.effect('posts one poll per game and only the poll the admin saw', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig('publish-once-fc'));
+            const sessionId = yield* createSession(gameOf(communityId));
+            const announce: Action = { _tag: 'announce_session', sessionId };
+            const summary = yield* describeAction(announce, 'uk', communityId);
+            const actionId = yield* proposeAction({ communityId, tgUserId: admin, action: announce, summary });
+            const before = countOfCalls('sendPoll');
+            yield* db.update(session).set({ capacityMax: 9 }).where(eq(session.id, sessionId));
+            const changed = yield* decide(actionId);
+            const sentChanged = countOfCalls('sendPoll') - before;
+            const first = yield* confirm(communityId, announce);
+            const second = yield* confirm(communityId, announce);
+
+            expect(reasonIn(changed)).toContain('changed after the preview');
+            expect(sentChanged).toBe(0);
+            expect(first.outcome._tag).toBe('done');
+            expect(reasonIn(second.outcome)).toContain('already has an open poll');
+            expect(countOfCalls('sendPoll') - before).toBe(1);
+        })
+    );
+
+    it.effect('keeps the poll open when the lost commit was saved', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig('publish-commit-fc'));
+            const sessionId = yield* createSession(gameOf(communityId));
+            const before = countOfCalls('stopPoll');
+            const last = yield* confirm(communityId, createAction);
+            const messageId = Predicate.hasProperty(last.result, 'messageId') ? Number(last.result.messageId) + 2 : 0;
+            yield* db.insert(telegramPoll).values({
+                pollId: 'committed',
+                chatId: group.chatId,
+                messageId,
+                sessionId,
+                closedAt: new Date(),
+                options: ['in', 'out']
+            });
+            const result = yield* publishPoll({
+                communityId,
+                group,
+                note: null,
+                approvedSummary: null,
+                prepare: Effect.succeed(sessionId),
+                settle: () => Effect.fail('the connection dropped')
+            });
+
+            expect(result).toEqual({ sessionId, messageId });
+            expect(countOfCalls('stopPoll')).toBe(before);
         })
     );
 

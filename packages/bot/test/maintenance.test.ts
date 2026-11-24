@@ -118,7 +118,18 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('nightly maintenance', it =>
             const db = yield* Db;
             const published = yield* seedGame('finish-teams-fc');
             const guests = yield* seedGame('finish-guests-fc');
-            const [stored] = yield* db.insert(team).values({ sessionId: published.sessionId, ordinal: 1 }).returning();
+            const refused = yield* seedGame('finish-refused-fc');
+            const [draft] = yield* db.insert(team).values({ sessionId: refused.sessionId, ordinal: 1 }).returning();
+            yield* db.insert(teamMember).values({
+                teamId: draft?.id ?? '',
+                sessionId: refused.sessionId,
+                personId: refused.third,
+                assignedBy: 'balancer'
+            });
+            const [stored] = yield* db
+                .insert(team)
+                .values({ sessionId: published.sessionId, ordinal: 1, publishedAt: afterTheGame })
+                .returning();
             yield* db.insert(teamMember).values({
                 teamId: stored?.id ?? '',
                 sessionId: published.sessionId,
@@ -139,6 +150,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('nightly maintenance', it =>
             const signups = yield* outcomesOf(guests.sessionId);
 
             expect([...teams.keys()]).toEqual([published.third]);
+            expect(new Set((yield* outcomesOf(refused.sessionId)).keys())).toEqual(new Set([refused.first, refused.second]));
             expect(new Set(signups.keys())).toEqual(new Set([guests.first, guests.second]));
         })
     );

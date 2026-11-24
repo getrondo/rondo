@@ -33,6 +33,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
                 communityId,
                 group: { chatId: -100_123n, topicId: null },
                 note: null,
+                approvedSummary: null,
                 prepare: Effect.succeed(sessionId),
                 settle: () => Effect.void
             });
@@ -49,6 +50,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
                 .insert(telegramPoll)
                 .values({ pollId: 'older', chatId: -100_123n, messageId: 1, sessionId, options: ['in', 'gk', 'out'] });
             const keeper = yield* applyPollAnswer({ pollId: 'older', user: user(4), optionIds: [1] });
+            const kept = yield* answer(4, 0);
             const refused = yield* applyPollAnswer({ pollId: 'older', user: user(5), optionIds: [2] });
             const third = yield* answer(3, 0);
             const [full] = yield* db.select({ status: session.status }).from(session).where(eq(session.id, sessionId));
@@ -64,6 +66,8 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
             });
             expect(first.pipe(Option.map(value => value.status))).toEqual(Option.some('in'));
             expect(keeper.pipe(Option.map(value => value.status))).toEqual(Option.some('in'));
+            expect(kept.pipe(Option.map(value => value.status))).toEqual(Option.some('in'));
+            expect(statuses.filter(row => row.role === 'gk')).toHaveLength(1);
             expect(refused.pipe(Option.map(value => value.status))).toEqual(Option.some('out'));
             expect(third.pipe(Option.map(value => value.status))).toEqual(Option.some('waitlisted'));
             expect(full?.status).toBe('full');

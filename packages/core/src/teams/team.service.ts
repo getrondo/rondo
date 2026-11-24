@@ -122,7 +122,6 @@ const storeTeams = Effect.fn('Core.storeTeams')(function* ({ target, teams }: Pu
         return yield* ActionFailedError.make({ reason: 'player not found in this community' });
     }
 
-    const publishedAt = yield* DateTime.nowAsDate;
     yield* db.delete(team).where(eq(team.sessionId, target.id));
 
     for (const entry of teams) {
@@ -132,8 +131,7 @@ const storeTeams = Effect.fn('Core.storeTeams')(function* ({ target, teams }: Pu
                 sessionId: target.id,
                 ordinal: entry.ordinal,
                 colorId: colorIds[entry.ordinal - 1],
-                predictedStrength: entry.strength,
-                publishedAt
+                predictedStrength: entry.strength
             })
             .returning({ id: team.id });
 
@@ -176,6 +174,8 @@ export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: Pub
             ...topicOptions(input.group)
         })
     );
+    const publishedAt = yield* DateTime.nowAsDate;
+    yield* db.update(team).set({ publishedAt }).where(eq(team.sessionId, input.target.id));
     yield* db
         .insert(messageRef)
         .values({

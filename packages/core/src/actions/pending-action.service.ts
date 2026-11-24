@@ -117,9 +117,10 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
     const action = yield* Schema.decodeUnknownEffect(ActionSchema)(claimed.payload).pipe(Effect.orDie);
     const context = yield* input.context(claimed.communityId);
     const exit = yield* Effect.exit(
-        runAdminAction(input.tgUserId, action, context, result =>
-            db.update(pendingAction).set({ result }).where(eq(pendingAction.id, claimed.id))
-        )
+        runAdminAction(input.tgUserId, action, context, {
+            summary: claimed.summary,
+            settle: result => db.update(pendingAction).set({ result }).where(eq(pendingAction.id, claimed.id))
+        })
     );
 
     if (Exit.isSuccess(exit)) {

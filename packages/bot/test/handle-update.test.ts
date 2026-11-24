@@ -2,6 +2,7 @@ import { expect, layer } from '@effect/vitest';
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { AiGateway } from '@rondo/assistant/service/ai-gateway.service';
 import { Access } from '@rondo/core/access/admin-access';
+import { describeAction } from '@rondo/core/actions/describe-action';
 import { proposeAction } from '@rondo/core/actions/pending-action.service';
 import { createSession } from '@rondo/core/sessions/session.service';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
@@ -88,7 +89,8 @@ const confirm = (data: string) =>
         })
     );
 const confirmAction = (communityId: string, action: Action) =>
-    proposeAction({ communityId, tgUserId: BigInt(owner.id), action, summary: action._tag }).pipe(
+    describeAction(action, 'uk', communityId).pipe(
+        Effect.flatMap(summary => proposeAction({ communityId, tgUserId: BigInt(owner.id), action, summary })),
         Effect.flatMap(actionId => confirm(`act:${actionId}:y`))
     );
 const groupUpdate = (from: typeof owner, chatId: number, body: Partial<Message>) =>

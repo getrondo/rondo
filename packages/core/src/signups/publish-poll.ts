@@ -1,8 +1,9 @@
 // The poll is sent inside the transaction. No other network call is, and the Telegram client limits this one to 10 seconds
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
+import { and, eq, isNull } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 import * as Option from 'effect/Option';
@@ -12,7 +13,7 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { requireSession } from '../sessions/session.service';
 import { topicOptions } from '../utils/topic-options.util';
 
-import { pollFor } from './poll-for';
+import { pollFor, previewOf } from './poll-for';
 import { lockSession } from './signup.service';
 
 import type { GroupTarget } from '../interface/group-target.interface';
@@ -21,6 +22,7 @@ interface PublishPollInput<PrepareFailure, PrepareRequirements, SettleFailure, S
     readonly communityId: string;
     readonly group: GroupTarget;
     readonly note: string | null | undefined;
+    readonly approvedSummary: string | null;
     readonly prepare: Effect.Effect<string, PrepareFailure, PrepareRequirements>;
     readonly settle: (result: {
         readonly sessionId: string;
@@ -45,8 +47,22 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
             return yield* ActionFailedError.make({ reason: 'the game is already over or cancelled' });
         }
 
+        const openPolls = yield* db
+            .select({ pollId: telegramPoll.pollId })
+            .from(telegramPoll)
+            .where(and(eq(telegramPoll.sessionId, sessionId), isNull(telegramPoll.closedAt)));
+
+        if (isNotEmptyArray(openPolls)) {
+            return yield* ActionFailedError.make({ reason: 'the game already has an open poll' });
+        }
+
         const target = yield* requireSession(input.communityId, sessionId);
         const poll = yield* pollFor(input.communityId, target, input.note);
+
+        if (isDefined(input.approvedSummary) && !input.approvedSummary.endsWith(`\n\n${previewOf(poll)}`)) {
+            return yield* ActionFailedError.make({ reason: 'the poll changed after the preview, ask for a new one' });
+        }
+
         const options = poll.answers.map(answer => ({ text: answer }));
         const sent = yield* telegram.call('sendPoll', api =>
             api.sendPoll(Number(chatId), poll.question, options, {
@@ -79,6 +95,20 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
                     }
 
                     yield* Effect.logError('[poll] sent but not saved', cause);
+                    const saved = yield* db
+                        .select({ sessionId: telegramPoll.sessionId })
+                        .from(telegramPoll)
+                        .where(and(eq(telegramPoll.chatId, chatId), eq(telegramPoll.messageId, sent)))
+                        .pipe(
+                            Effect.mapError(() =>
+                                ActionFailedError.make({ reason: 'the poll was sent but the result is uncertain, check the group' })
+                            )
+                        );
+
+                    if (isNotEmptyArray(saved)) {
+                        return { sessionId: saved[0].sessionId, messageId: sent };
+                    }
+
                     const stopped = yield* Effect.exit(telegram.call('stopPoll', api => api.stopPoll(Number(chatId), sent)));
                     const state = Exit.isSuccess(stopped) ? 'so it was closed' : 'and it could not be closed: check the group';
 

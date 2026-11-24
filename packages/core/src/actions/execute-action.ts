@@ -188,7 +188,7 @@ export const runAdminAction = Effect.fn('Core.runAdminAction')(function* <Failur
     tgUserId: bigint,
     action: Action,
     context: ActionContext,
-    settle: (result: ActionResult) => Effect.Effect<void, Failure, Requirements>
+    { summary, settle }: { readonly summary: string; readonly settle: (result: ActionResult) => Effect.Effect<void, Failure, Requirements> }
 ) {
     if (!(yield* isAdminOf(tgUserId, context.communityId))) {
         return yield* ActionFailedError.make({ reason: 'not an admin any more' });
@@ -200,7 +200,14 @@ export const runAdminAction = Effect.fn('Core.runAdminAction')(function* <Failur
         const group = yield* requireGroup(context);
         const prepare = action._tag === 'create_session' ? createFrom(action, context) : Effect.succeed(action.sessionId);
 
-        return yield* publishPoll({ communityId: context.communityId, group, note: action.note, prepare, settle });
+        return yield* publishPoll({
+            communityId: context.communityId,
+            group,
+            note: action.note,
+            approvedSummary: summary,
+            prepare,
+            settle
+        });
     }
 
     const result = yield* executeAction(action, context);

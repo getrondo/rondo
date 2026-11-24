@@ -15,10 +15,10 @@ export const runMaintenance = Effect.fn('Bot.runMaintenance')(function* (now: Da
 
     yield* expireStaleActions(now);
     const finished = yield* finishPastSessions(addMillis(now, -finishAfterMs));
+    yield* closeFinishedPolls();
     yield* db.delete(processedUpdate).where(lt(processedUpdate.at, addMillis(now, -7 * dayMs)));
     yield* db.delete(assistantMessage).where(lt(assistantMessage.at, addMillis(now, -30 * dayMs)));
     yield* db.execute(sql`select analytics.refresh_all()`);
-    yield* closeFinishedPolls();
 
     return { finished };
 });
