@@ -54,7 +54,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (action: Action,
                 if (action.announce) {
                     const created = yield* requireSession(communityId, sessionId);
                     const group = yield* requireGroup(context);
-                    yield* announceSession(created, group, locale);
+                    yield* announceSession(created, group, action.note);
                 }
 
                 return { sessionId };
@@ -84,7 +84,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (action: Action,
             return yield* Effect.gen(function* () {
                 const target = yield* requireSession(communityId, action.sessionId);
                 const group = yield* requireGroup(context);
-                const messageId = yield* announceSession(target, group, locale);
+                const messageId = yield* announceSession(target, group, action.note);
 
                 return { messageId };
             }).pipe(asResult);

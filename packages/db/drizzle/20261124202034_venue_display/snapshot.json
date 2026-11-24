@@ -1,0 +1,55 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "afe8b22c-82bb-4328-aa2e-b853345f6354",
+    "prevIds": ["862b030f-89e8-4fcd-a16c-5f6288867691"],
+    "footprints": [
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "venue", "venue", "short_name"],
+            "writes": ["s|col|venue.venue.short_name", "n|col|venue.venue.short_name", "e|col|venue.venue.short_name"],
+            "reads": ["n|tbl|venue.venue", "n|sch|venue"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "venue", "venue", "station"],
+            "writes": ["s|col|venue.venue.station", "n|col|venue.venue.station", "e|col|venue.venue.station"],
+            "reads": ["n|tbl|venue.venue", "n|sch|venue"]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "venue",
+                "table": "venue",
+                "name": "short_name",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "venue",
+                "table": "venue",
+                "name": "station",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        }
+    ]
+}

@@ -11,6 +11,8 @@ import { ActionFailedError } from '../error/action-failed.error';
 import type { CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
 
 export interface VenueDetails {
+    readonly shortName?: string;
+    readonly station?: string;
     readonly address?: string;
     readonly district?: number;
     readonly indoor?: boolean;

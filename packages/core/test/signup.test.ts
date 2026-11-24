@@ -29,7 +29,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
                 actorPersonId: null
             });
             const target = Option.getOrThrow(yield* getSession(sessionId));
-            yield* announceSession(target, { chatId: -100_123n, topicId: null }, 'uk');
+            yield* announceSession(target, { chatId: -100_123n, topicId: null }, null);
             const [poll] = yield* db
                 .select({ pollId: telegramPoll.pollId })
                 .from(telegramPoll)
@@ -39,10 +39,14 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
 
             const first = yield* answer(1, 0);
             yield* answer(2, 0);
-            const keeper = yield* answer(4, 1);
+            yield* db
+                .insert(telegramPoll)
+                .values({ pollId: 'older', chatId: -100_123n, messageId: 1, sessionId, options: ['in', 'gk', 'out'] });
+            const keeper = yield* applyPollAnswer({ pollId: 'older', user: user(4), optionIds: [1] });
+            const refused = yield* applyPollAnswer({ pollId: 'older', user: user(5), optionIds: [2] });
             const third = yield* answer(3, 0);
             const [full] = yield* db.select({ status: session.status }).from(session).where(eq(session.id, sessionId));
-            const leaving = yield* answer(1, 2);
+            const leaving = yield* answer(1, 1);
             const statuses = yield* db
                 .select({ status: signup.status, role: signup.role })
                 .from(signup)
@@ -54,6 +58,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
             });
             expect(first.pipe(Option.map(value => value.status))).toEqual(Option.some('in'));
             expect(keeper.pipe(Option.map(value => value.status))).toEqual(Option.some('in'));
+            expect(refused.pipe(Option.map(value => value.status))).toEqual(Option.some('out'));
             expect(third.pipe(Option.map(value => value.status))).toEqual(Option.some('waitlisted'));
             expect(full?.status).toBe('full');
             expect(leaving.pipe(Option.map(value => value.promoted.map(player => player.displayName)))).toEqual(Option.some(['Player3']));

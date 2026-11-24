@@ -7,8 +7,9 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Predicate from 'effect/Predicate';
 
-import { cancelReasonText, formatSessionLabel } from '../i18n/messages';
-import { getSession } from '../sessions/session.service';
+import { cancelReasonText, countOf, formatSessionLabel } from '../i18n/messages';
+import { getSession, requireSession } from '../sessions/session.service';
+import { pollFor, previewOf } from '../signups/poll-for';
 
 import type { Locale } from '../i18n/locale';
 import type { Action } from './action.model';
@@ -31,16 +32,21 @@ const nickname = Effect.fn('Core.nickname')(function* (aliasId: string) {
     return row?.alias ?? aliasId;
 });
 
-const nameOfVenue = Effect.fn('Core.nameOfVenue')(function* (venueId: string | null | undefined) {
+const noVenue = { venueName: null, venueShortName: null, venueStation: null };
+
+const displayOfVenue = Effect.fn('Core.displayOfVenue')(function* (venueId: string | null | undefined) {
     const db = yield* Db;
 
     if (!isDefined(venueId)) {
-        return null;
+        return noVenue;
     }
 
-    const [row] = yield* db.select({ name: venue.name }).from(venue).where(eq(venue.id, venueId));
+    const [row] = yield* db
+        .select({ venueName: venue.name, venueShortName: venue.shortName, venueStation: venue.station })
+        .from(venue)
+        .where(eq(venue.id, venueId));
 
-    return row?.name ?? null;
+    return row ?? noVenue;
 });
 
 const sessionLabel = Effect.fn('Core.sessionLabel')(function* (locale: Locale, sessionId: string) {
@@ -69,8 +75,7 @@ const words = {
         venueChange: '📍 Змінити поле',
         venueOff: 'більше не використовувати',
         venueOn: 'знову використовувати',
-        alias: 'також',
-        places: 'місць'
+        alias: 'також'
     },
     ru: {
         create: '➕ Новая игра',
@@ -91,21 +96,34 @@ const words = {
         venueChange: '📍 Изменить поле',
         venueOff: 'больше не использовать',
         venueOn: 'снова использовать',
-        alias: 'также',
-        places: 'мест'
+        alias: 'также'
     }
 } as const;
 
-export const describeAction = Effect.fn('Core.describeAction')(function* (action: Action, locale: Locale) {
+const sizeOf = (
+    locale: Locale,
+    { fieldsPlanned, capacityMax }: { readonly fieldsPlanned?: number | null; readonly capacityMax?: number | null }
+): string[] => [
+    ...(isDefined(fieldsPlanned) ? [countOf(locale, 'field', fieldsPlanned)] : []),
+    ...(isDefined(capacityMax) ? [countOf(locale, 'place', capacityMax)] : [])
+];
+
+export const describeAction = Effect.fn('Core.describeAction')(function* (action: Action, locale: Locale, communityId: string) {
     const word = words[locale];
 
     switch (action._tag) {
         case 'create_session': {
-            const venueName = yield* nameOfVenue(action.venueId);
-            const label = formatSessionLabel(locale, { ...action, venueName });
-            const capacity = isDefined(action.capacityMax) ? `, ${action.capacityMax} ${word.places}` : '';
+            const display = yield* displayOfVenue(action.venueId);
+            const summary = `${word.create}: ${[formatSessionLabel(locale, { ...action, ...display }), ...sizeOf(locale, action)].join(', ')}`;
 
-            return `${word.create}: ${label}${capacity}${action.announce ? ` ${word.announce}` : ''}`;
+            if (!action.announce) {
+                return summary;
+            }
+
+            const game = { ...action, ...display, fieldsPlanned: action.fieldsPlanned ?? null };
+            const poll = yield* pollFor(communityId, game, action.note);
+
+            return `${summary} ${word.announce}:\n\n${previewOf(poll)}`;
         }
         case 'update_session': {
             const before = yield* getSession(action.sessionId);
@@ -114,7 +132,7 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
                       Option.map(value => value.venueName),
                       Option.getOrNull
                   )
-                : yield* nameOfVenue(action.venueId);
+                : (yield* displayOfVenue(action.venueId)).venueName;
             const after = before.pipe(
                 Option.map(value =>
                     formatSessionLabel(locale, {
@@ -124,15 +142,18 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
                     })
                 )
             );
-            const capacity = isDefined(action.capacityMax) ? `, ${action.capacityMax} ${word.places}` : '';
+            const changes = [Option.getOrElse(after, () => '?'), ...sizeOf(locale, action)].join(', ');
 
-            return `${word.update}: ${yield* sessionLabel(locale, action.sessionId)} → ${Option.getOrElse(after, () => '?')}${capacity}${action.notify ? ` (${word.notify})` : ''}`;
+            return `${word.update}: ${yield* sessionLabel(locale, action.sessionId)} → ${changes}${action.notify ? ` (${word.notify})` : ''}`;
         }
         case 'cancel_session': {
             return `${word.cancel}: ${yield* sessionLabel(locale, action.sessionId)} — ${cancelReasonText(locale, action.reason)}${action.notify ? ` (${word.notify})` : ''}`;
         }
         case 'announce_session': {
-            return `${word.publishPoll}: ${yield* sessionLabel(locale, action.sessionId)}`;
+            const target = yield* requireSession(communityId, action.sessionId);
+            const poll = yield* pollFor(communityId, target, action.note);
+
+            return `${word.publishPoll}: ${formatSessionLabel(locale, target)}\n\n${previewOf(poll)}`;
         }
         case 'publish_teams': {
             const lines = action.teams.map(
@@ -166,14 +187,17 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
         case 'create_venue': {
             const game = isDefined(action.sessionId) ? ` → ${yield* sessionLabel(locale, action.sessionId)}` : '';
 
-            return `${word.venue}: ${[action.name, action.address].filter(part => isNotEmptyString(part)).join(', ')}${game}`;
+            return `${word.venue}: ${[action.name, action.shortName, action.station, action.address].filter(part => isNotEmptyString(part)).join(', ')}${game}`;
         }
         case 'update_venue': {
+            const { venueName } = yield* displayOfVenue(action.venueId);
             const active = isDefined(action.active) ? [action.active ? word.venueOn : word.venueOff] : [];
             const alias = isDefined(action.alias) ? [`${word.alias} «${action.alias}»`] : [];
-            const details = [action.name, action.address, action.district, action.indoor].filter(part => isDefined(part));
+            const details = [action.name, action.shortName, action.station, action.address, action.district, action.indoor].filter(part =>
+                isDefined(part)
+            );
 
-            return `${word.venueChange}: ${yield* nameOfVenue(action.venueId)} → ${[...details, ...alias, ...active].join(', ')}`;
+            return `${word.venueChange}: ${venueName} → ${[...details, ...alias, ...active].join(', ')}`;
         }
         default: {
             return '';
