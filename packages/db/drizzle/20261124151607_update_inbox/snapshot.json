@@ -1,0 +1,63 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "f1d40f27-e6dd-4c68-85b0-efc296777aa0",
+    "prevIds": ["c0b8c78d-6c25-40f8-adde-40e36b1bfd9b"],
+    "footprints": [
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "comms", "processed_update", "attempts"],
+            "writes": [
+                "s|col|comms.processed_update.attempts",
+                "n|col|comms.processed_update.attempts",
+                "e|col|comms.processed_update.attempts"
+            ],
+            "reads": ["n|tbl|comms.processed_update", "n|sch|comms"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "comms", "processed_update", "done_at"],
+            "writes": [
+                "s|col|comms.processed_update.done_at",
+                "n|col|comms.processed_update.done_at",
+                "e|col|comms.processed_update.done_at"
+            ],
+            "reads": ["n|tbl|comms.processed_update", "n|sch|comms"]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "processed_update",
+                "name": "attempts",
+                "type": "integer",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "1",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "processed_update",
+                "name": "done_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        }
+    ]
+}

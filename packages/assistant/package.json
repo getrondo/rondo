@@ -1,0 +1,28 @@
+{
+    "name": "@rondo/assistant",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./*": "./src/*.ts"
+    },
+    "scripts": {
+        "ts": "tsrs -p .",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@rnw-community/shared": "3.0.5",
+        "@rondo/core": "workspace:*",
+        "@rondo/db": "workspace:*",
+        "@rondo/telegram": "workspace:*",
+        "ai": "7.0.179",
+        "drizzle-orm": "1.0.0-rc.6",
+        "effect": "4.1.5"
+    },
+    "devDependencies": {
+        "@effect/vitest": "4.1.5",
+        "@electric-sql/pglite": "0.6.0",
+        "@rondo/test-kit": "workspace:*",
+        "vitest": "5.1.0"
+    }
+}

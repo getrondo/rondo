@@ -23,6 +23,7 @@ MVP: the organizer runs a full week without native polls or manual reserve or mo
 | [E05 · Venues & match-day logistics](E05-venues-matchday-logistics.md) | P0 | Every game knows exactly where it is: venue, field number, changing room, key holder, parking rules and arrival notes. Players ask the bot (or just look at the card) instead of the chat. |
 | [E06 · Rescheduling, cancellation & weather go/no-go](E06-reschedule-cancel-weather.md) | P0 | Decisions about the second field, weather, holidays and low turnout are made at the right time with data, and everyone affected is notified once, clearly. |
 | [E07 · Payments ledger (track only)](E07-payments-ledger.md) | P0 | A per-game, per-person ledger of what's owed and paid (cash or SEPA), with collectors, special tariffs, fees and event cost splits, so the organizer stops chasing money from memory. No money moves through Rondo. |
+| [E17 · Admin management in the bot](E17-admin-management.md) | P1 | An organizer runs the whole community from a private chat with the bot, by tapping or typing. |
 
 ## M2 Know your players
 

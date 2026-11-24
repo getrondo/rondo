@@ -52,7 +52,18 @@
             "version": ">=26.13.0"
         }
     },
-    "ignorePatterns": [".turbo/**", "dist/**", "coverage/**", "node_modules/**", ".claude/**", ".agents/**", "**/*.d.ts", "drizzle/**"],
+    "ignorePatterns": [
+        "**/.next/**",
+        "**/next-env.d.ts",
+        ".turbo/**",
+        "dist/**",
+        "coverage/**",
+        "node_modules/**",
+        ".claude/**",
+        ".agents/**",
+        "**/*.d.ts",
+        "drizzle/**"
+    ],
     "rules": {
         "arrow-body-style": ["error", "as-needed"],
         "capitalized-comments": "off",

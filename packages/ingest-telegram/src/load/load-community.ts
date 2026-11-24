@@ -44,8 +44,15 @@ export const purgePreviousImport = Effect.fn('IngestTelegram.purgePreviousImport
 export const upsertCommunity = Effect.fn('IngestTelegram.upsertCommunity')(function* (transaction: Transaction, config: CommunityConfig) {
     const [row] = yield* transaction
         .insert(community)
-        .values({ slug: config.slug, name: config.name, timezone: config.timeZone })
-        .onConflictDoUpdate({ target: community.slug, set: { name: config.name, timezone: config.timeZone } })
+        .values({ slug: config.slug, name: config.name, timezone: config.timeZone, settings: { ingest: config } })
+        .onConflictDoUpdate({
+            target: community.slug,
+            set: {
+                name: config.name,
+                timezone: config.timeZone,
+                settings: sql`${community.settings} || jsonb_build_object('ingest', ${JSON.stringify(config)}::jsonb)`
+            }
+        })
         .returning({ id: community.id });
 
     return row?.id ?? '';
