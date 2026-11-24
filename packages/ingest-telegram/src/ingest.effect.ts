@@ -14,6 +14,7 @@ import { extractAll } from './extract/extract-all';
 import { instantToLocalDate } from './extract/zoned-time';
 import { loadPlan } from './load/load-plan';
 import { parseHtmlPage } from './parse/parse-html-export';
+import { parseJsonExport } from './parse/parse-json-export';
 
 import type { TelegramMessage } from './model/telegram-message.model';
 
@@ -44,6 +45,19 @@ const readExport = Effect.fn('IngestTelegram.readExport')(function* (exportDir: 
     return { messages, fileSha256: hash.digest('hex') };
 });
 
+const readMessages = Effect.fn('IngestTelegram.readMessages')(function* (exportDir: string, config: CommunityConfig) {
+    const fs = yield* FileSystem.FileSystem;
+    const jsonPath = join(exportDir, 'result.json');
+
+    if (!(yield* fs.exists(jsonPath))) {
+        return yield* readExport(exportDir, config);
+    }
+
+    const json = yield* fs.readFileString(jsonPath);
+
+    return { messages: yield* parseJsonExport(json), fileSha256: createHash('sha256').update(json).digest('hex') };
+});
+
 const readConfig = Effect.fn('IngestTelegram.readConfig')(function* (configPath: string) {
     const fs = yield* FileSystem.FileSystem;
     const raw = yield* fs.readFileString(configPath);
@@ -53,7 +67,7 @@ const readConfig = Effect.fn('IngestTelegram.readConfig')(function* (configPath:
 
 export const ingest = Effect.fn('IngestTelegram.ingest')(function* (exportDir: string, configPath: string) {
     const config = yield* readConfig(configPath);
-    const { messages, fileSha256 } = yield* readExport(exportDir, config);
+    const { messages, fileSha256 } = yield* readMessages(exportDir, config);
     const now = yield* DateTime.nowAsDate;
     const lastSent = messages.findLast(message => isDefined(message.sentAt))?.sentAt ?? now;
     const plan = assemblePlan(extractAll(messages, config), instantToLocalDate(lastSent, config.timeZone));

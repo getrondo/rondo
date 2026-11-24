@@ -40,8 +40,19 @@ const splitMembers = (segment: string): string[] =>
         .map(part => stripParentheses(part).trim())
         .filter(part => isNotEmptyString(part) && part.length <= 32 && !noise.test(part) && !/^\+?\d+$/u.test(part));
 
+const playerName = (text: string): string => {
+    const words = text.split(/\s/u).filter(word => isNotEmptyString(word));
+    const absent = words.findIndex((word, index) => index > 0 && word.toLowerCase() === 'без');
+    const present = absent === -1 ? words : words.slice(0, absent);
+
+    return present
+        .join(' ')
+        .replace(/\+ ?\d+$/u, '')
+        .trim();
+};
+
 const toMember = (raw: string, selfAliases: ReadonlySet<string>): LineupMember | undefined => {
-    const alias = stripTrailingPunctuation(removeMarker(removeMarker(raw, gkMarker), newcomerMarker)).trim();
+    const alias = playerName(stripTrailingPunctuation(removeMarker(removeMarker(raw, gkMarker), newcomerMarker)).trim());
     const aliasNorm = normalizeAlias(alias);
 
     return Option.some({
