@@ -4,14 +4,15 @@ import { telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
-import { and, asc, count, eq, ne } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, ne } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
-import * as Exit from 'effect/Exit';
 import * as Option from 'effect/Option';
 
 import { primaryAccount } from '../identity/primary-account';
 import { syncMember, type TelegramUser } from '../identity/telegram-user';
+
+import type { SessionStatus } from '../sessions/session.model';
 
 type PollChoice = 'in' | 'gk' | 'out';
 
@@ -116,7 +117,7 @@ const refreshFullness = Effect.fn('Core.refreshFullness')(function* (sessionId: 
     }
 });
 
-const closedStatuses = new Set<string>(['played', 'cancelled', 'moved']);
+const closedStatuses: SessionStatus[] = ['played', 'cancelled', 'moved'];
 
 export const lockSession = Effect.fn('Core.lockSession')(function* (sessionId: string) {
     const db = yield* Db;
@@ -126,7 +127,7 @@ export const lockSession = Effect.fn('Core.lockSession')(function* (sessionId: s
         .where(eq(session.id, sessionId))
         .for('update');
 
-    return Option.fromNullishOr(row).pipe(Option.filter(({ status }) => !closedStatuses.has(status)));
+    return Option.fromNullishOr(row).pipe(Option.filter(({ status }) => !closedStatuses.includes(status)));
 });
 
 const setSignup = Effect.fn('Core.setSignup')(function* (sessionId: string, personId: string, choice: PollChoice) {
@@ -185,20 +186,40 @@ export const rosterOf = Effect.fn('Core.rosterOf')(function* (sessionId: string)
         .orderBy(asc(signup.createdAt));
 });
 
+const settledPoll = /poll has already been closed|poll to stop not found/iu;
+
 export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId: string) {
     const db = yield* Db;
     const telegram = yield* Telegram;
     const open = yield* db
         .select()
         .from(telegramPoll)
-        .where(and(eq(telegramPoll.sessionId, sessionId)));
+        .where(and(eq(telegramPoll.sessionId, sessionId), isNull(telegramPoll.closedAt)));
 
-    for (const poll of open.filter(entry => !isDefined(entry.closedAt))) {
-        const stopped = yield* Effect.exit(telegram.call('stopPoll', api => api.stopPoll(Number(poll.chatId), poll.messageId)));
+    for (const poll of open) {
+        const isSettled = yield* telegram
+            .call('stopPoll', api => api.stopPoll(Number(poll.chatId), poll.messageId))
+            .pipe(
+                Effect.as(true),
+                Effect.catch(error => Effect.logWarning('[poll] not closed', error).pipe(Effect.as(settledPoll.test(error.description))))
+            );
 
-        if (Exit.isSuccess(stopped)) {
+        if (isSettled) {
             const closedAt = yield* DateTime.nowAsDate;
             yield* db.update(telegramPoll).set({ closedAt }).where(eq(telegramPoll.pollId, poll.pollId));
         }
+    }
+});
+
+export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function* () {
+    const db = yield* Db;
+    const games = yield* db
+        .selectDistinct({ sessionId: telegramPoll.sessionId })
+        .from(telegramPoll)
+        .innerJoin(session, eq(session.id, telegramPoll.sessionId))
+        .where(and(isNull(telegramPoll.closedAt), inArray(session.status, closedStatuses)));
+
+    for (const { sessionId } of games) {
+        yield* closePollsOf(sessionId);
     }
 });

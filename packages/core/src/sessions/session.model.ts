@@ -1,4 +1,4 @@
-type SessionStatus = 'draft' | 'open' | 'full' | 'locked' | 'played' | 'cancelled' | 'moved';
+export type SessionStatus = 'draft' | 'open' | 'full' | 'locked' | 'played' | 'cancelled' | 'moved';
 
 export type CancelReason = 'weather' | 'low_turnout' | 'venue' | 'holiday' | 'organizer' | 'other';
 
