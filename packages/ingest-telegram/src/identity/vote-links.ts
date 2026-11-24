@@ -14,7 +14,6 @@ import { loadEvidence, withLinks, type EvidenceEntry, type LinkEvidence } from '
 import { isCertainSet, matchSet } from './match-set';
 import { indexVotes, matchSegments, splitByGaps, type VoteMatch } from './match-votes';
 import { refreshNames } from './refresh-names';
-import { storeAutoLinks } from './store-auto-links';
 import { suggestLinks } from './suggest-links';
 
 const openAliases = Effect.fn('IngestTelegram.openAliases')(function* (communityId: string) {
@@ -185,9 +184,7 @@ const linkNicknames = Effect.fn('IngestTelegram.linkNicknames')(function* (
     yield* syncSessionRoster([...new Set(touched)]);
     yield* refreshNames([...allowed].map(({ personId }) => personId));
 
-    const scores = new Map([...allowed].map(({ aliasId, personId, score }) => [`${aliasId}|${personId}`, score]));
-
-    return { aliases, segments: segmentLinks, linked, scores };
+    return { aliases, segments: segmentLinks, linked };
 });
 
 const gameAssignments = (
@@ -210,7 +207,6 @@ const linkSharedNickname = Effect.fn('IngestTelegram.linkSharedNickname')(functi
     decisions: LinkDecisions,
     aliasId: string
 ) {
-    const scores = new Map<string, number>();
     const assignments = splitByGaps(evidence.sharedTimelines.get(aliasId) ?? []).flatMap(segment => {
         const isPossible = (personId: string): boolean => {
             const otherGames = evidence.gamesUnderOtherName(personId, aliasId);
@@ -229,13 +225,7 @@ const linkSharedNickname = Effect.fn('IngestTelegram.linkSharedNickname')(functi
             Option.filter(found => isCertainSet(found)),
             Option.match({
                 onNone: () => [],
-                onSome: ({ personIds, score }) => {
-                    for (const personId of personIds) {
-                        scores.set(`${aliasId}|${personId}`, score);
-                    }
-
-                    return gameAssignments(evidence, aliasId, personIds, segment);
-                }
+                onSome: ({ personIds }) => gameAssignments(evidence, aliasId, personIds, segment)
             })
         );
     });
@@ -246,13 +236,13 @@ const linkSharedNickname = Effect.fn('IngestTelegram.linkSharedNickname')(functi
 
     yield* syncSessionRoster([...new Set(assignments.map(({ entry }) => entry.sessionId))]);
 
-    return { assigned: new Map(assignments.map(({ entry, personId }) => [entry.id, personId])), scores };
+    return new Map(assignments.map(({ entry, personId }) => [entry.id, personId]));
 });
 
 export const linkByVotes = Effect.fn('IngestTelegram.linkByVotes')(function* (communityId: string) {
     const loaded = yield* loadEvidence(communityId);
     const decisions = yield* loadDecisions(communityId);
-    const { aliases, segments, linked, scores } = yield* linkNicknames(communityId, loaded, decisions);
+    const { aliases, segments, linked } = yield* linkNicknames(communityId, loaded, decisions);
     const open = yield* openAliases(communityId);
     const shared = [...open.values()]
         .filter(({ kind }) => kind === 'placeholder')
@@ -261,16 +251,10 @@ export const linkByVotes = Effect.fn('IngestTelegram.linkByVotes')(function* (co
     let sharedEntries = 0;
 
     for (const { id } of shared) {
-        const { assigned, scores: setScores } = yield* linkSharedNickname(evidence, decisions, id);
+        const assigned = yield* linkSharedNickname(evidence, decisions, id);
         evidence = withLinks(evidence, assigned);
         sharedEntries += assigned.size;
-
-        for (const [link, score] of setScores) {
-            scores.set(link, score);
-        }
     }
-
-    yield* storeAutoLinks(communityId, scores);
 
     return { aliases, segments, sharedEntries };
 });

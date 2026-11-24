@@ -2,32 +2,31 @@ ALTER TABLE "identity"."alias_link" ADD CONSTRAINT "alias_link_community_fk" FOR
 --> statement-breakpoint
 ALTER TABLE "identity"."alias_link" ADD CONSTRAINT "alias_link_no_overlap_ex" EXCLUDE USING gist ("alias_id" WITH =, "person_id" WITH =, "during" WITH &&);
 --> statement-breakpoint
-INSERT INTO "identity"."alias_link" (id, community_id, alias_id, person_id, during, method, status)
-SELECT gen_random_uuid(), community_id, id, person_id, '(,)', 'admin', 'approved' FROM "identity"."person_alias"
-WHERE resolution = 'confirmed' AND kind <> 'self' AND person_id IS NOT NULL;
+-- Turns links and undone links of the previous release into decisions. It can be run again: what that release decided meanwhile wins.
+CREATE FUNCTION "identity"."backfill_alias_links"() RETURNS void LANGUAGE sql AS $$
+    DELETE FROM "identity"."alias_link" link USING "identity"."person_alias" alias
+    WHERE alias.id = link.alias_id AND link.during = '(,)' AND (
+        (alias.resolution = 'confirmed' AND (link.status = 'approved') IS DISTINCT FROM (link.person_id = alias.person_id))
+        OR (alias.resolution = 'guest' AND link.status = 'approved')
+    );
+    INSERT INTO "identity"."alias_link" (id, community_id, alias_id, person_id, during, method, status)
+    SELECT gen_random_uuid(), community_id, id, person_id, '(,)', 'admin', 'approved' FROM "identity"."person_alias"
+    WHERE resolution = 'confirmed' AND kind <> 'self' AND person_id IS NOT NULL
+    ON CONFLICT DO NOTHING;
+    INSERT INTO "identity"."alias_link" (id, community_id, alias_id, person_id, during, method, status, decided_by, decided_at)
+    SELECT DISTINCT ON (alias.id, undone.person_id) gen_random_uuid(), alias.community_id, alias.id, undone.person_id, '(,)'::daterange, 'admin'::"identity"."alias_link_method", 'rejected'::"identity"."alias_link_status", undone.actor_person_id, undone.at
+    FROM "identity"."person_alias" alias
+    JOIN (
+        SELECT entity_id, (diff ->> 'from')::uuid AS person_id, actor_person_id, at FROM "audit"."log"
+        WHERE action = 'alias.unlink' AND diff ->> 'from' IS NOT NULL
+    ) undone ON undone.entity_id = alias.id::text
+    JOIN "identity"."person" ON person.id = undone.person_id
+    WHERE alias.resolution = 'guest' AND undone.person_id IS DISTINCT FROM alias.guest_person_id
+    ORDER BY alias.id, undone.person_id, undone.at DESC
+    ON CONFLICT DO NOTHING;
+$$;
 --> statement-breakpoint
-INSERT INTO "identity"."alias_link" (id, community_id, alias_id, person_id, during, method, status, decided_by, decided_at)
-SELECT DISTINCT ON (alias.id, undone.person_id) gen_random_uuid(), alias.community_id, alias.id, undone.person_id, '(,)'::daterange, 'admin'::"identity"."alias_link_method", 'rejected'::"identity"."alias_link_status", undone.actor_person_id, undone.at
-FROM "identity"."person_alias" alias
-JOIN (
-    SELECT entity_id, (diff ->> 'from')::uuid AS person_id, actor_person_id, at FROM "audit"."log"
-    WHERE action = 'alias.unlink' AND diff ->> 'from' IS NOT NULL
-) undone ON undone.entity_id = alias.id::text
-JOIN "identity"."person" ON person.id = undone.person_id
-WHERE alias.resolution = 'guest' AND undone.person_id IS DISTINCT FROM alias.guest_person_id
-ORDER BY alias.id, undone.person_id, undone.at DESC;
---> statement-breakpoint
-INSERT INTO "identity"."alias_link" (id, community_id, alias_id, person_id, during, method, status)
-SELECT gen_random_uuid(), linked.community_id, linked.alias_id, linked.person_id, daterange(linked.local_date, linked.local_date + 1), linked.method, 'auto'
-FROM (
-    SELECT DISTINCT alias.community_id, entry.alias_id, entry.person_id, game.local_date,
-        (CASE WHEN alias.kind = 'placeholder' THEN 'shared_vote' ELSE 'vote' END)::"identity"."alias_link_method" AS method
-    FROM "play"."lineup_entry" entry
-    JOIN "identity"."person_alias" alias ON alias.id = entry.alias_id
-    JOIN "scheduling"."session" game ON game.id = entry.session_id
-    WHERE entry.resolved_by = 'vote' AND entry.person_id IS NOT NULL AND NOT entry.is_guest
-) linked
-ON CONFLICT DO NOTHING;
+SELECT "identity"."backfill_alias_links"();
 --> statement-breakpoint
 -- A merge also moves nickname decisions: equal ones are united, and an approval against a rejection refuses the merge.
 CREATE OR REPLACE FUNCTION "identity"."merge_person"(p_from uuid, p_into uuid) RETURNS void LANGUAGE plpgsql AS $$
@@ -55,23 +54,19 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM "identity"."alias_link" one
         JOIN "identity"."alias_link" two ON two.alias_id = one.alias_id AND two.person_id = p_into AND two.during && one.during
-        WHERE one.person_id = p_from AND 'auto' NOT IN (one.status::text, two.status::text) AND one.status <> two.status
+        WHERE one.person_id = p_from AND one.status <> two.status
     ) THEN
         RAISE EXCEPTION 'contradicting nickname decisions';
     END IF;
 
     WITH decided AS (
-        DELETE FROM "identity"."alias_link" WHERE person_id IN (p_from, p_into) AND status <> 'auto' RETURNING *
+        DELETE FROM "identity"."alias_link" WHERE person_id IN (p_from, p_into) RETURNING *
     )
-    INSERT INTO "identity"."alias_link" (id, community_id, alias_id, person_id, during, method, confidence, status, decided_by, decided_at)
+    INSERT INTO "identity"."alias_link" (id, community_id, alias_id, person_id, during, method, status, decided_by, decided_at)
     SELECT gen_random_uuid(), community_id, alias_id, p_into, unnest(range_agg(during)),
-           (array_agg(method ORDER BY decided_at DESC NULLS LAST))[1], max(confidence), status,
+           (array_agg(method ORDER BY decided_at DESC NULLS LAST))[1], status,
            (array_agg(decided_by ORDER BY decided_at DESC NULLS LAST))[1], max(decided_at)
     FROM decided GROUP BY community_id, alias_id, status;
-    DELETE FROM "identity"."alias_link" auto USING "identity"."alias_link" other
-    WHERE auto.status = 'auto' AND auto.person_id IN (p_from, p_into) AND other.person_id IN (p_from, p_into)
-      AND other.alias_id = auto.alias_id AND other.during && auto.during
-      AND (other.status <> 'auto' OR (auto.person_id = p_from AND other.person_id = p_into));
 
     UPDATE "org"."membership" kept SET status = 'active', left_at = NULL
     FROM "org"."membership" gone

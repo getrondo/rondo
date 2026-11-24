@@ -1,8 +1,10 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { importedPoll, pollVote } from '@rondo/db/schema/platform.schema';
-import { inArray } from 'drizzle-orm';
+import { session } from '@rondo/db/schema/scheduling.schema';
+import { and, eq, inArray, ne } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
+import { ForeignPollError } from '../error/foreign-poll.error';
 import { insertMany } from '../utils/insert-many.util';
 
 import type { PollPostFact } from '../extract/fact.model';
@@ -66,8 +68,26 @@ export const insertVotes = Effect.fn('IngestTelegram.insertVotes')(function* (
             : [];
     });
 
+    const foreign = yield* transaction
+        .selectDistinct({ pollId: pollVote.pollId })
+        .from(pollVote)
+        .innerJoin(session, eq(session.id, pollVote.sessionId))
+        .where(and(inArray(pollVote.pollId, [...known]), ne(session.communityId, communityId)))
+        .union(
+            transaction
+                .select({ pollId: importedPoll.pollId })
+                .from(importedPoll)
+                .where(and(inArray(importedPoll.pollId, [...known]), ne(importedPoll.communityId, communityId)))
+        );
+
+    if (isNotEmptyArray(foreign)) {
+        return yield* ForeignPollError.make({ pollIds: foreign.map(({ pollId }) => pollId).toSorted() });
+    }
+
     yield* insertMany([...known], batch => transaction.delete(pollVote).where(inArray(pollVote.pollId, batch)));
-    yield* insertMany([...known], batch => transaction.delete(importedPoll).where(inArray(importedPoll.pollId, batch)));
+    yield* insertMany([...known], batch =>
+        transaction.delete(importedPoll).where(and(inArray(importedPoll.pollId, batch), eq(importedPoll.communityId, communityId)))
+    );
     yield* insertMany(polls, batch => transaction.insert(importedPoll).values(batch));
     yield* insertMany(rows, batch => transaction.insert(pollVote).values(batch).onConflictDoNothing());
 

@@ -1,45 +1,92 @@
+import { isDefined } from '@rnw-community/shared';
+import { aliasLink, personAlias } from '@rondo/db/schema/identity.schema';
+import { lineupEntry } from '@rondo/db/schema/play.schema';
+import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
-import * as Schema from 'effect/Schema';
 
 import { syncSessionRoster } from '../roster/sync-session-roster';
+import { insertMany } from '../utils/insert-many.util';
 
 import { refreshNames } from './refresh-names';
 
-const PinnedSchema = Schema.Struct({ rows: Schema.Array(Schema.Struct({ session_id: Schema.String, person_id: Schema.String })) });
+const fixed = ['manual', 'account', 'handle'] as const;
 
+// One player is named once per game: fixed entries first, then approvals from the narrowest, then everything else
 export const applyApproved = Effect.fn('IngestTelegram.applyApproved')(function* (communityId: string) {
     const db = yield* Db;
-    const result = yield* db.execute(sql`
-        with open_entries as (
-            select entry.id, entry.session_id, entry.alias_id, game.local_date,
-                row_number() over (partition by entry.session_id, entry.alias_id order by entry.team_ordinal, entry.position) as place
-            from play.lineup_entry entry
-            join identity.person_alias alias on alias.id = entry.alias_id
-            join scheduling.session game on game.id = entry.session_id
-            where alias.community_id = ${communityId}::uuid and not entry.is_guest and entry.resolved_by <> 'manual'
-        ), approved as (
-            select games.session_id, link.alias_id, link.person_id,
-                row_number() over (partition by games.session_id, link.alias_id order by link.person_id) as place
-            from identity.alias_link link
-            join (select distinct session_id, alias_id, local_date from open_entries) games
-                on games.alias_id = link.alias_id and link.during @> games.local_date
-            where link.status = 'approved' and not exists (
-                select 1 from play.lineup_entry taken where taken.session_id = games.session_id and taken.person_id = link.person_id
-                    and (taken.alias_id is distinct from link.alias_id or taken.resolved_by = 'manual')
-                    and taken.resolved_by <> 'vote'
+    const inScope = and(eq(session.communityId, communityId), eq(lineupEntry.isGuest, false));
+    const columns = {
+        id: lineupEntry.id,
+        sessionId: lineupEntry.sessionId,
+        personId: lineupEntry.personId,
+        resolvedBy: lineupEntry.resolvedBy
+    };
+    const approvals = yield* db
+        .select({ ...columns, approved: aliasLink.personId })
+        .from(lineupEntry)
+        .innerJoin(session, eq(session.id, lineupEntry.sessionId))
+        .innerJoin(
+            aliasLink,
+            and(
+                eq(aliasLink.aliasId, lineupEntry.aliasId),
+                eq(aliasLink.status, 'approved'),
+                sql`${aliasLink.during} @> ${session.localDate}`
             )
         )
-        update play.lineup_entry entry set person_id = approved.person_id, resolved_by = 'alias'
-        from open_entries join approved using (session_id, alias_id, place)
-        where entry.id = open_entries.id
-        returning entry.session_id, entry.person_id
-    `);
-    const { rows } = yield* Schema.decodeUnknownEffect(PinnedSchema)(result);
+        .where(and(inScope, notInArray(lineupEntry.resolvedBy, [...fixed])))
+        .orderBy(
+            sql`upper(${aliasLink.during}) - lower(${aliasLink.during}) nulls last`,
+            asc(aliasLink.personId),
+            asc(aliasLink.aliasId),
+            asc(lineupEntry.teamOrdinal),
+            asc(lineupEntry.position)
+        );
+    const named = yield* db
+        .select({
+            ...columns,
+            guestPersonId: sql<string | null>`case when ${personAlias.kind} <> 'placeholder' then ${personAlias.guestPersonId} end`
+        })
+        .from(lineupEntry)
+        .innerJoin(session, eq(session.id, lineupEntry.sessionId))
+        .leftJoin(personAlias, eq(personAlias.id, lineupEntry.aliasId))
+        .where(and(inScope, isNotNull(lineupEntry.personId)));
+    const isFixed = new Set<string>(fixed);
+    const playing = new Set(named.filter(row => isFixed.has(row.resolvedBy)).map(row => `${row.sessionId}|${row.personId}`));
+    const pinned = new Map<string, (typeof approvals)[number]>();
 
-    yield* syncSessionRoster([...new Set(rows.map(row => row.session_id))]);
-    yield* refreshNames(rows.map(row => row.person_id));
+    for (const row of approvals) {
+        const player = `${row.sessionId}|${row.approved}`;
 
-    return rows.length;
+        if (!playing.has(player) && !pinned.has(row.id)) {
+            playing.add(player);
+            pinned.set(row.id, row);
+        }
+    }
+
+    const changed = [...pinned.values()].filter(row => row.personId !== row.approved || row.resolvedBy !== 'alias');
+    const displaced = named.filter(
+        row => !isFixed.has(row.resolvedBy) && !pinned.has(row.id) && playing.has(`${row.sessionId}|${row.personId}`)
+    );
+    const updates = [
+        ...changed.map(row => sql`(${row.id}::uuid, ${row.approved}::uuid, 'alias'::play.entry_resolution)`),
+        ...displaced.map(
+            row =>
+                sql`(${row.id}::uuid, ${row.guestPersonId === row.personId ? null : row.guestPersonId}::uuid, 'guest'::play.entry_resolution)`
+        )
+    ];
+
+    yield* insertMany(updates, batch =>
+        db.execute(sql`
+            update play.lineup_entry entry set person_id = change.person_id, resolved_by = change.resolved_by
+            from (values ${sql.join(batch, sql`, `)}) change (id, person_id, resolved_by) where entry.id = change.id
+        `)
+    );
+    yield* syncSessionRoster([...new Set([...changed, ...displaced].map(row => row.sessionId))]);
+    yield* refreshNames(
+        [...changed.map(row => row.approved), ...[...changed, ...displaced].map(row => row.personId)].filter(id => isDefined(id))
+    );
+
+    return changed.length;
 });

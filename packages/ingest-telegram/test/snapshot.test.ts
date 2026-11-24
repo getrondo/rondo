@@ -18,6 +18,7 @@ import { compareApprovals, loadApprovals } from '../src/approvals/load-approvals
 import { parseApprovals } from '../src/approvals/parse-approvals';
 import { assemblePlan } from '../src/extract/assemble-plan';
 import { extractAll } from '../src/extract/extract-all';
+import { applyApproved } from '../src/identity/apply-approved';
 import { loadEvidence } from '../src/identity/load-evidence';
 import { importMessages } from '../src/ingest.effect';
 import { loadPlan } from '../src/load/load-plan';
@@ -25,7 +26,7 @@ import { parseSnapshot } from '../src/parse/parse-snapshot';
 
 import { message, testConfig } from './fixture';
 
-import type { TelegramMessage } from '../src/model/telegram-message.model';
+type TelegramMessage = ReturnType<typeof message>;
 
 const linkColumns = {
     status: aliasLink.status,
@@ -104,6 +105,17 @@ const snapshot = parseSnapshot({
     ]
 });
 
+const pollIdIn = (slug: string, index: number): string => `${slug}-${pollId(index)}`;
+
+const snapshotOf = (slug: string) =>
+    snapshot.pipe(
+        Effect.map(content => ({
+            ...content,
+            pollIdByMessage: new Map([...content.pollIdByMessage].map(([messageId, id]) => [messageId, `${slug}-${id}`] as const)),
+            votes: content.votes.map(({ pollId: id, userId, choice, votedAt }) => ({ pollId: `${slug}-${id}`, userId, choice, votedAt }))
+        }))
+    );
+
 const load = Effect.fn('test.load')(function* (
     slug: string,
     source: readonly TelegramMessage[] = [...messages, ...chat],
@@ -111,7 +123,7 @@ const load = Effect.fn('test.load')(function* (
 ) {
     const db = yield* Db;
     const config = { ...testConfig, slug };
-    const content = yield* snapshot;
+    const content = yield* snapshotOf(slug);
     const stats = yield* importMessages({
         config,
         messages: source,
@@ -142,6 +154,16 @@ const accountPerson = Effect.fn('test.accountPerson')(function* (id: number) {
     return row?.personId ?? '';
 });
 
+const namedOn = Effect.fn('test.namedOn')(function* (communityId: string, date: string, personIds: readonly string[]) {
+    const db = yield* Db;
+
+    return yield* db
+        .select({ raw: lineupEntry.raw, personId: lineupEntry.personId, resolvedBy: lineupEntry.resolvedBy })
+        .from(lineupEntry)
+        .innerJoin(session, eq(session.id, lineupEntry.sessionId))
+        .where(and(eq(session.communityId, communityId), eq(session.localDate, date), inArray(lineupEntry.personId, [...personIds])));
+});
+
 const resolutions = (entries: readonly { readonly entry: typeof lineupEntry.$inferSelect }[]): (string | null)[] =>
     entries.map(({ entry }) => `${entry.raw}|${entry.resolvedBy}|${entry.teamOrdinal}|${entry.position}|${entry.personId}`);
 
@@ -156,7 +178,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
             const votes = yield* db
                 .select()
                 .from(pollVote)
-                .where(eq(pollVote.pollId, pollId(0)));
+                .where(eq(pollVote.pollId, pollIdIn('snapshot-fc', 0)));
             const bots = yield* db
                 .select()
                 .from(telegramAccount)
@@ -573,7 +595,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
         })
     );
 
-    it.effect('stores auto links, pins approved ones and lets a rejection block new ones', () =>
+    it.effect('pins approved links and lets a rejection block new ones, without storing automatic ones', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const slug = 'approve-fc';
@@ -587,7 +609,6 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
                     .from(aliasLink)
                     .where(eq(aliasLink.aliasId, alias?.id ?? ''));
             const auto = yield* linksOf();
-            yield* db.delete(aliasLink).where(eq(aliasLink.aliasId, alias?.id ?? ''));
             yield* db.insert(aliasLink).values([
                 {
                     communityId: first.communityId,
@@ -603,7 +624,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
                 entries
                     .filter(({ entry }) => entry.aliasId === alias?.id && !entry.isGuest)
                     .map(({ entry, localDate }) => [localDate, entry.personId]);
-            const kept = (yield* linksOf()).filter(({ status }) => status === 'approved');
+            const kept = yield* linksOf();
             yield* db.delete(aliasLink).where(eq(aliasLink.aliasId, alias?.id ?? ''));
             yield* db.insert(aliasLink).values({
                 communityId: first.communityId,
@@ -615,9 +636,8 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
             });
             const blocked = yield* load(slug);
 
-            expect(auto.map(({ status, personId, during, method }) => [status, personId, during, method])).toEqual([
-                ['auto', striker, '[2025-05-01,2025-05-12)', 'vote']
-            ]);
+            expect(first.alias('гонзо')).toMatchObject({ personId: striker, resolution: 'vote' });
+            expect(auto).toEqual([]);
             expect(gonzo(pinned).slice(0, 3)).toEqual([
                 ['2025-05-01', other],
                 ['2025-05-02', other],
@@ -762,7 +782,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
             const left = yield* db.select({ id: session.id }).from(session).where(eq(session.communityId, first.communityId));
 
             expect(refused).toMatchObject({ _tag: 'TooManyRemovedGamesError', imported: games });
-            expect(refused).toHaveProperty('sessionIds.length', games - 2);
+            expect(refused).toHaveProperty('dates.length', games - 2);
             expect(left.map(({ id }) => id)).toContain(kept);
             expect(left).toHaveLength(3);
         })
@@ -857,7 +877,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
                 .where(eq(sessionChange.sessionId, played?.id ?? ''));
 
             expect(inReview).toMatchObject({ status: 'cancelled', reviewReason: 'unclear_cancellation' });
-            expect(loaded).toEqual({ decisions: 3, changed: 2, missing: ['1999-01-01|football'] });
+            expect(loaded).toEqual({ decisions: 3, changed: 2, missing: ['1999-01-01|football'], ambiguous: [] });
             expect(again).toMatchObject({ changed: 0 });
             expect(played).toMatchObject({ id: inReview?.id, status: 'played', cancelReason: null, reviewReason: null });
             expect(cancelled).toMatchObject({ status: 'cancelled', cancelReason: 'organizer' });
@@ -918,7 +938,6 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
                 .values({ communityId: first.communityId, alias: 'Забытый', aliasNorm: 'забытый' })
                 .returning();
             const row = { communityId: first.communityId, method: 'admin' as const };
-            yield* db.delete(aliasLink).where(eq(aliasLink.communityId, first.communityId));
             yield* db.insert(aliasLink).values([
                 {
                     ...row,
@@ -954,10 +973,10 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
                       )
                     : item
             );
-            const content = yield* snapshot;
+            const content = yield* snapshotOf(slug);
             const votes = Array.from({ length: games }, (_, index) =>
                 voters(index).map(userId => ({
-                    pollId: pollId(index),
+                    pollId: pollIdIn(slug, index),
                     userId,
                     choice: 'yes' as const,
                     votedAt: new Date('2025-05-01T09:00:00Z')
@@ -981,7 +1000,6 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
                 status: 'rejected'
             });
             const outside = yield* run;
-            yield* db.delete(aliasLink).where(and(eq(aliasLink.aliasId, alias?.id ?? ''), eq(aliasLink.status, 'auto')));
             yield* db
                 .update(aliasLink)
                 .set({ during: '[2025-05-04,2025-05-05)' })
@@ -998,7 +1016,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
         Effect.gen(function* () {
             const db = yield* Db;
             const slug = 'poll-kinds-fc';
-            const content = yield* snapshot;
+            const content = yield* snapshotOf(slug);
             const posts = [
                 message(970, '2025-05-02T09:00:00Z', '', {
                     text: undefined,
@@ -1062,6 +1080,220 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
             const { squads } = yield* loadEvidence(communityId);
 
             expect(squads.find(squad => squad.sessionId === sessionId)?.yes?.has(striker)).toBe(true);
+        })
+    );
+
+    it.effect('prefers the narrowest approval, changes only what differs and names a player once per game', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'narrow-fc';
+            const first = yield* load(slug);
+            const striker = yield* accountPerson(ids.striker);
+            const other = yield* accountPerson(ids.other);
+            const row = { communityId: first.communityId, method: 'owner_list' as const, status: 'approved' as const };
+            const aliasId = (norm: string) => first.alias(norm)?.id ?? '';
+            yield* db.insert(aliasLink).values([
+                { ...row, aliasId: aliasId('гонзо'), personId: other, during: '[2025-05-02,2025-05-03)' },
+                { ...row, aliasId: aliasId('гонзо'), personId: striker, during: '(,)' },
+                { ...row, aliasId: aliasId('семен'), personId: other, during: '(,)' },
+                { ...row, aliasId: aliasId('олег'), personId: striker, during: '[2025-05-03,2025-05-04)' }
+            ]);
+            const namesOn = (date: string) =>
+                namedOn(first.communityId, date, [striker, other]).pipe(
+                    Effect.map(rows =>
+                        rows.map(({ raw, personId, resolvedBy }) => [raw, personId === striker ? 'striker' : 'other', resolvedBy])
+                    )
+                );
+            const before = yield* namesOn('2025-05-03');
+            const changed = yield* applyApproved(first.communityId);
+            const attended = yield* db
+                .select()
+                .from(attendance)
+                .innerJoin(session, eq(session.id, attendance.sessionId))
+                .where(and(eq(session.communityId, first.communityId), eq(attendance.personId, striker)));
+            const again = yield* applyApproved(first.communityId);
+            const pinned = yield* Effect.all([namesOn('2025-05-01'), namesOn('2025-05-02'), namesOn('2025-05-03')]);
+            yield* load(slug);
+            const imported = yield* Effect.all([namesOn('2025-05-01'), namesOn('2025-05-02'), namesOn('2025-05-03')]);
+
+            expect(before).toEqual([['Гонзо', 'striker', 'vote']]);
+            expect(pinned).toEqual([[['Гонзо', 'striker', 'alias']], [['Гонзо', 'other', 'alias']], [['Олег', 'striker', 'alias']]]);
+            expect(imported).toEqual(pinned);
+            expect(changed).toBeGreaterThan(0);
+            expect(again).toBe(0);
+            expect(attended).toHaveLength(10);
+        })
+    );
+
+    it.effect('keeps account entries ahead of an approval for the same player', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'ahead-fc';
+            const mentioned = messages.map(item => (item.id === 12 ? { ...item, text: `${item.text}, @Striker` } : item));
+            const first = yield* load(slug, mentioned);
+            const striker = yield* accountPerson(ids.striker);
+            yield* db.insert(aliasLink).values({
+                communityId: first.communityId,
+                aliasId: first.alias('семен')?.id ?? '',
+                personId: striker,
+                during: '(,)',
+                method: 'owner_list',
+                status: 'approved'
+            });
+            yield* applyApproved(first.communityId);
+            const listed = yield* namedOn(first.communityId, '2025-05-02', [striker]);
+
+            expect(listed).toEqual([{ raw: '@Striker', personId: striker, resolvedBy: 'handle' }]);
+        })
+    );
+
+    it.effect('lets an approval of the owner replace the rejection of that day and reports other players on it', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'replace-fc';
+            const first = yield* load(slug);
+            const striker = yield* accountPerson(ids.striker);
+            const other = yield* accountPerson(ids.other);
+            const aliasId = first.alias('гонзо')?.id ?? '';
+            const row = { communityId: first.communityId, aliasId, method: 'admin' as const };
+            yield* db.insert(aliasLink).values([
+                { ...row, personId: striker, during: '(,)', status: 'rejected' },
+                { ...row, personId: other, during: '[2025-05-01,2025-05-03)', status: 'approved' }
+            ]);
+            const rows = yield* parseApprovals(
+                [`Гонзо|${ids.striker}|22|2025-05-03`, `Гонзо|${ids.striker}|12|2025-05-02`].join('\n'),
+                testConfig
+            );
+            const decidedAt = new Date('2026-11-24T00:00:00Z');
+            const loaded = yield* loadApprovals({ slug, rows, decidedAt });
+            const again = yield* loadApprovals({ slug, rows, decidedAt });
+            const links = yield* db
+                .select(linkColumns)
+                .from(aliasLink)
+                .where(and(eq(aliasLink.aliasId, aliasId), eq(aliasLink.personId, striker)))
+                .orderBy(aliasLink.during);
+
+            expect(links.map(({ status, during }) => [status, during])).toEqual([
+                ['rejected', '(,2025-05-02)'],
+                ['approved', '[2025-05-02,2025-05-03)'],
+                ['approved', '[2025-05-03,2025-05-04)'],
+                ['rejected', '[2025-05-04,)']
+            ]);
+            expect(loaded).toMatchObject({ stored: 2, overlapDates: ['2025-05-02'] });
+            expect(again).toMatchObject({ stored: 0, overlapDates: ['2025-05-02'] });
+        })
+    );
+
+    it.effect('refuses to lose many stored squads without a flag and names their dates', () =>
+        Effect.gen(function* () {
+            const slug = 'lost-squads-fc';
+            const first = yield* load(slug, messages);
+            const withoutSquads = messages.filter(({ id }) => id % 10 === 1);
+            const refused = yield* Effect.flip(load(slug, withoutSquads, false));
+            const kept = yield* load(slug, messages, false);
+            const allowed = yield* load(slug, withoutSquads, true);
+            const fewerGames = yield* Effect.flip(load(slug, withoutSquads.slice(0, 10), false));
+
+            expect(refused).toMatchObject({ _tag: 'TooManyRemovedGamesError' });
+            const squadDates = first.entries.filter(({ entry }) => entry.teamOrdinal > 0).map(({ localDate }) => localDate);
+            expect(refused).toHaveProperty('dates', [...new Set(squadDates)]);
+            expect(String(refused)).toContain('2025-05-01, 2025-05-02');
+            expect(kept.entries.length).toBe(first.entries.length);
+            expect(allowed.entries).toEqual([]);
+            expect(fewerGames).toHaveProperty('dates', ['2025-05-11', '2025-05-12']);
+        })
+    );
+
+    it.effect('adds no second game beside a decided one, also a game of the bot', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'beside-fc';
+            yield* db.insert(community).values({ slug, name: slug });
+            const [home] = yield* db.select().from(community).where(eq(community.slug, slug));
+            const communityId = home?.id ?? '';
+            const [football] = yield* db.insert(activity).values({ communityId, sport: 'football', name: 'football' }).returning();
+            const gameOn = {
+                communityId,
+                activityId: football?.id ?? '',
+                startsAt: new Date('2025-05-02T17:00:00Z'),
+                source: 'bot' as const
+            };
+            const [botGame, , single, ...twins] = yield* db
+                .insert(session)
+                .values([
+                    { ...gameOn, localDate: '2025-05-02', status: 'cancelled' },
+                    { ...gameOn, localDate: '2025-05-02', status: 'cancelled', source: 'import' },
+                    { ...gameOn, localDate: '2025-05-03', status: 'played' },
+                    { ...gameOn, localDate: '2025-05-04', status: 'played' },
+                    { ...gameOn, localDate: '2025-05-04', status: 'played' }
+                ])
+                .returning();
+            const person1 = yield* db.insert(person).values({ displayName: 'Came' }).returning();
+            const came = {
+                sessionId: single?.id ?? '',
+                personId: person1[0]?.id ?? '',
+                outcome: 'attended' as const,
+                source: 'bot' as const
+            };
+            yield* db.insert(attendance).values(came);
+            const decidedAt = new Date('2026-11-24T00:00:00Z');
+            yield* db.insert(sessionChange).values({ sessionId: botGame?.id ?? '', at: decidedAt, diff: { decision: 'cancelled' } });
+            const decisions = yield* parseGameDecisions('2025-05-03|football|played\n2025-05-04|football|played');
+            const loaded = yield* loadGameDecisions({ slug, decisions, decidedAt });
+            const stillThere = yield* db.select().from(attendance).where(eq(attendance.sessionId, came.sessionId));
+            const { stats } = yield* load(slug);
+            yield* db.insert(sessionChange).values(twins.map(({ id }) => ({ sessionId: id, at: decidedAt, diff: { decision: 'played' } })));
+            const reported = yield* load(slug);
+            const stored = yield* db
+                .select({ id: session.id, localDate: session.localDate, status: session.status })
+                .from(session)
+                .where(and(eq(session.communityId, communityId), inArray(session.localDate, ['2025-05-02', '2025-05-03'])))
+                .orderBy(session.localDate);
+
+            expect(loaded).toEqual({ decisions: 2, changed: 1, missing: [], ambiguous: ['2025-05-04|football'] });
+            expect(stillThere).toHaveLength(1);
+            expect(stats.ambiguousDates).toEqual([]);
+            expect(reported.stats.ambiguousDates).toEqual(['2025-05-04']);
+            expect(stored).toEqual([
+                { id: botGame?.id, localDate: '2025-05-02', status: 'cancelled' },
+                { id: single?.id, localDate: '2025-05-03', status: 'played' }
+            ]);
+        })
+    );
+
+    it.effect('never takes over polls of another community', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const first = yield* load('polls-home-fc');
+            const before = yield* db.select().from(importedPoll).where(eq(importedPoll.communityId, first.communityId));
+            const content = yield* snapshotOf('polls-home-fc');
+            const run = (slug: string) =>
+                importMessages({
+                    config: { ...testConfig, slug },
+                    messages,
+                    fileSha256: 'sha',
+                    snapshot: Option.fromNullishOr(content),
+                    allowRemoval: true
+                });
+            const refused = yield* Effect.flip(run('polls-away-fc'));
+            const ofHome = inArray(
+                pollVote.pollId,
+                before.map(poll => poll.pollId)
+            );
+            const votes = yield* db.delete(pollVote).where(ofHome).returning();
+            const pollsOnly = yield* Effect.flip(run('polls-away-fc'));
+            yield* db.insert(pollVote).values(votes);
+            yield* db.delete(importedPoll).where(eq(importedPoll.communityId, first.communityId));
+            const votesOnly = yield* Effect.flip(run('polls-away-fc'));
+            const kept = yield* db.select().from(pollVote).where(ofHome);
+
+            expect(refused).toMatchObject({ _tag: 'ForeignPollError' });
+            expect(refused).toHaveProperty('pollIds.length', games);
+            expect(String(refused)).toContain(pollIdIn('polls-home-fc', 0));
+            expect(votesOnly).toMatchObject({ _tag: 'ForeignPollError' });
+            expect(pollsOnly).toMatchObject({ _tag: 'ForeignPollError' });
+            expect(votes.length).toBeGreaterThan(0);
+            expect(kept).toHaveLength(votes.length);
         })
     );
 });

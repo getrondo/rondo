@@ -68,8 +68,17 @@ production (20,078 messages, 405 games) one import takes about 5 seconds; over t
 The lock test needs two real sessions and is skipped without a local Postgres:
 `RONDO_TEST_DATABASE_URL=postgres://… pnpm -F @rondo/core test`.
 
-An import that would remove more than 5% of the imported games stops and prints their ids. Check them, then run it with
+An import that would remove more than 5% of the imported games, or of the stored squads and their attendance, stops and prints the dates. Check them, then run it with
 `RONDO_ALLOW_REMOVAL=true`.
+
+### After a release that adds `identity.alias_link`
+
+The migration turns earlier links and undone links into decisions. Links that the previous release changed while it was still running
+are picked up by running the same step again, once it has stopped. It can be repeated:
+
+```sql
+select identity.backfill_alias_links();
+```
 
 ### Owner decisions
 
@@ -77,9 +86,11 @@ Both kinds live in private files outside the repository, readable by their owner
 the import, so the import already follows them. Loading again changes nothing, and several lists can be loaded in a row.
 
 - Nicknames: `nickname|Telegram id|line-up message id|date`, one per line. Each line is stored as an approved day in
-  `identity.alias_link`. A missing account or nickname is created.
+  `identity.alias_link` and replaces a rejection of that day. A missing account or nickname is created. `overlapDates` lists days on
+  which another player is approved for the same nickname, which is normal only for shared nicknames.
 - Games: `date|sport|played` or `date|sport|cancelled`. The game gets the status and a `scheduling.session_change` row, which is what
-  makes every later import keep it. The game must exist already; the output lists the missing ones.
+  makes every later import keep it. The game must exist already; the output lists the missing ones and
+  days with several games.
 
 ```bash
 export RONDO_COMMUNITY_CONFIG=/path/to/community.json RONDO_APPROVALS_DECIDED_AT=2026-11-24 RONDO_APPROVALS_MODE=load

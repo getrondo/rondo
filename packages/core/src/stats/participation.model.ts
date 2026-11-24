@@ -1,3 +1,5 @@
+export const playedOutcomes = ['attended', 'late', 'left_early'] as const;
+
 export interface PersonPoll {
     readonly pollId: string;
     readonly source: 'imported' | 'bot';

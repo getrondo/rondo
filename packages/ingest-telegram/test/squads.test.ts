@@ -64,6 +64,11 @@ describe('squads by structure', () => {
         expect(namesOf('Составы:\n🟢Я, Иван\n🔵Олег, Семён\n10🔴 нужны манишки')).toHaveLength(2);
     });
 
+    it('does not take labelled lines for a squad', () => {
+        expect(namesOf('🟢Мяч: Иван, Пётр, Олег, Марк\n🔵Семён, Павел, Глеб, Ян')).toBeNull();
+        expect(namesOf('Составы:\n🟢Я, Иван\n🔵Олег, Семён\n📌Форма: белая, синяя, чёрная')).toHaveLength(2);
+    });
+
     it('stops at a second list of the same players', () => {
         expect(
             namesOf('🟢Я, Иван, Пётр, Олег\n🔵Семён, Павел, Глеб, Ян\nДальше:\n🟢Я, Иван, Семён, Павел\n🔵Пётр, Олег, Глеб, Ян')
@@ -162,12 +167,12 @@ describe('polls', () => {
         expect(read(['Красные', 'Синие', 'Жёлтые'])).toEqual(['other', 'other', 'other']);
         expect(read(['+', '-'])).toEqual(['yes', 'no']);
         expect(read(['Да, отбой', 'Нужен матч'])).toEqual(['other', 'other']);
-        expect(read(['Старый регламент', 'Новый регламент'])).toEqual(['other', 'other']);
+        expect(read(['Синяя форма', 'Белая форма'])).toEqual(['other', 'other']);
     });
 
     it('gives a poll that offers several days to the day that was played, not to the day of its deadline', () => {
         const choice = pollMessage(1, '2025-05-04T10:00:00Z', 'Выбираем день, North. Ответы сегодня до 20.00', [
-            '05.05, понедельник 18.30',
+            '05.05, понедельник 18.45',
             '06.05 вторник 19.00',
             'Не буду'
         ]);
@@ -187,7 +192,7 @@ describe('polls', () => {
     });
 
     it('joins a poll whose days are only in its answers to an existing game', () => {
-        const days = pollMessage(1, '2025-05-04T10:00:00Z', 'Выбираем день для игры', ['Понедельник 18.30', 'Вторник 19.00', 'Не приду']);
+        const days = pollMessage(1, '2025-05-04T10:00:00Z', 'Выбираем день для игры', ['Понедельник 18.45', 'Вторник 19.00', 'Не приду']);
         const game = pollMessage(2, '2025-05-05T10:00:00Z', 'Вторник, 6 мая, 19.00 North');
 
         expect(planOf([days]).sessions).toEqual([]);

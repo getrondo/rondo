@@ -45,6 +45,9 @@ const decidedGames = Effect.fn('Approvals.decidedGames')(function* (slug: string
         .select({
             id: session.id,
             status: session.status,
+            hasSquad: sql<boolean>`exists (
+                select 1 from play.lineup_entry named where named.session_id = ${session.id} and named.team_ordinal > 0
+            )`,
             isDecided: sql<boolean>`exists (
                 select 1 from scheduling.session_change change
                 where change.session_id = ${session.id} and change.diff ->> 'decision' = ${session.status}::text
@@ -62,6 +65,7 @@ export const loadGameDecisions = Effect.fn('Approvals.loadGameDecisions')(({ slu
         Effect.gen(function* () {
             const db = yield* Db;
             const missing: string[] = [];
+            const ambiguous: string[] = [];
             let changed = 0;
 
             for (const decision of decisions) {
@@ -69,7 +73,7 @@ export const loadGameDecisions = Effect.fn('Approvals.loadGameDecisions')(({ slu
                 const [game, ...others] = yield* decidedGames(slug, decision);
 
                 if (!isDefined(game) || !isEmptyArray(others)) {
-                    missing.push(`${decision.date}|${decision.sport}`);
+                    (isDefined(game) ? ambiguous : missing).push(`${decision.date}|${decision.sport}`);
                 } else if (game.status !== status || !game.isDecided) {
                     yield* db
                         .update(session)
@@ -80,12 +84,12 @@ export const loadGameDecisions = Effect.fn('Approvals.loadGameDecisions')(({ slu
                         })
                         .where(eq(session.id, game.id));
                     yield* db.insert(sessionChange).values({ sessionId: game.id, at: decidedAt, diff: { decision: status } });
-                    yield* syncSessionRoster([game.id]);
+                    yield* syncSessionRoster(status === 'cancelled' || game.hasSquad ? [game.id] : []);
                     changed += 1;
                 }
             }
 
-            return { decisions: decisions.length, changed, missing };
+            return { decisions: decisions.length, changed, missing, ambiguous };
         })
     )
 );

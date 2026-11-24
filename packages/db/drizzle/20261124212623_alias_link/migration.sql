@@ -1,5 +1,5 @@
-CREATE TYPE "identity"."alias_link_method" AS ENUM('vote', 'shared_vote', 'admin', 'owner_list');--> statement-breakpoint
-CREATE TYPE "identity"."alias_link_status" AS ENUM('auto', 'approved', 'rejected');--> statement-breakpoint
+CREATE TYPE "identity"."alias_link_method" AS ENUM('admin', 'owner_list');--> statement-breakpoint
+CREATE TYPE "identity"."alias_link_status" AS ENUM('approved', 'rejected');--> statement-breakpoint
 CREATE TYPE "comms"."imported_poll_kind" AS ENUM('participation', 'reserve', 'other');--> statement-breakpoint
 CREATE TYPE "scheduling"."session_review" AS ENUM('unclear_cancellation');--> statement-breakpoint
 CREATE TABLE "identity"."alias_link" (
@@ -9,7 +9,6 @@ CREATE TABLE "identity"."alias_link" (
 	"person_id" uuid NOT NULL,
 	"during" daterange NOT NULL,
 	"method" "identity"."alias_link_method" NOT NULL,
-	"confidence" numeric(3,2),
 	"status" "identity"."alias_link_status" NOT NULL,
 	"decided_by" uuid,
 	"decided_at" timestamp with time zone
@@ -27,7 +26,6 @@ CREATE TABLE "comms"."imported_poll" (
 --> statement-breakpoint
 ALTER TABLE "play"."lineup_entry" ADD COLUMN "is_team_undecided" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "scheduling"."session" ADD COLUMN "review_reason" "scheduling"."session_review";--> statement-breakpoint
-ALTER TABLE "identity"."person_alias" DROP COLUMN "confidence";--> statement-breakpoint
 CREATE INDEX "alias_link_alias_idx" ON "identity"."alias_link" ("alias_id");--> statement-breakpoint
 CREATE INDEX "alias_link_person_idx" ON "identity"."alias_link" ("person_id");--> statement-breakpoint
 CREATE INDEX "imported_poll_session_idx" ON "comms"."imported_poll" ("session_id");--> statement-breakpoint

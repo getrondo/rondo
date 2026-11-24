@@ -81,7 +81,7 @@ const readTools = (scope: ToolScope, run: ToolRunner) => ({
     }),
     session_roster: tool({
         description:
-            'Who signed up for a game. signups: via the bot poll, status in/out/waitlisted and role field/gk. votes: yes votes of imported polls in time order, not proof of playing.',
+            'Who signed up for a game. signups: via the bot poll, status in/out/waitlisted and role field/gk. votes: yes votes of all polls in time order, not proof of playing.',
         inputSchema: toolSchema(SessionRef),
         execute: async input =>
             await run(

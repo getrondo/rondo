@@ -2,58 +2,38 @@ import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { importedPoll, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, teamMember } from '@rondo/db/schema/play.schema';
-import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
+import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, between, countDistinct, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, between, countDistinct, desc, eq, gt, inArray, or, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
+import { playedOutcomes, type PersonGame, type PersonPoll } from './participation.model';
 import { hasYes, summarize } from './summarize-participation';
 
-import type { PersonGame, PersonPoll } from './participation.model';
 import type { DateRange } from './stats.service';
-
-const signedUp = ['in', 'waitlisted'] as const;
 
 export const personPolls = Effect.fn('Core.personPolls')(function* (communityId: string, personId: string) {
     const db = yield* Db;
-    const imported = yield* db
+
+    return yield* db
         .selectDistinctOn([pollVote.pollId], {
             pollId: pollVote.pollId,
-            kind: importedPoll.kind,
-            answers: importedPoll.answers,
+            source: sql<PersonPoll['source']>`case when ${telegramPoll.pollId} is null then 'imported' else 'bot' end`,
+            kind: sql<PersonPoll['kind']>`coalesce(${importedPoll.kind}, 'participation')`,
+            answers: sql<number>`coalesce(${importedPoll.answers}, jsonb_array_length(${telegramPoll.options}))::int`,
             choice: pollVote.choice,
-            sessionId: importedPoll.sessionId,
-            postedOn: sql<string>`${importedPoll.postedAt}::date::text`
+            sessionId: sql<string | null>`coalesce(${importedPoll.sessionId}, ${telegramPoll.sessionId})`,
+            postedOn: sql<string>`coalesce(${importedPoll.postedAt}, ${telegramPoll.createdAt})::date::text`
         })
         .from(pollVote)
-        .innerJoin(importedPoll, eq(importedPoll.pollId, pollVote.pollId))
         .innerJoin(telegramAccount, eq(telegramAccount.tgUserId, pollVote.tgUserId))
-        .where(and(eq(importedPoll.communityId, communityId), eq(telegramAccount.personId, personId)))
-        .orderBy(pollVote.pollId, desc(pollVote.votedAt));
-    const fromBot = yield* db
-        .select({
-            pollId: telegramPoll.pollId,
-            status: signup.status,
-            options: telegramPoll.options,
-            sessionId: telegramPoll.sessionId,
-            postedOn: sql<string>`${telegramPoll.createdAt}::date::text`
-        })
-        .from(telegramPoll)
-        .innerJoin(session, eq(session.id, telegramPoll.sessionId))
-        .innerJoin(signup, eq(signup.sessionId, telegramPoll.sessionId))
-        .where(and(eq(session.communityId, communityId), eq(signup.personId, personId)));
-
-    return [
-        ...imported.map((poll): PersonPoll => Object.assign(poll, { source: 'imported' as const })),
-        ...fromBot.map(({ status, options, ...poll }): PersonPoll =>
-            Object.assign(poll, {
-                source: 'bot' as const,
-                kind: 'participation' as const,
-                answers: options.length,
-                choice: status === 'out' ? 'no' : 'yes'
-            })
+        .leftJoin(importedPoll, eq(importedPoll.pollId, pollVote.pollId))
+        .leftJoin(telegramPoll, eq(telegramPoll.pollId, pollVote.pollId))
+        .leftJoin(session, eq(session.id, telegramPoll.sessionId))
+        .where(
+            and(eq(telegramAccount.personId, personId), or(eq(importedPoll.communityId, communityId), eq(session.communityId, communityId)))
         )
-    ];
+        .orderBy(pollVote.pollId, desc(pollVote.votedAt));
 });
 
 const voteOf = (polls: readonly PersonPoll[]): PersonGame['vote'] => {
@@ -170,31 +150,19 @@ export const topPlayers = Effect.fn('Core.topPlayers')(function* (
             .from(attendance)
             .innerJoin(session, eq(session.id, attendance.sessionId))
             .innerJoin(person, eq(person.id, attendance.personId))
-            .where(and(inRange, inArray(attendance.outcome, ['attended', 'late', 'left_early']), eq(session.status, 'played')))
+            .where(and(inRange, inArray(attendance.outcome, playedOutcomes), eq(session.status, 'played')))
             .groupBy(person.id)
             .orderBy(...order)
             .limit(limit);
     }
 
-    const yesVotes = db
-        .select({ sessionId: pollVote.sessionId, personId: telegramAccount.personId })
-        .from(pollVote)
-        .innerJoin(telegramAccount, eq(telegramAccount.tgUserId, pollVote.tgUserId))
-        .where(and(eq(pollVote.choice, 'yes'), isNotNull(pollVote.sessionId)))
-        .unionAll(
-            db
-                .select({ sessionId: signup.sessionId, personId: signup.personId })
-                .from(signup)
-                .where(inArray(signup.status, [...signedUp]))
-        )
-        .as('yes_votes');
-
     return yield* db
         .select(columns)
-        .from(yesVotes)
-        .innerJoin(session, eq(session.id, yesVotes.sessionId))
-        .innerJoin(person, eq(person.id, yesVotes.personId))
-        .where(inRange)
+        .from(pollVote)
+        .innerJoin(telegramAccount, eq(telegramAccount.tgUserId, pollVote.tgUserId))
+        .innerJoin(session, eq(session.id, pollVote.sessionId))
+        .innerJoin(person, eq(person.id, telegramAccount.personId))
+        .where(and(inRange, eq(pollVote.choice, 'yes')))
         .groupBy(person.id)
         .orderBy(...order)
         .limit(limit);

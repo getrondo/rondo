@@ -8,8 +8,8 @@ export const identity = pgSchema('identity');
 export const localeEnum = identity.enum('locale', ['uk', 'ru', 'en', 'de']);
 export const aliasKindEnum = identity.enum('alias_kind', ['nickname', 'first_name', 'full_name', 'placeholder', 'self']);
 export const aliasResolutionEnum = identity.enum('alias_resolution', ['unresolved', 'suggested', 'confirmed', 'guest', 'ignored', 'vote']);
-export const aliasLinkMethodEnum = identity.enum('alias_link_method', ['vote', 'shared_vote', 'admin', 'owner_list']);
-export const aliasLinkStatusEnum = identity.enum('alias_link_status', ['auto', 'approved', 'rejected']);
+export const aliasLinkMethodEnum = identity.enum('alias_link_method', ['admin', 'owner_list']);
+export const aliasLinkStatusEnum = identity.enum('alias_link_status', ['approved', 'rejected']);
 export const consentPurposeEnum = identity.enum('consent_purpose', ['processing', 'birthday', 'stats_public', 'dm_notifications']);
 export const recordSourceEnum = identity.enum('record_source', ['bot', 'import', 'manual']);
 
@@ -74,6 +74,8 @@ export const personAlias = identity.table(
         firstSeenAt: instant('first_seen_at'),
         lastSeenAt: instant('last_seen_at'),
         resolution: aliasResolutionEnum('resolution').notNull().default('unresolved'),
+        // Unused: the previous release reads and writes it, a later migration drops it
+        confidence: numeric('confidence', { precision: 3, scale: 2, mode: 'number' }),
         createdAt: createdAt()
     },
     t => [uniqueIndex('person_alias_norm_uq').on(t.communityId, t.aliasNorm), index('person_alias_person_idx').on(t.personId)]
@@ -88,7 +90,6 @@ export const aliasLink = identity.table(
         personId: requiredRef('person_id', () => person.id),
         during: daterange('during').notNull(),
         method: aliasLinkMethodEnum('method').notNull(),
-        confidence: numeric('confidence', { precision: 3, scale: 2, mode: 'number' }),
         status: aliasLinkStatusEnum('status').notNull(),
         decidedBy: ref('decided_by').references(() => person.id, { onDelete: 'set null' }),
         decidedAt: instant('decided_at')

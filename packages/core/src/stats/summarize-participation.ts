@@ -1,4 +1,4 @@
-import type { PeriodStatistics, PersonGame, PersonPoll } from './participation.model';
+import { playedOutcomes, type PeriodStatistics, type PersonGame, type PersonPoll } from './participation.model';
 
 const countOf = <Item>(items: readonly Item[], isCounted: (item: Item) => boolean): number => items.filter(item => isCounted(item)).length;
 
@@ -30,7 +30,7 @@ export const summarize = (polls: readonly PersonPoll[], games: readonly PersonGa
             yesButNotInSquad: countOf(withYes, ({ squad }) => squad === 'not_named'),
             inSquadWithoutVote: countOf(named, ({ vote }) => vote === 'none'),
             inSquadDespiteNo: countOf(named, ({ vote }) => vote === 'no'),
-            attendanceRecorded: countOf(games, ({ attendance }) => attendance === 'attended')
+            attendanceRecorded: countOf(games, ({ attendance }) => playedOutcomes.some(outcome => outcome === attendance))
         }
     };
 };

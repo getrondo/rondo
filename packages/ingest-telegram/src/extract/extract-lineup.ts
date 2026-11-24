@@ -172,7 +172,13 @@ interface TeamLine {
 
 const isNameList = (names: readonly string[], least: number): boolean =>
     names.length >= least &&
-    names.every(name => !clockTime.test(name) && name.trim().split(/\s+/u).length <= maxWordsInName && name.trim().length <= maxNameLength);
+    names.every(
+        name =>
+            !name.includes(':') &&
+            !clockTime.test(name) &&
+            name.trim().split(/\s+/u).length <= maxWordsInName &&
+            name.trim().length <= maxNameLength
+    );
 
 const teamLinesOf = (text: string): TeamLine[] =>
     text.split('\n').flatMap(line => {

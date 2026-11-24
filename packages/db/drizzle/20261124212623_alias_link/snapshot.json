@@ -2,7 +2,7 @@
     "type": "diff",
     "version": "10",
     "dialect": "postgres",
-    "id": "b509208b-0c52-4db2-9377-a29a901ec41d",
+    "id": "cf121b5f-6e59-4db5-aae7-a0de6af9e51c",
     "prevIds": ["afe8b22c-82bb-4328-aa2e-b853345f6354"],
     "footprints": [
         {
@@ -94,16 +94,6 @@
                 "e|col|scheduling.session.review_reason"
             ],
             "reads": ["n|tbl|scheduling.session", "n|sch|scheduling", "n|enum|scheduling.session_review"]
-        },
-        {
-            "statementType": "drop_column",
-            "statementTarget": ["column", "identity", "person_alias", "confidence"],
-            "writes": [
-                "s|col|identity.person_alias.confidence",
-                "n|col|identity.person_alias.confidence",
-                "e|col|identity.person_alias.confidence"
-            ],
-            "reads": ["n|tbl|identity.person_alias", "n|sch|identity"]
         },
         {
             "statementType": "create_index",
@@ -269,7 +259,7 @@
             "row": {
                 "schema": "identity",
                 "name": "alias_link_method",
-                "values": ["vote", "shared_vote", "admin", "owner_list"],
+                "values": ["admin", "owner_list"],
                 "entityType": "enums"
             }
         },
@@ -278,7 +268,7 @@
             "row": {
                 "schema": "identity",
                 "name": "alias_link_status",
-                "values": ["auto", "approved", "rejected"],
+                "values": ["approved", "rejected"],
                 "entityType": "enums"
             }
         },
@@ -389,22 +379,6 @@
                 "type": "alias_link_method",
                 "typeSchema": "identity",
                 "notNull": true,
-                "dimensions": 0,
-                "default": null,
-                "generated": null,
-                "identity": null,
-                "entityType": "columns"
-            }
-        },
-        {
-            "op": "create",
-            "row": {
-                "schema": "identity",
-                "table": "alias_link",
-                "name": "confidence",
-                "type": "numeric(3,2)",
-                "typeSchema": null,
-                "notNull": false,
                 "dimensions": 0,
                 "default": null,
                 "generated": null,
@@ -797,10 +771,6 @@
                 "nameExplicit": false,
                 "entityType": "pks"
             }
-        },
-        {
-            "op": "drop",
-            "key": "columns\u0000[\"identity\",\"person_alias\",\"confidence\"]"
         }
     ]
 }

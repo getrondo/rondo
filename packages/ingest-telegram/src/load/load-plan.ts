@@ -60,6 +60,7 @@ export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
             const fixtures = yield* insertMoneyAndLeague(context, reference.venueIdByKey);
             const stats = {
                 sessions: plan.sessions.length,
+                ambiguousDates: sessions.ambiguousDates,
                 teams: sessions.teams,
                 entries: sessions.entries,
                 unassignedGuestRequests: sessions.unassignedGuestRequests,

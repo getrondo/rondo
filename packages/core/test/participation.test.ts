@@ -2,7 +2,7 @@ import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { importedPoll, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
-import { session, signup } from '@rondo/db/schema/scheduling.schema';
+import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
@@ -11,6 +11,7 @@ import { countLabel } from '../src/i18n/count-label';
 import { syncMember, upsertTelegramUser } from '../src/identity/telegram-user';
 import { ingestGroupMessage } from '../src/live/live-ingest';
 import { createSession } from '../src/sessions/session.service';
+import { applyPollAnswer } from '../src/signups/signup.service';
 import { coverageText } from '../src/stats/coverage-text';
 import { personGames, personPolls, personStatistics, topPlayers } from '../src/stats/participation.service';
 import { attendanceCoverage, playerHistory } from '../src/stats/stats.service';
@@ -232,29 +233,39 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('participation and squads as
         })
     );
 
-    it.effect('counts sign-ups in a poll of the bot', () =>
+    it.effect('reads the answers of bot polls poll by poll, and a retracted answer is none', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId, personId, addGame } = yield* seeded('bot-poll-fc', 6000n);
-            const coming = yield* addGame('2026-05-04');
-            const absent = yield* addGame('2026-05-11');
-            const older = yield* addGame('2026-05-18');
-            yield* db.insert(telegramPoll).values(
-                [coming, absent, older].map((sessionId, index) => ({
-                    pollId: `bot-${index}`,
-                    chatId: -6000n,
-                    messageId: index + 1,
-                    sessionId,
-                    options: sessionId === older ? ['in', 'gk', 'out'] : ['in', 'out']
-                }))
-            );
-            yield* db.insert(signup).values([
-                { sessionId: coming, personId, status: 'in' },
-                { sessionId: absent, personId, status: 'out' },
-                { sessionId: older, personId, status: 'in' }
-            ]);
+            const game = yield* addGame('2026-05-04');
+            const older = yield* addGame('2026-05-11');
+            yield* db.update(session).set({ status: 'open' }).where(eq(session.communityId, communityId));
+            const pollOf = (pollId: string, sessionId: string, options: readonly string[]) => ({
+                pollId,
+                chatId: -6000n,
+                messageId: 1,
+                sessionId,
+                options
+            });
+            yield* db
+                .insert(telegramPoll)
+                .values([
+                    pollOf('bot-first', game, ['in', 'out']),
+                    pollOf('bot-second', game, ['in', 'out']),
+                    pollOf('bot-third', game, ['in', 'out']),
+                    pollOf('bot-older', older, ['in', 'gk', 'out'])
+                ]);
+            const answer = (pollId: string, optionIds: readonly number[]) =>
+                applyPollAnswer({ pollId, user: { id: player + 6000n, firstName: 'Player' }, optionIds });
+            yield* answer('bot-first', [1]);
+            yield* answer('bot-first', [0]);
+            yield* answer('bot-second', [1]);
+            yield* answer('bot-older', [1]);
             const { total } = yield* personStatistics(communityId, personId);
             const ranking = yield* topPlayers(communityId, range, { limit: 5 });
+            yield* answer('bot-older', []);
+            const retracted = yield* personStatistics(communityId, personId);
+            const [seat] = yield* db.select().from(signup).where(eq(signup.sessionId, older));
 
             expect(total.polls).toMatchObject({
                 answered: 3,
@@ -265,6 +276,30 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('participation and squads as
             });
             expect(total.games.withYesVote).toBe(2);
             expect(ranking.map(({ games }) => games)).toEqual([2]);
+            expect(retracted.total.polls).toMatchObject({ answered: 2, participationYesMoreAnswers: 0 });
+            expect(seat?.status).toBe('out');
+        })
+    );
+
+    it.effect('counts late players and those who left early as recorded attendance, like the ranking', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, personId, addGame } = yield* seeded('outcomes-fc', 8000n);
+            const sessionIds = yield* Effect.all(['2026-05-04', '2026-05-11', '2026-05-18', '2026-05-25'].map(date => addGame(date)));
+            const outcomes = ['attended', 'late', 'left_early', 'no_show'] as const;
+            yield* db.insert(attendance).values(
+                sessionIds.map((sessionId, index) => ({
+                    sessionId,
+                    personId,
+                    outcome: outcomes[index] ?? 'attended',
+                    source: 'manual' as const
+                }))
+            );
+            const { total } = yield* personStatistics(communityId, personId);
+            const ranking = yield* topPlayers(communityId, range, { by: 'attendance', limit: 5 });
+
+            expect(total.games.attendanceRecorded).toBe(3);
+            expect(ranking.map(({ games }) => games)).toEqual([3]);
         })
     );
 

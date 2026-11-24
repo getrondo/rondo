@@ -237,10 +237,6 @@ export const reviewEntries = Effect.fn('Core.reviewEntries')(function* (communit
             shared: sql<boolean>`coalesce(${personAlias.kind} = 'placeholder', false)`,
             occurrences: personAlias.occurrences,
             isTeamUndecided: lineupEntry.isTeamUndecided,
-            twoNames: sql<boolean>`exists (
-                select 1 from identity.person_alias head join identity.person_alias tail on tail.community_id = head.community_id
-                where head.community_id = ${communityId}::uuid and head.alias_norm || ' ' || tail.alias_norm = ${personAlias.aliasNorm}
-            )`,
             candidatePersonIds: sql<
                 string[]
             >`coalesce(array_agg(${vote.personId}::text) filter (where ${vote.personId} is not null and ${unlisted}), '{}')`

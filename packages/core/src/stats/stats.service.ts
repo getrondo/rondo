@@ -7,14 +7,13 @@ import { Db, type Database } from '@rondo/db/service/db.service';
 import { and, between, count, countDistinct, desc, eq, inArray, isNull, max, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
+import { playedOutcomes } from './participation.model';
 import { personStatistics } from './participation.service';
 
 export interface DateRange {
     readonly from: string;
     readonly to: string;
 }
-
-const playedOutcomes = ['attended', 'late', 'left_early'] as const;
 
 const playedGames = (db: Database) =>
     db

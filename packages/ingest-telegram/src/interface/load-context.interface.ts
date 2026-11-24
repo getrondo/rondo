@@ -20,6 +20,7 @@ export interface ReferenceIds {
 
 export interface SessionLoadResult {
     readonly sessionIds: readonly string[];
+    readonly ambiguousDates: readonly string[];
     readonly teams: number;
     readonly entries: number;
     readonly unassignedGuestRequests: number;

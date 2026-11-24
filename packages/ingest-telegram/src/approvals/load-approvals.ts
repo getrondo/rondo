@@ -4,11 +4,11 @@ import { community } from '@rondo/db/schema/org.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import * as Effect from 'effect/Effect';
 
 import { applyApproved } from '../identity/apply-approved';
-import { dayRange } from '../identity/link-ranges';
 import { withCommunityLock } from '../load/with-community-lock';
 import { alignGuests } from '../roster/align-guests';
 import { markUndecidedTeams } from '../roster/mark-undecided-teams';
@@ -42,13 +42,13 @@ const ensurePerson = Effect.fn('Approvals.ensurePerson')(function* (tgUserId: bi
 
 const ensureAlias = Effect.fn('Approvals.ensureAlias')(function* (communityId: string, { aliasNorm, nickname }: ApprovalRow) {
     const db = yield* Db;
-    const [alias] = yield* db
+    const [stored] = yield* db
         .insert(personAlias)
         .values({ communityId, alias: nickname, aliasNorm })
         .onConflictDoUpdate({ target: [personAlias.communityId, personAlias.aliasNorm], set: { aliasNorm } })
         .returning({ id: personAlias.id });
 
-    return alias?.id ?? '';
+    return stored?.id ?? '';
 });
 
 const groupApprovals = (rows: readonly ApprovalRow[]): Map<string, ApprovalRow[]> => {
@@ -69,9 +69,18 @@ const storeDays = Effect.fn('Approvals.storeDays')(function* (
 ) {
     const db = yield* Db;
 
-    yield* db
-        .delete(aliasLink)
-        .where(and(eq(aliasLink.aliasId, link.aliasId), eq(aliasLink.personId, link.personId), eq(aliasLink.status, 'auto')));
+    yield* db.execute(sql`
+        with days as (select range_agg(daterange(day, day, '[]')) as approved from unnest(${sql.param(dates)}::date[]) day),
+        rejected as (
+            delete from identity.alias_link link using days
+            where link.alias_id = ${link.aliasId}::uuid and link.person_id = ${link.personId}::uuid
+                and link.status = 'rejected' and link.during && days.approved
+            returning link.*
+        )
+        insert into identity.alias_link (id, community_id, alias_id, person_id, during, method, status, decided_by, decided_at)
+        select gen_random_uuid(), community_id, alias_id, person_id, unnest(datemultirange(during) - approved), method, status, decided_by, decided_at
+        from rejected, days
+    `);
     const stored = yield* db
         .insert(aliasLink)
         .values(
@@ -79,7 +88,7 @@ const storeDays = Effect.fn('Approvals.storeDays')(function* (
                 communityId: link.communityId,
                 aliasId: link.aliasId,
                 personId: link.personId,
-                during: dayRange(date, date),
+                during: `[${date},${date}]`,
                 method: 'owner_list' as const,
                 status: 'approved' as const,
                 decidedAt
@@ -89,6 +98,30 @@ const storeDays = Effect.fn('Approvals.storeDays')(function* (
         .returning({ id: aliasLink.id });
 
     return stored.length;
+});
+
+const overlapDates = Effect.fn('Approvals.overlapDates')(function* (communityId: string, rows: readonly ApprovalRow[]) {
+    const db = yield* Db;
+    const other = alias(aliasLink, 'other');
+    const overlaps = yield* db
+        .selectDistinct({ date: sql<string>`lower(${aliasLink.during})::text` })
+        .from(aliasLink)
+        .innerJoin(
+            other,
+            and(
+                eq(other.aliasId, aliasLink.aliasId),
+                ne(other.personId, aliasLink.personId),
+                eq(other.status, 'approved'),
+                sql`${other.during} && ${aliasLink.during}`
+            )
+        )
+        .where(and(eq(aliasLink.communityId, communityId), eq(aliasLink.status, 'approved'), eq(aliasLink.method, 'owner_list')));
+    const listed = new Set(rows.map(({ date }) => date));
+
+    return overlaps
+        .map(({ date }) => date)
+        .filter(date => listed.has(date))
+        .toSorted();
 });
 
 export const loadApprovals = Effect.fn('Approvals.loadApprovals')(({ slug, rows, decidedAt }: Approvals) =>
@@ -113,7 +146,7 @@ export const loadApprovals = Effect.fn('Approvals.loadApprovals')(({ slug, rows,
             yield* markUndecidedTeams(communityId);
             yield* alignGuests(communityId);
 
-            return { rows: rows.length, stored, pinned };
+            return { rows: rows.length, stored, pinned, overlapDates: yield* overlapDates(communityId, rows) };
         })
     )
 );
