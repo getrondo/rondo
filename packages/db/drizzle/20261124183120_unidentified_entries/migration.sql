@@ -1,0 +1,3 @@
+ALTER TABLE "play"."lineup_entry" ADD COLUMN "is_guest" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+UPDATE "play"."lineup_entry" SET "is_guest" = true WHERE "guest_of_person_id" IS NOT NULL;--> statement-breakpoint
+ALTER TABLE "play"."lineup_entry" DROP CONSTRAINT "lineup_entry_player_ck", ADD CONSTRAINT "lineup_entry_player_ck" CHECK (case when "is_guest" then "person_id" is null else "guest_of_person_id" is null end);

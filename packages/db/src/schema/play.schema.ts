@@ -93,13 +93,14 @@ export const lineupEntry = play.table(
         guestOfPersonId: ref('guest_of_person_id').references(() => person.id, { onDelete: 'restrict' }),
         resolvedBy: entryResolutionEnum('resolved_by').notNull(),
         isGk: boolean('is_gk').notNull().default(false),
-        isNewcomer: boolean('is_newcomer').notNull().default(false)
+        isNewcomer: boolean('is_newcomer').notNull().default(false),
+        isGuest: boolean('is_guest').notNull().default(false)
     },
     t => [
         uniqueIndex('lineup_entry_position_uq').on(t.sessionId, t.teamOrdinal, t.position),
         index('lineup_entry_alias_idx').on(t.aliasId),
         index('lineup_entry_person_idx').on(t.personId),
-        check('lineup_entry_player_ck', sql`num_nonnulls(${t.personId}, ${t.guestOfPersonId}) = 1`)
+        check('lineup_entry_player_ck', sql`case when ${t.isGuest} then ${t.personId} is null else ${t.guestOfPersonId} is null end`)
     ]
 );
 

@@ -1,0 +1,55 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "d846c484-d7cf-489f-9067-1da29e78adf9",
+    "prevIds": ["3c6a6f1b-d015-4730-aa1e-db38bf48b057"],
+    "footprints": [
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "play", "lineup_entry", "is_guest"],
+            "writes": ["s|col|play.lineup_entry.is_guest", "n|col|play.lineup_entry.is_guest", "e|col|play.lineup_entry.is_guest"],
+            "reads": ["n|tbl|play.lineup_entry", "n|sch|play"]
+        },
+        {
+            "statementType": "alter_check",
+            "statementTarget": ["table", "play", "lineup_entry"],
+            "writes": ["s|ck|play.lineup_entry.lineup_entry_player_ck"],
+            "reads": [
+                "n|tbl|play.lineup_entry",
+                "n|sch|play",
+                "n|col|play.lineup_entry.is_guest",
+                "n|col|play.lineup_entry.person_id",
+                "n|col|play.lineup_entry.guest_of_person_id",
+                "e|col|play.lineup_entry.person_id",
+                "e|col|play.lineup_entry.guest_of_person_id"
+            ],
+            "sqlHash": "e362dead5c9d4c93"
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "is_guest",
+                "type": "boolean",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "false",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "alter",
+            "key": "checks\u0000[\"play\",\"lineup_entry\",\"lineup_entry_player_ck\"]",
+            "set": {
+                "value": "case when \"is_guest\" then \"person_id\" is null else \"guest_of_person_id\" is null end"
+            }
+        }
+    ]
+}
