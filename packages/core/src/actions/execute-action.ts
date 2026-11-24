@@ -6,10 +6,10 @@ import { grantAdmin, isAdminOf } from '../access/admin-access';
 import { ActionFailedError } from '../error/action-failed.error';
 import { notifySessionCancelled, notifySessionChanged } from '../notify/notifier';
 import { arePeopleOf, createPerson, mergePeople, renamePerson } from '../people/people.service';
-import { cancelSession, createSession, listVenues, requireSession, updateSession } from '../sessions/session.service';
+import { cancelSession, createSession, requireSession, updateSession } from '../sessions/session.service';
 import { announceSession, closePollsOf } from '../signups/signup.service';
 import { publishTeams, setSeedRating } from '../teams/team.service';
-import { createVenue, updateVenue } from '../venues/venue.service';
+import { createVenue, requireVenue, updateVenue } from '../venues/venue.service';
 
 import type { Locale } from '../i18n/locale';
 import type { Action } from './action.model';
@@ -175,11 +175,11 @@ export const requireActionScope = Effect.fn('Core.requireActionScope')(function*
         yield* requireSession(communityId, action.sessionId);
     }
 
-    if (action._tag !== 'update_venue' && 'venueId' in action && isDefined(action.venueId)) {
-        const venues = yield* listVenues(communityId);
+    if ('venueId' in action && isDefined(action.venueId)) {
+        const found = yield* requireVenue(communityId, action.venueId);
 
-        if (!venues.some(({ id }) => id === action.venueId)) {
-            return yield* ActionFailedError.make({ reason: 'venue not found in this community' });
+        if (action._tag !== 'update_venue' && found.status !== 'active') {
+            return yield* ActionFailedError.make({ reason: 'this venue is no longer used' });
         }
     }
 

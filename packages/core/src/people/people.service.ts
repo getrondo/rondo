@@ -1,4 +1,4 @@
-import { isDefined, isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
+import { isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
 import { person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { membership } from '@rondo/db/schema/org.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
@@ -130,40 +130,28 @@ export const createPerson = Effect.fn('Core.createPerson')(function* (input: {
     readonly actorPersonId: string | null;
 }) {
     const db = yield* Db;
-    const aliasNorm = normalizeAlias(input.displayName);
-    const [known] = yield* db
-        .select({ id: personAlias.id })
-        .from(personAlias)
-        .where(and(eq(personAlias.communityId, input.communityId), eq(personAlias.aliasNorm, aliasNorm)));
+    const displayName = input.displayName.trim();
 
-    if (isDefined(known) || !isNotEmptyString(aliasNorm)) {
-        return yield* ActionFailedError.make({ reason: 'a player with this name already exists' });
+    if (!isNotEmptyString(displayName)) {
+        return yield* ActionFailedError.make({ reason: 'the name is empty' });
     }
 
-    const [created] = yield* db
-        .insert(person)
-        .values({ displayName: input.displayName.trim(), source: 'manual' })
-        .returning({ id: person.id });
-    const personId = created?.id ?? '';
-    yield* db.insert(personAlias).values({
-        communityId: input.communityId,
-        personId,
-        alias: input.displayName.trim(),
-        aliasNorm,
-        resolution: 'confirmed',
-        confidence: 1
-    });
-    yield* ensureMembership(input.communityId, personId);
-    yield* recordAudit({
-        communityId: input.communityId,
-        actorPersonId: input.actorPersonId,
-        action: 'person.create',
-        entityType: 'person',
-        entityId: personId,
-        diff: { displayName: input.displayName }
-    });
+    return yield* db.transaction(() =>
+        Effect.gen(function* () {
+            const [created] = yield* db.insert(person).values({ displayName, source: 'manual' }).returning({ id: person.id });
+            const personId = created?.id ?? '';
+            yield* ensureMembership(input.communityId, personId);
+            yield* recordAudit({
+                communityId: input.communityId,
+                actorPersonId: input.actorPersonId,
+                action: 'person.create',
+                entityType: 'person',
+                entityId: personId
+            });
 
-    return personId;
+            return personId;
+        })
+    );
 });
 
 export const renamePerson = Effect.fn('Core.renamePerson')(function* (input: {

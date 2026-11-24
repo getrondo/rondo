@@ -1,6 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { membership } from '@rondo/db/schema/org.schema';
+import { team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -41,15 +42,15 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('players and venues learned 
         })
     );
 
-    it.effect('adds a player without Telegram once', () =>
+    it.effect('adds players without Telegram, even with the same name', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('manual-fc'));
-            const personId = yield* createPerson({ communityId, displayName: 'Guest One', actorPersonId: null });
-            const again = yield* Effect.flip(createPerson({ communityId, displayName: ' guest one ', actorPersonId: null }));
-            const accounts = yield* db.select().from(telegramAccount).where(eq(telegramAccount.personId, personId));
+            const first = yield* createPerson({ communityId, displayName: 'Guest One', actorPersonId: null });
+            const second = yield* createPerson({ communityId, displayName: 'Guest One', actorPersonId: null });
+            const accounts = yield* db.select().from(telegramAccount).where(eq(telegramAccount.personId, first));
 
-            expect(again).toMatchObject({ reason: 'a player with this name already exists' });
+            expect(first).not.toBe(second);
             expect(accounts).toEqual([]);
         })
     );
@@ -60,9 +61,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('players and venues learned 
             const config = seedConfig('venues-fc');
             const { communityId, venueIdByName } = yield* seedCommunity(config);
             const actorPersonId = yield* upsertTelegramUser({ id: 502n, firstName: 'Org' });
-            const pin = { communityId, actorPersonId, title: 'Donau Platz', address: 'Uferweg 1', lat: 48.2, lng: 16.4 };
+            const pin = { communityId, actorPersonId, title: 'Donau  Platz', address: 'Uferweg 1', lat: 48.2, lng: 16.4 };
             const pinned = yield* learnVenuePin(pin);
-            const same = yield* learnVenuePin({ ...pin, title: 'donau  platz', address: 'Uferweg 2' });
+            const same = yield* learnVenuePin({ ...pin, title: 'donau  platz', address: 'Uferweg 2', lat: 1 });
             const parkId = venueIdByName.get('Park Field') ?? '';
             yield* updateVenue({ communityId, actorPersonId, venueId: parkId, patch: { name: 'City Park', alias: 'Grün' } });
             const duplicate = yield* Effect.flip(createVenue({ communityId, actorPersonId, name: 'PARK FIELD' }));
@@ -89,8 +90,8 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('players and venues learned 
             const [stored] = yield* db.select().from(venue).where(eq(venue.id, pinned));
 
             expect(same).toBe(pinned);
-            expect(stored).toMatchObject({ name: 'Donau Platz', address: 'Uferweg 2', lat: 48.2 });
-            expect(duplicate).toMatchObject({ reason: 'this venue already exists' });
+            expect(stored).toMatchObject({ name: 'Donau Platz', address: 'Uferweg 1', lat: 48.2 });
+            expect(duplicate).toMatchObject({ reason: 'this venue already exists or has no name' });
             expect(games.map(game => game.venueId)).toEqual([pinned, parkId, parkId, null]);
             expect(unknown.unknownPlace?.text).toContain('Stadlau');
         })
@@ -116,7 +117,12 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('players and venues learned 
                 )
             );
             yield* db.update(session).set({ status: 'played' }).where(eq(session.communityId, communityId));
-            yield* db.insert(attendance).values({ sessionId: ids[0] ?? '', personId, outcome: 'attended' });
+            yield* db.insert(attendance).values({ sessionId: ids[2] ?? '', personId, outcome: 'attended' });
+            const [side] = yield* db
+                .insert(team)
+                .values({ sessionId: ids[0] ?? '', ordinal: 1 })
+                .returning({ id: team.id });
+            yield* db.insert(teamMember).values({ teamId: side?.id ?? '', sessionId: ids[0] ?? '', personId });
             const all = yield* attendanceCoverage(communityId);
             const october = yield* attendanceCoverage(communityId, { from: '2026-10-01', to: '2026-10-31' });
 

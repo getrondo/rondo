@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { describeAction } from '@rondo/core/actions/describe-action';
 import { requireActionScope } from '@rondo/core/actions/execute-action';
 import { proposeAction } from '@rondo/core/actions/pending-action.service';
@@ -196,12 +196,6 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
                 })
             )
     }),
-    propose_merge_people: tool({
-        description:
-            'Propose merging two person records that are the same human (e.g. nickname and full name). All games move to intoPersonId.',
-        inputSchema: toolSchema(Schema.Struct({ fromPersonId: Schema.String, intoPersonId: Schema.String })),
-        execute: async input => await run(propose(scope, { _tag: 'merge_people', ...input }))
-    }),
     propose_rename_person: tool({
         description: 'Propose changing the display name of a player.',
         inputSchema: toolSchema(Schema.Struct({ personId: Schema.String, displayName: Schema.String })),
@@ -241,8 +235,8 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
                     _tag: 'update_venue',
                     venueId,
                     ...details,
-                    ...(isDefined(name) ? { name } : {}),
-                    ...(isDefined(alias) ? { alias } : {}),
+                    ...(isNotEmptyString(name) ? { name } : {}),
+                    ...(isNotEmptyString(alias) ? { alias } : {}),
                     ...(isDefined(active) ? { active } : {})
                 })
             )

@@ -29,7 +29,7 @@ isec run getrondo prod -- sh -c 'printf %s "$CRON_SECRET" | vercel env add CRON_
 Merging to `main` deploys production. The production build first runs
 `pnpm -F @rondo/db db:migrate` against the unpooled Neon URL, then builds the app.
 
-After the first production deploy (or when the domain changes), register the webhook:
+After the first production deploy, and whenever the domain or `allowed_updates` changes, register the webhook:
 
 ```bash
 isec run getrondo prod -- sh -c 'RONDO_WEBHOOK_URL=https://<production-domain>/api/telegram pnpm -F @rondo/telegram webhook:set'

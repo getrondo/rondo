@@ -7,7 +7,7 @@ import { Db } from '@rondo/db/service/db.service';
 import { extractLineup } from '@rondo/ingest-telegram/extract/extract-lineup';
 import { extractPoll, makeVenueMatcher } from '@rondo/ingest-telegram/extract/extract-poll';
 import { extractCancellation } from '@rondo/ingest-telegram/extract/extract-signals';
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -97,6 +97,7 @@ const ensureSession = Effect.fn('Core.ensureSession')(function* (
     config: CommunityConfig,
     fact: Pick<PollFact, 'localDate' | 'localTime' | 'venueKey'> & { readonly capacityMax?: number; readonly title?: string }
 ) {
+    const db = yield* Db;
     const venueId = yield* venueIdFor(communityId, config, fact.venueKey);
     const countConflicts = (game: SessionView): number =>
         Number(isDefined(venueId) && isDefined(game.venueId) && venueId !== game.venueId) +
@@ -114,6 +115,13 @@ const ensureSession = Effect.fn('Core.ensureSession')(function* (
     }
 
     if (isDefined(match)) {
+        if (isDefined(venueId)) {
+            yield* db
+                .update(session)
+                .set({ venueId })
+                .where(and(eq(session.id, match.id), isNull(session.venueId)));
+        }
+
         return Option.fromNullishOr(match.id);
     }
 

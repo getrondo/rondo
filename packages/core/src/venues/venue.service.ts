@@ -24,11 +24,14 @@ export interface VenuePatch extends VenueDetails {
     readonly active?: boolean;
 }
 
-const normalizeVenueName = (value: string): string => value.trim().toLowerCase().replaceAll(/\s+/gu, ' ');
+const tidyVenueName = (value: string): string => value.trim().replaceAll(/\s+/gu, ' ');
+
+const normalizeVenueName = (value: string): string => tidyVenueName(value).toLowerCase();
 
 const escapePattern = (value: string): string => value.replaceAll(/[\\^$.*+?()[\]{}|/]/gu, String.raw`\$&`);
 
-const aliasPattern = (value: string): string => String.raw`(?<![\p{L}\p{N}])${escapePattern(value)}(?![\p{L}\p{N}])`;
+const aliasPattern = (value: string): string =>
+    String.raw`(?<![\p{L}\p{N}])${escapePattern(value).replaceAll(' ', String.raw`\s+`)}(?![\p{L}\p{N}])`;
 
 export const findVenueByName = Effect.fn('Core.findVenueByName')(function* (communityId: string, name: string) {
     const db = yield* Db;
@@ -37,7 +40,12 @@ export const findVenueByName = Effect.fn('Core.findVenueByName')(function* (comm
         .selectDistinct({ id: venue.id, name: venue.name, status: venue.status })
         .from(venue)
         .leftJoin(venueAlias, eq(venueAlias.venueId, venue.id))
-        .where(and(eq(venue.communityId, communityId), sql`(lower(${venue.name}) = ${wanted} or ${venueAlias.aliasNorm} = ${wanted})`));
+        .where(
+            and(
+                eq(venue.communityId, communityId),
+                sql`(lower(regexp_replace(trim(${venue.name}), '\\s+', ' ', 'g')) = ${wanted} or ${venueAlias.aliasNorm} = ${wanted})`
+            )
+        );
 
     return row ?? null;
 });
@@ -74,33 +82,47 @@ export const createVenue = Effect.fn('Core.createVenue')(function* (
 
     const known = yield* findVenueByName(communityId, name);
 
-    if (isDefined(known)) {
-        return yield* ActionFailedError.make({ reason: 'this venue already exists' });
+    if (isDefined(known) || !isNotEmptyString(tidyVenueName(name))) {
+        return yield* ActionFailedError.make({ reason: 'this venue already exists or has no name' });
     }
 
-    const [created] = yield* db
-        .insert(venue)
-        .values({ communityId, name: name.trim(), ...details })
-        .returning({ id: venue.id });
-    const venueId = created?.id ?? '';
+    return yield* db.transaction(() =>
+        Effect.gen(function* () {
+            const [created] = yield* db
+                .insert(venue)
+                .values({ communityId, name: tidyVenueName(name), ...details })
+                .returning({ id: venue.id });
+            const venueId = created?.id ?? '';
 
-    if (isNotEmptyString(sessionId)) {
-        yield* db
-            .update(session)
-            .set({ venueId })
-            .where(and(eq(session.id, sessionId), eq(session.communityId, communityId), isNull(session.venueId)));
-    }
+            if (isNotEmptyString(sessionId)) {
+                yield* db
+                    .update(session)
+                    .set({ venueId })
+                    .where(and(eq(session.id, sessionId), eq(session.communityId, communityId), isNull(session.venueId)));
+            }
 
-    yield* recordAudit({
-        communityId,
-        actorPersonId,
-        action: 'venue.create',
-        entityType: 'venue',
-        entityId: venueId,
-        diff: { name, ...details }
-    });
+            yield* recordAudit({
+                communityId,
+                actorPersonId,
+                action: 'venue.create',
+                entityType: 'venue',
+                entityId: venueId,
+                diff: { name, ...details }
+            });
 
-    return venueId;
+            return venueId;
+        })
+    );
+});
+
+export const requireVenue = Effect.fn('Core.requireVenue')(function* (communityId: string, venueId: string) {
+    const db = yield* Db;
+    const [row] = yield* db
+        .select({ id: venue.id, status: venue.status })
+        .from(venue)
+        .where(and(eq(venue.id, venueId), eq(venue.communityId, communityId)));
+
+    return isDefined(row) ? row : yield* ActionFailedError.make({ reason: 'venue not found in this community' });
 });
 
 export const updateVenue = Effect.fn('Core.updateVenue')(function* (input: {
@@ -128,29 +150,39 @@ export const updateVenue = Effect.fn('Core.updateVenue')(function* (input: {
         }
     }
 
-    const aliases = [...(isNotEmptyString(columns.name) ? [before.name] : []), ...(isNotEmptyString(alias) ? [alias] : [])];
+    const aliases = [...(isNotEmptyString(columns.name) ? [before.name] : []), ...(isNotEmptyString(alias) ? [alias] : [])]
+        .map(entry => normalizeVenueName(entry))
+        .filter(entry => isNotEmptyString(entry));
+    const status = isDefined(active) ? { status: active ? ('active' as const) : ('inactive' as const) } : {};
+    const name = tidyVenueName(columns.name ?? before.name);
 
-    if (isNotEmptyArray(aliases)) {
-        yield* db
-            .insert(venueAlias)
-            .values(aliases.map(entry => ({ venueId: before.id, aliasNorm: normalizeVenueName(entry) })))
-            .onConflictDoNothing();
+    if (!isNotEmptyString(name)) {
+        return yield* ActionFailedError.make({ reason: 'the venue has no name' });
     }
 
-    const status = isDefined(active) ? { status: active ? ('active' as const) : ('inactive' as const) } : {};
-    yield* db
-        .update(venue)
-        .set({ name: before.name, ...columns, ...status })
-        .where(eq(venue.id, before.id));
+    return yield* db.transaction(() =>
+        Effect.gen(function* () {
+            if (isNotEmptyArray(aliases)) {
+                yield* db
+                    .insert(venueAlias)
+                    .values(aliases.map(aliasNorm => ({ venueId: before.id, aliasNorm })))
+                    .onConflictDoNothing();
+            }
 
-    return yield* recordAudit({
-        communityId: input.communityId,
-        actorPersonId: input.actorPersonId,
-        action: 'venue.update',
-        entityType: 'venue',
-        entityId: before.id,
-        diff: { before: { name: before.name, address: before.address, status: before.status }, patch: input.patch }
-    });
+            yield* db
+                .update(venue)
+                .set({ ...columns, name, ...status })
+                .where(eq(venue.id, before.id));
+            yield* recordAudit({
+                communityId: input.communityId,
+                actorPersonId: input.actorPersonId,
+                action: 'venue.update',
+                entityType: 'venue',
+                entityId: before.id,
+                diff: { before: { name: before.name, address: before.address, status: before.status }, patch: input.patch }
+            });
+        })
+    );
 });
 
 export const learnVenuePin = Effect.fn('Core.learnVenuePin')(function* (input: {
@@ -162,13 +194,22 @@ export const learnVenuePin = Effect.fn('Core.learnVenuePin')(function* (input: {
     readonly lng: number;
 }) {
     const { communityId, actorPersonId, title, address, lat, lng } = input;
+    const db = yield* Db;
     const known = yield* findVenueByName(communityId, title);
 
     if (!isDefined(known)) {
         return yield* createVenue({ communityId, actorPersonId, name: title, address, lat, lng });
     }
 
-    yield* updateVenue({ communityId, actorPersonId, venueId: known.id, patch: { address, lat, lng } });
+    // A pin only completes a venue: another place can share the name, so known details are never replaced
+    yield* db
+        .update(venue)
+        .set({
+            address: sql`coalesce(${venue.address}, ${address})`,
+            lat: sql`coalesce(${venue.lat}, ${lat}::double precision)`,
+            lng: sql`coalesce(${venue.lng}, ${lng}::double precision)`
+        })
+        .where(eq(venue.id, known.id));
 
     return known.id;
 });

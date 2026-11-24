@@ -20,7 +20,7 @@ export const extractPlace = Effect.fn('Assistant.extractPlace')(function* (title
                 model: gateway(ASSISTANT_MODEL.gatewayId),
                 instructions,
                 messages: [{ role: 'user', content: title }],
-                abortSignal: AbortSignal.timeout(10_000),
+                abortSignal: AbortSignal.timeout(4000),
                 maxOutputTokens: 40,
                 providerOptions: { gateway: { models: [...ASSISTANT_MODEL.fallbackGatewayIds] } }
             })

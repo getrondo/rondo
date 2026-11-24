@@ -82,17 +82,9 @@ export const upsertTelegramUser = Effect.fn('Core.upsertTelegramUser')(function*
 
 export const ensureMembership = Effect.fn('Core.ensureMembership')(function* (communityId: string, personId: string) {
     const db = yield* Db;
-
     const joinedAt = yield* DateTime.nowAsDate;
 
-    yield* db
-        .insert(membership)
-        .values({ communityId, personId, joinedAt })
-        .onConflictDoUpdate({
-            target: [membership.communityId, membership.personId],
-            set: { status: 'active', leftAt: null },
-            setWhere: ne(membership.status, 'active')
-        });
+    yield* db.insert(membership).values({ communityId, personId, joinedAt }).onConflictDoNothing();
 });
 
 export const syncMember = Effect.fn('Core.syncMember')(function* (
@@ -102,15 +94,17 @@ export const syncMember = Effect.fn('Core.syncMember')(function* (
 ) {
     const db = yield* Db;
     const personId = yield* upsertTelegramUser(user);
-    yield* ensureMembership(communityId, personId);
+    const now = yield* DateTime.nowAsDate;
+    const leftAt = presence === 'active' ? null : now;
 
-    if (presence !== 'active') {
-        const leftAt = yield* DateTime.nowAsDate;
-        yield* db
-            .update(membership)
-            .set({ status: presence, leftAt })
-            .where(and(eq(membership.communityId, communityId), eq(membership.personId, personId)));
-    }
+    yield* db
+        .insert(membership)
+        .values({ communityId, personId, joinedAt: now, status: presence, leftAt })
+        .onConflictDoUpdate({
+            target: [membership.communityId, membership.personId],
+            set: { status: presence, leftAt },
+            setWhere: ne(membership.status, presence)
+        });
 
     return personId;
 });

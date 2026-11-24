@@ -25,7 +25,7 @@ export const attendanceCoverage = Effect.fn('Core.attendanceCoverage')(function*
     const [row] = yield* db
         .select({
             playedGames: count(),
-            gamesWithKnownPlayers: sql<number>`count(*) filter (where exists (select 1 from scheduling.attendance known where known.session_id = ${session.id}))::int`
+            gamesWithKnownPlayers: sql<number>`count(*) filter (where exists (select 1 from play.team_member known where known.session_id = ${session.id}))::int`
         })
         .from(session)
         .where(

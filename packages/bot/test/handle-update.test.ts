@@ -289,4 +289,36 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
             expect(members.some(row => row.tgUserId === 89n)).toBe(false);
         })
     );
+
+    it.effect('follows joins and kicks from member updates and ignores bots', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const group = { id: -100_800, type: 'supergroup' as const, title: 'Fourth' };
+            const { communityId } = yield* seedCommunity(seedConfig('presence-fc'));
+            yield* handleUpdate(message(owner, group, '/link presence-fc'));
+            const change = (id: number, status: 'member' | 'kicked', isBot = false) => {
+                const user = { id, is_bot: isBot, first_name: 'U' };
+                const member = status === 'kicked' ? { status, user, until_date: 0 } : { status, user };
+
+                return nextUpdate({
+                    chat_member: { chat: group, from: owner, date: 1, old_chat_member: { status: 'left', user }, new_chat_member: member }
+                });
+            };
+            yield* handleUpdate(change(301, 'member'));
+            yield* handleUpdate(change(302, 'member'));
+            yield* handleUpdate(change(302, 'kicked'));
+            yield* handleUpdate(change(303, 'member', true));
+            const rows = yield* db
+                .select({ id: telegramAccount.tgUserId, status: membership.status })
+                .from(membership)
+                .innerJoin(telegramAccount, eq(telegramAccount.personId, membership.personId))
+                .where(eq(membership.communityId, communityId))
+                .orderBy(telegramAccount.tgUserId);
+
+            expect(rows).toEqual([
+                { id: 301n, status: 'active' },
+                { id: 302n, status: 'removed' }
+            ]);
+        })
+    );
 });

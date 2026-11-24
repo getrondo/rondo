@@ -1,3 +1,5 @@
+![Rondo](docs/brand/readme-header.webp)
+
 # Rondo
 
 **The Telegram co-organizer for amateur football communities.**
