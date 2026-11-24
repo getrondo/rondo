@@ -1,7 +1,7 @@
 import { Db } from '@rondo/db/service/db.service';
 import * as Effect from 'effect/Effect';
 
-import { purgePreviousImport, upsertCommunity, upsertReference } from './load-community';
+import { assertUniqueVenueNames, purgePreviousImport, upsertCommunity, upsertReference } from './load-community';
 import { insertMoneyAndLeague } from './load-league';
 import { insertPeople } from './load-people';
 import { recordProvenance } from './load-provenance';
@@ -12,6 +12,8 @@ import type { ImportPlan } from '../extract/assemble-plan';
 
 export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (config: CommunityConfig, plan: ImportPlan, fileSha256: string) {
     const db = yield* Db;
+
+    yield* assertUniqueVenueNames(config);
 
     return yield* db.transaction(transaction =>
         Effect.gen(function* () {

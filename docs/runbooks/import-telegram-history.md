@@ -51,8 +51,8 @@ psql "$DATABASE_URL" -c "select analytics.refresh_all()"
 ```
 
 The import runs in one transaction. It replaces only the import-scoped facts of that community
-(sessions, fixtures and price rules with `source = 'import'`, plus ingest runs) and upserts the
-rest: venues by `(community_id, name)`, aliases by `(community_id, alias_norm)` and authors by
+(sessions and fixtures with `source = 'import'`, price rules with `note = 'import'`, plus ingest runs) and upserts the
+rest: venues by `(community_id, name)` (venue names in the config must be unique; an existing venue keeps its `kind`), aliases by `(community_id, alias_norm)` and authors by
 `(community_id, display_name)`. Re-running it on a newer export is safe: curated data (alias
 resolution and person links, manually added venues, bot-created sessions) is never overwritten, and
 persons are created only for aliases that did not exist yet. An export folder without any

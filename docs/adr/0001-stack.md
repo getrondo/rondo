@@ -22,7 +22,7 @@ program composed from `Layer`s; promises exist only at foreign boundaries.
 | Core library | `effect` 4.x: `Context.Service`, `Layer`, `Schema`, `Config`, `Schema.TaggedError`, `effect/FileSystem` |
 | Database | PostgreSQL 17, one schema per bounded context ([data model](../architecture/data-model.md)) |
 | Data access | Drizzle ORM 1.0 (`drizzle-orm/effect-postgres`) over `@effect/sql-pg`; queries are Effects; `Db` service in `@rondo/db` |
-| Migrations | `drizzle-kit generate` from the TypeScript schema, plus hand-written SQL migrations for invariants Drizzle can't express (exclusion constraints, deferred triggers, role grants, materialized views; row-level security arrives with the second tenant, E14) |
+| Migrations | `drizzle-kit generate` from the TypeScript schema, plus hand-written SQL migrations for invariants Drizzle can't express (exclusion constraints, deferred triggers, role grants, materialized views; row-level security arrives with the second tenant, no epic yet) |
 | Tests | Vitest 5 and `@effect/vitest`; integration tests run real SQL on in-process Postgres (PGlite served over the wire protocol with `@electric-sql/pglite-socket`), so CI needs no Docker; the PGlite test layer is exported from `@rondo/db/testing` |
 | Bot | grammY behind an Effect `Telegram` service (webhook mode); updates are decoded with `Schema` |
 | Durable work | Transactional outbox (`comms.outbox`) and Effect workers with `FOR UPDATE SKIP LOCKED`; Effect Workflow/Cluster with SQL storage is evaluated for long-lived timers (E04, E06) |

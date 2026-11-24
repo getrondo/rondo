@@ -6,13 +6,28 @@ ALTER TABLE "finance"."price_rule" ADD CONSTRAINT "price_rule_headcount_no_overl
 --> statement-breakpoint
 ALTER TABLE "finance"."price_rule" ADD CONSTRAINT "price_rule_default_no_overlap_ex" EXCLUDE USING gist ("community_id" WITH =, "scope" WITH =, (coalesce("scope_id", '00000000-0000-0000-0000-000000000000'::uuid)) WITH =, "applies_to" WITH =, "valid" WITH &&) WHERE ("headcount" IS NULL);
 --> statement-breakpoint
+ALTER TABLE "finance"."price_rule" ADD CONSTRAINT "price_rule_headcount_nonempty_ck" CHECK ("headcount" IS NULL OR NOT isempty("headcount"));
+--> statement-breakpoint
 CREATE FUNCTION "finance"."assert_txn_balanced"() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
     total bigint;
+    foreign_accounts int;
+    currencies int;
 BEGIN
-    SELECT coalesce(sum("amount_cents"), 0) INTO total FROM "finance"."ledger_entry" WHERE "txn_id" = NEW."txn_id";
+    SELECT coalesce(sum(e."amount_cents"), 0), count(*) FILTER (WHERE a."community_id" <> t."community_id"), count(DISTINCT a."currency")
+    INTO total, foreign_accounts, currencies
+    FROM "finance"."ledger_entry" e
+    JOIN "finance"."account" a ON a."id" = e."account_id"
+    JOIN "finance"."ledger_txn" t ON t."id" = e."txn_id"
+    WHERE e."txn_id" = NEW."txn_id";
     IF total <> 0 THEN
         RAISE EXCEPTION 'ledger transaction % is unbalanced by % cents', NEW."txn_id", total USING ERRCODE = 'check_violation';
+    END IF;
+    IF foreign_accounts > 0 THEN
+        RAISE EXCEPTION 'ledger transaction % posts to accounts of another community', NEW."txn_id" USING ERRCODE = 'check_violation';
+    END IF;
+    IF currencies > 1 THEN
+        RAISE EXCEPTION 'ledger transaction % mixes currencies', NEW."txn_id" USING ERRCODE = 'check_violation';
     END IF;
     RETURN NULL;
 END;

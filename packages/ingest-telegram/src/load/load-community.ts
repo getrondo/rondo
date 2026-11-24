@@ -1,4 +1,4 @@
-import { isNotEmptyArray } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { priceRule } from '@rondo/db/schema/finance.schema';
 import { fixture } from '@rondo/db/schema/league.schema';
 import { activity, community } from '@rondo/db/schema/org.schema';
@@ -9,9 +9,23 @@ import { venue } from '@rondo/db/schema/venue.schema';
 import { and, eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
+import { DuplicateVenueNameError } from '../error/duplicate-venue-name.error';
+
 import type { CommunityConfig } from '../config/community-config';
 import type { LoadContext, ReferenceIds } from '../interface/load-context.interface';
 import type { Transaction } from '../interface/transaction.type';
+
+export const assertUniqueVenueNames = (config: CommunityConfig): Effect.Effect<void, DuplicateVenueNameError> => {
+    const keysByName = new Map<string, string[]>();
+
+    for (const { name, key } of config.venues) {
+        keysByName.set(name, [...(keysByName.get(name) ?? []), key]);
+    }
+
+    const duplicate = keysByName.entries().find(([, keys]) => keys.length > 1);
+
+    return isDefined(duplicate) ? Effect.fail(DuplicateVenueNameError.make({ venueName: duplicate[0], keys: duplicate[1] })) : Effect.void;
+};
 
 export const purgePreviousImport = Effect.fn('IngestTelegram.purgePreviousImport')(function* (
     transaction: Transaction,
@@ -72,7 +86,6 @@ export const upsertReference = Effect.fn('IngestTelegram.upsertReference')(funct
               .onConflictDoUpdate({
                   target: [venue.communityId, venue.name],
                   set: {
-                      kind: sql`excluded.kind`,
                       district: sql`coalesce(excluded.district, ${venue.district})`,
                       lat: sql`coalesce(excluded.lat, ${venue.lat})`,
                       lng: sql`coalesce(excluded.lng, ${venue.lng})`,

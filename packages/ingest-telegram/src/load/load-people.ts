@@ -94,6 +94,7 @@ export const insertPeople = Effect.fn('IngestTelegram.insertPeople')(function* (
             .onConflictDoUpdate({
                 target: [telegramAuthor.communityId, telegramAuthor.displayName],
                 set: {
+                    personId: sql`coalesce(${telegramAuthor.personId}, excluded.person_id)`,
                     messageCount: sql`excluded.message_count`,
                     firstSeenAt: sql`excluded.first_seen_at`,
                     lastSeenAt: sql`excluded.last_seen_at`

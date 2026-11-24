@@ -9,13 +9,13 @@ PostgreSQL 17 is the single source of truth. The schema is code: `packages/db/sr
 | Principle                                  | How                                                                                                                                                                                                                                                            |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Bounded contexts** | One Postgres schema per context (`identity`, `org`, `venue`, `scheduling`, `play`, `finance`, `feedback`, `league`, `community`, `comms`, `ingest`, `audit`), plus `play_private` and `feedback_private` for admin-only data and `analytics` for read models. Cross-context references are FKs by id only; no cross-context writes outside the owning service. |
-| **Multi-tenant ready**                     | `community_id` sits on every aggregate root (child rows reach it through their parent). Row-level security is added together with the second tenant (E14); there is one community today, so none is enabled yet.                                                                                                      |
+| **Multi-tenant ready**                     | `community_id` sits on every aggregate root (child rows reach it through their parent). Row-level security is added together with the second tenant (no epic yet); there is one community today, so none is enabled yet.                                                                                                      |
 | **Time-ordered ids** | `uuid` v7 primary keys generated in the app (`uuid` v7), so ids are sortable, index-friendly and safe to expose; switch to `uuidv7()` defaults on PG 18. Telegram ids are stored as `bigint` natural keys alongside. |
 | **Time is explicit**                       | All instants are `timestamptz`; local wall-clock (Europe/Vienna) lives on the community. Intervals use `tstzrange` / `daterange` with **exclusion constraints** (no double-booking a field; no overlapping price rules).                                       |
 | **History is append-only**                 | State tables have a matching `*_event` table (signup transitions, session changes, rating updates). Facts are never overwritten: reliability, audit and analytics read the events.                                                                             |
 | **Money is double-entry**                  | `finance.ledger_entry` rows per transaction sum to zero (deferred constraint trigger). Integer cents, the currency lives on the `account`. No floats.                                                                                                                                 |
 | **Enums as types, vocabularies as tables** | Small closed sets are Postgres enums (`signup_status`). Community-extensible sets are tables (activities, team colours, award kinds).                                                                                                                          |
-| **Privacy by design** | Personal data is concentrated in `identity`; analytics use `person_id`. `person.anonymized_at` plus a scrub job implement GDPR erasure without breaking aggregates. Ratings, peer ratings and incident reports live in `play_private` / `feedback_private`, granted only to the `rondo_admin` role. Row-level tenant isolation is planned with the second tenant (E14). |
+| **Privacy by design** | Personal data is concentrated in `identity`; analytics use `person_id`. `person.anonymized_at` plus a scrub job implement GDPR erasure without breaking aggregates. Ratings, peer ratings and incident reports live in `play_private` / `feedback_private`, granted only to the `rondo_admin` role. Row-level tenant isolation is planned with the second tenant (no epic yet). |
 | **Provenance**                             | Every imported or derived row has `source` (`bot`, `import`, `manual`) and optional `ingest.source_ref_id`, so imported history can be re-run idempotently and told apart.                                                                                     |
 | **Integrations via outbox**                | Domain events are written to `comms.outbox` in the same transaction; workers deliver them (Telegram messages, notifications). This gives exactly-once business effects with at-least-once delivery.                                                            |
 
@@ -186,8 +186,8 @@ Planned for later epics: per-season reliability and streaks, session fill and wa
 
 1. No overlapping confirmed bookings per field (`EXCLUDE … tstzrange &&`).
 2. One signup per person per session.
-3. Ledger transactions balance to zero (deferred constraint trigger).
-4. Price rules don't overlap for the same scope, role and validity (`EXCLUDE … daterange &&`), checked separately among rules with a headcount range (where the ranges must not intersect) and among rules without one.
+3. Ledger transactions balance to zero, stay inside one community and use one currency (deferred constraint trigger).
+4. Price rules don't overlap for the same scope, role and validity (`EXCLUDE … daterange &&`), checked separately among rules with a headcount range (where the ranges must not intersect) and among rules without one; an empty headcount range is rejected.
 5. A team member belongs to at most one team per session (unique on `(session_id, person_id)` via a denormalized column).
 6. `session.moved_to_session_id` implies `status = 'moved'` (CHECK).
 7. Venue names are unique per community (the importer upserts venues by name).
@@ -197,7 +197,7 @@ Planned for later epics: per-season reliability and streaks, session fill and wa
 | Role | Can do |
 |---|---|
 | owner (migrations, importer) | Everything. Used only by migrations and the importer. |
-| `rondo_app` | CRUD on context schemas; insert-only on `audit`; read on `analytics`. Default privileges cover tables created by later migrations. Tenant isolation through RLS is planned with the second tenant (E14). |
+| `rondo_app` | CRUD on context schemas; insert-only on `audit`; read on `analytics`. Default privileges cover tables created by later migrations. Tenant isolation through RLS is planned with the second tenant (no epic yet). |
 | `rondo_admin` | `rondo_app` plus `play_private` and `feedback_private` (ratings, peer ratings, incidents), also through default privileges. |
 
 Append-only tables (`finance.ledger_entry`, `scheduling.signup_event`, `audit.log`) reject UPDATE and DELETE by trigger.

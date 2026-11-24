@@ -98,7 +98,7 @@ describe('line-ups', () => {
         expect(dateOf('Составы на 9 мая, North:')).toBe('2025-05-09');
         expect(dateOf('Составы на сегодня, North:')).toBe('2025-05-05');
         expect(dateOf('Составы, North:')).toBe('2025-05-05');
-        expect(dateOf('Составы на пятницу, North:')).toBe('2025-05-05');
+        expect(dateOf('Составы на пятницу, North:')).toBe('2025-05-09');
     });
 
     it('ignores messages with fewer than two teams', () => {
@@ -145,6 +145,20 @@ describe('league fixtures', () => {
                 fact.goalsAgainst
             ])
         ).toEqual([['Beta', 3, 1]]);
+    });
+
+    it('does not borrow a score from a following pairing of other teams', () => {
+        expect(fixtures(message(24, '2025-09-11T10:00:00Z', 'TFC - Alpha\nBravo - Charlie 3:1'))).toEqual([]);
+    });
+
+    it('reads a score line that repeats our team name as the score of the previous pairing', () => {
+        expect(
+            fixtures(message(25, '2025-09-11T10:00:00Z', 'TFC - Alpha\nTFC - 3:1')).map(fact => [
+                fact.opponent,
+                fact.goalsFor,
+                fact.goalsAgainst
+            ])
+        ).toEqual([['Alpha', 3, 1]]);
     });
 
     it('ignores messages from non-organizers', () => {

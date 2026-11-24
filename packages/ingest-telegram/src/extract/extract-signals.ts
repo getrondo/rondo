@@ -145,19 +145,29 @@ interface Pairing {
     readonly home: boolean;
 }
 
-const pairingOf = (line: string, isOurs: (side: string) => boolean): Option.Option<Pairing> =>
+const hasLetter = (side: string): boolean => /\p{L}/u.test(side);
+
+const parsePairing = (line: string): Option.Option<{ match: RegExpExecArray; left: string; right: string }> =>
     Option.fromNullishOr(pairingPattern.exec(line)).pipe(
-        Option.flatMap(match => {
-            const left = cleanTeam((match[1] ?? '').split(':').at(-1) ?? '');
-            const right = cleanTeam(match[2] ?? '');
+        Option.map(match => ({
+            match,
+            left: cleanTeam((match[1] ?? '').split(':').at(-1) ?? ''),
+            right: cleanTeam(match[2] ?? '')
+        })),
+        Option.filter(({ left, right }) => hasLetter(left) && hasLetter(right))
+    );
+
+const pairingOf = (line: string, isOurs: (side: string) => boolean): Option.Option<Pairing> =>
+    parsePairing(line).pipe(
+        Option.flatMap(({ match, left, right }) => {
             const home = isOurs(left);
 
             return home === isOurs(right) ? Option.none() : Option.some({ match, left, right, home });
         })
     );
 
-const untilNextPairing = (following: readonly string[], isOurs: (side: string) => boolean): readonly string[] => {
-    const next = following.findIndex(line => Option.isSome(pairingOf(line, isOurs)));
+const untilNextPairing = (following: readonly string[]): readonly string[] => {
+    const next = following.findIndex(line => Option.isSome(parsePairing(line)));
 
     return next === -1 ? following : following.slice(0, next);
 };
@@ -170,7 +180,7 @@ const fixtureFromLine = (
 ): Option.Option<FixtureFact> =>
     pairingOf(lines[index] ?? '', isOurs).pipe(
         Option.flatMap(({ match, left, right, home }) =>
-            scoreOf(match, untilNextPairing(lines.slice(index + 1, index + 4), isOurs)).pipe(
+            scoreOf(match, untilNextPairing(lines.slice(index + 1, index + 4))).pipe(
                 Option.map(({ goalsLeft, goalsRight }) => {
                     const ours = normalizeAlias(home ? left : right);
                     const squad =

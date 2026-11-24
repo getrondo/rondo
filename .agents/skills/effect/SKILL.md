@@ -26,7 +26,7 @@ Every effectful line is Effect. No Promise/async logic, `try`/`throw`, `new Prom
 - Concurrency and time: `Schedule`, `Effect.retry`/`repeat`, `Effect.timeout`, `Effect.sleep`, `Semaphore`, `FiberMap`/`FiberSet`, `Effect.acquireRelease`. No `Promise.race`, generation counters or boolean cancel flags.
 - Runtime edges: only `apps/*` entry points (bot boot, workers, importers CLI) run effects, via `Effect.runPromise`/`runFork` or `NodeRuntime.runMain`. Services never run effects.
 - Logging: `Effect.logDebug`/`logError` and `Effect.tapCause(Effect.logError)` at edges. Never `console.*`.
-- Tests: `@effect/vitest` with `it.effect` (and `it.layer` for shared layers). Never `async` test bodies or `runPromise` inside a test. Tests use PGlite (in-process Postgres) provided as a layer from `tests/test-kit`.
+- Tests: `@effect/vitest` with `it.effect` (and `it.layer` for shared layers). Never `async` test bodies or `runPromise` inside a test. Tests use PGlite (in-process Postgres) provided as a layer from `@rondo/db/testing`.
 
 ## Before finishing
 

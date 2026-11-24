@@ -16,7 +16,7 @@ const gkMarker = new RegExp(gkPattern, 'giu');
 const newcomerMarker = new RegExp(newcomerPattern, 'giu');
 const isGkText = new RegExp(gkPattern, 'iu');
 const isNewcomerText = new RegExp(newcomerPattern, 'iu');
-const statedDateConfidence = 0.9;
+const statedDateConfidence = 0.8;
 const noise = /^(?:может|возможно|опозда|придет|приедет|резерв|в резерве|мяч|манишк|оплата|по \d)/iu;
 
 const removeMarker = (text: string, marker: RegExp): string => {
