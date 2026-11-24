@@ -6,8 +6,9 @@ import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
-import { createSession, getSession } from '../src/sessions/session.service';
-import { announceSession, applyPollAnswer } from '../src/signups/signup.service';
+import { createSession } from '../src/sessions/session.service';
+import { publishPoll } from '../src/signups/publish-poll';
+import { applyPollAnswer } from '../src/signups/signup.service';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -28,8 +29,13 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
                 title: null,
                 actorPersonId: null
             });
-            const target = Option.getOrThrow(yield* getSession(sessionId));
-            yield* announceSession(target, { chatId: -100_123n, topicId: null }, null);
+            yield* publishPoll({
+                communityId,
+                group: { chatId: -100_123n, topicId: null },
+                note: null,
+                prepare: Effect.succeed(sessionId),
+                settle: () => Effect.void
+            });
             const [poll] = yield* db
                 .select({ pollId: telegramPoll.pollId })
                 .from(telegramPoll)

@@ -1,7 +1,8 @@
 import { isDefined } from '@rnw-community/shared';
 import { pendingAction } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq, lt } from 'drizzle-orm';
+import { TelegramApiError } from '@rondo/telegram/error/telegram-api.error';
+import { and, eq, isNull, lt } from 'drizzle-orm';
 import * as Cause from 'effect/Cause';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -48,6 +49,36 @@ export const proposeAction = Effect.fn('Core.proposeAction')(function* (input: {
     return row?.id ?? '';
 });
 
+const uncertainReason = 'the result is uncertain, check the group before you try again';
+
+const reasonOf = (failure: unknown): string => {
+    if (Schema.is(TelegramApiError)(failure)) {
+        return failure.isUncertain ? uncertainReason : `Telegram refused: ${failure.description}`;
+    }
+
+    return Schema.is(ActionFailedError)(failure) ? failure.reason : 'unexpected error';
+};
+
+const reportCutOff = Effect.fn('Core.reportCutOff')(function* (actionId: string, tgUserId: bigint) {
+    const db = yield* Db;
+    const [cutOff] = yield* db
+        .update(pendingAction)
+        .set({ status: 'failed', result: { reason: uncertainReason } })
+        .where(
+            and(
+                eq(pendingAction.id, actionId),
+                eq(pendingAction.requestedByTgUserId, tgUserId),
+                eq(pendingAction.status, 'confirmed'),
+                isNull(pendingAction.result)
+            )
+        )
+        .returning({ summary: pendingAction.summary });
+
+    return isDefined(cutOff)
+        ? ({ _tag: 'failed', summary: cutOff.summary, reason: uncertainReason } as const)
+        : ({ _tag: 'missing' } as const);
+});
+
 export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
     readonly actionId: string;
     readonly tgUserId: bigint;
@@ -70,7 +101,7 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
         .returning();
 
     if (!isDefined(claimed)) {
-        return { _tag: 'missing' } as const;
+        return yield* reportCutOff(input.actionId, input.tgUserId);
     }
 
     if (claimed.expiresAt < now) {
@@ -85,16 +116,17 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
 
     const action = yield* Schema.decodeUnknownEffect(ActionSchema)(claimed.payload).pipe(Effect.orDie);
     const context = yield* input.context(claimed.communityId);
-    const exit = yield* Effect.exit(runAdminAction(input.tgUserId, action, context));
+    const exit = yield* Effect.exit(
+        runAdminAction(input.tgUserId, action, context, result =>
+            db.update(pendingAction).set({ result }).where(eq(pendingAction.id, claimed.id))
+        )
+    );
 
     if (Exit.isSuccess(exit)) {
-        yield* db.update(pendingAction).set({ result: exit.value }).where(eq(pendingAction.id, claimed.id));
-
         return { _tag: 'done', summary: claimed.summary } as const;
     }
 
-    const failure = Cause.squash(exit.cause);
-    const reason = Schema.is(ActionFailedError)(failure) ? failure.reason : 'unexpected error';
+    const reason = reasonOf(Cause.squash(exit.cause));
     yield* Effect.logError('[action] failed', exit.cause);
     yield* db.update(pendingAction).set({ status: 'failed', result: { reason } }).where(eq(pendingAction.id, claimed.id));
 

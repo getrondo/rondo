@@ -1,6 +1,6 @@
 import { isDefined } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
-import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
@@ -12,48 +12,10 @@ import * as Option from 'effect/Option';
 
 import { primaryAccount } from '../identity/primary-account';
 import { syncMember, type TelegramUser } from '../identity/telegram-user';
-import { topicOptions } from '../utils/topic-options.util';
-
-import { pollFor } from './poll-for';
-
-import type { GroupTarget } from '../interface/group-target.interface';
-import type { SessionView } from '../sessions/session.model';
 
 type PollChoice = 'in' | 'gk' | 'out';
 
 const pollChoices: readonly PollChoice[] = ['in', 'gk', 'out'];
-
-export const announceSession = Effect.fn('Core.announceSession')(function* (
-    target: SessionView,
-    group: GroupTarget,
-    note: string | null | undefined
-) {
-    const { chatId } = group;
-    const db = yield* Db;
-    const telegram = yield* Telegram;
-    const poll = yield* pollFor(target.communityId, target, note);
-    const options = poll.answers.map(answer => ({ text: answer }));
-    const sent = yield* telegram.call('sendPoll', api =>
-        api.sendPoll(Number(chatId), poll.question, options, {
-            is_anonymous: false,
-            allows_multiple_answers: false,
-            ...topicOptions(group)
-        })
-    );
-
-    yield* db
-        .insert(telegramPoll)
-        .values({ pollId: sent.poll.id, chatId, messageId: sent.message_id, sessionId: target.id, options: ['in', 'out'] });
-    yield* db
-        .insert(messageRef)
-        .values({ chatId, messageId: sent.message_id, purpose: 'poll', entityType: 'session', entityId: target.id })
-        .onConflictDoNothing();
-    yield* telegram
-        .call('pinChatMessage', api => api.pinChatMessage(Number(chatId), sent.message_id, { disable_notification: true }))
-        .pipe(Effect.catch(error => Effect.logInfo('[poll] not pinned', error)));
-
-    return sent.message_id;
-});
 
 export interface PromotedPlayer {
     readonly personId: string;
@@ -156,7 +118,7 @@ const refreshFullness = Effect.fn('Core.refreshFullness')(function* (sessionId: 
 
 const closedStatuses = new Set<string>(['played', 'cancelled', 'moved']);
 
-const lockSession = Effect.fn('Core.lockSession')(function* (sessionId: string) {
+export const lockSession = Effect.fn('Core.lockSession')(function* (sessionId: string) {
     const db = yield* Db;
     const [row] = yield* db
         .select({ status: session.status, capacityMax: session.capacityMax })

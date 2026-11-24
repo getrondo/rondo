@@ -8,7 +8,8 @@ import { notifySessionCancelled, notifySessionChanged } from '../notify/notifier
 import { linkAlias, requireAlias, unlinkAlias } from '../people/alias-links.service';
 import { arePeopleOf, createPerson, mergePeople, renamePerson } from '../people/people.service';
 import { cancelSession, createSession, requireSession, updateSession } from '../sessions/session.service';
-import { announceSession, closePollsOf } from '../signups/signup.service';
+import { publishPoll } from '../signups/publish-poll';
+import { closePollsOf } from '../signups/signup.service';
 import { publishTeams, setSeedRating } from '../teams/team.service';
 import { createVenue, requireVenue, updateVenue } from '../venues/venue.service';
 
@@ -39,26 +40,20 @@ type ActionResult = Readonly<Record<string, string | number>>;
 
 const asResult = Effect.map((value: ActionResult): ActionResult => value);
 
-const executeAction = Effect.fn('Core.executeAction')(function* (action: Action, context: ActionContext) {
+const createFrom = (action: Extract<Action, { _tag: 'create_session' }>, { communityId, timezone, actorPersonId }: ActionContext) =>
+    createSession({ ...action, communityId, timezone, actorPersonId });
+
+const executeAction = Effect.fn('Core.executeAction')(function* (
+    action: Exclude<Action, { _tag: 'announce_session' }>,
+    context: ActionContext
+) {
     const { actorPersonId, communityId, groupLocale: locale } = context;
 
     switch (action._tag) {
         case 'create_session': {
-            return yield* Effect.gen(function* () {
-                if (action.announce) {
-                    yield* requireGroup(context);
-                }
+            const sessionId = yield* createFrom(action, context);
 
-                const sessionId = yield* createSession({ ...action, communityId, timezone: context.timezone, actorPersonId });
-
-                if (action.announce) {
-                    const created = yield* requireSession(communityId, sessionId);
-                    const group = yield* requireGroup(context);
-                    yield* announceSession(created, group, action.note);
-                }
-
-                return { sessionId };
-            }).pipe(asResult);
+            return { sessionId } satisfies ActionResult;
         }
         case 'update_session': {
             return yield* Effect.gen(function* () {
@@ -78,15 +73,6 @@ const executeAction = Effect.fn('Core.executeAction')(function* (action: Action,
                 yield* whenGroup(context, action.notify, group => notifySessionCancelled({ target, reason: action.reason, group, locale }));
 
                 return { sessionId: action.sessionId };
-            }).pipe(asResult);
-        }
-        case 'announce_session': {
-            return yield* Effect.gen(function* () {
-                const target = yield* requireSession(communityId, action.sessionId);
-                const group = yield* requireGroup(context);
-                const messageId = yield* announceSession(target, group, action.note);
-
-                return { messageId };
             }).pipe(asResult);
         }
         case 'publish_teams': {
@@ -198,12 +184,27 @@ export const requireActionScope = Effect.fn('Core.requireActionScope')(function*
     return action;
 });
 
-export const runAdminAction = Effect.fn('Core.runAdminAction')(function* (tgUserId: bigint, action: Action, context: ActionContext) {
+export const runAdminAction = Effect.fn('Core.runAdminAction')(function* <Failure, Requirements>(
+    tgUserId: bigint,
+    action: Action,
+    context: ActionContext,
+    settle: (result: ActionResult) => Effect.Effect<void, Failure, Requirements>
+) {
     if (!(yield* isAdminOf(tgUserId, context.communityId))) {
         return yield* ActionFailedError.make({ reason: 'not an admin any more' });
     }
 
     yield* requireActionScope(action, context.communityId);
 
-    return yield* executeAction(action, context);
+    if (action._tag === 'announce_session' || (action._tag === 'create_session' && action.announce)) {
+        const group = yield* requireGroup(context);
+        const prepare = action._tag === 'create_session' ? createFrom(action, context) : Effect.succeed(action.sessionId);
+
+        return yield* publishPoll({ communityId: context.communityId, group, note: action.note, prepare, settle });
+    }
+
+    const result = yield* executeAction(action, context);
+    yield* settle(result);
+
+    return result;
 });
