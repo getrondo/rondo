@@ -61,8 +61,11 @@ Fixtures, price rules and provenance of the import are replaced. Venues are upse
 Confirmed and undone links, manual line-up entries and manual attendance survive. Vote links are recomputed
 ([ADR-0003](../adr/0003-identity.md)). A fresh snapshot overwrites account names, usernames and membership.
 
-Run it outside game hours. The import holds the community lock, so live line-ups wait until it ends. On a local copy of
+Run it outside game hours. The import holds the community lock, so live line-ups and admin changes wait until it ends. On a local copy of
 production (20,078 messages, 405 games) one import takes about 5 seconds; over the network to Neon expect longer.
+
+The lock test needs two real sessions and is skipped without a local Postgres:
+`RONDO_TEST_DATABASE_URL=postgres://… pnpm -F @rondo/core test`.
 
 ### Rehearse first
 
