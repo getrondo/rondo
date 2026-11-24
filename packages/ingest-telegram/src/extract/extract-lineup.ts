@@ -149,9 +149,11 @@ export const nicknameOf = (raw: string, config: CommunityConfig): { readonly nic
 
 const escapeEmoji = (emoji: string): string => emoji.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
+const colorLabel = /^[^:\n]*?(?:ые|ие|і|i)\s*:/iu;
+
 const parseTeam = (rawSegment: string, context: RosterContext): LineupMember[] => {
     const segment = rawSegment.split(/\n\s*\n/u)[0] ?? '';
-    const firstLine = segment.replace(/^[^:\n]*?(?:ые|ие|і|i)\s*:/iu, '').split('\n')[0] ?? '';
+    const firstLine = segment.replace(colorLabel, '').split('\n')[0] ?? '';
 
     return attachLooseGuests(splitMembers(firstLine))
         .map(token => toMember(token, context))
@@ -184,6 +186,7 @@ const teamLinesOf = (text: string): TeamLine[] =>
     text.split('\n').flatMap(line => {
         const [, emoji, rest = ''] = teamLine.exec(line) ?? [];
         const names = rest
+            .replace(colorLabel, '')
             .split(/[,;]/u)
             .map(part => stripParentheses(part))
             .filter(part => /\p{L}|\+\s?\d/u.test(part));

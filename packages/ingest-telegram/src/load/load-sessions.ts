@@ -285,7 +285,7 @@ const replaceEntries = Effect.fn('IngestTelegram.replaceEntries')(function* (
 
     yield* insertMany([...entries, ...requests.entries], batch => transaction.insert(lineupEntry).values(batch));
     yield* markShared(context.communityId);
-    yield* syncSessionRoster([...new Set([...previous, ...entries].map(entry => entry.sessionId))]);
+    yield* syncSessionRoster([...new Set([...previous, ...entries].filter(entry => entry.teamOrdinal > 0).map(entry => entry.sessionId))]);
 
     return { entries: entries.length, unassigned: requests.unassigned };
 });

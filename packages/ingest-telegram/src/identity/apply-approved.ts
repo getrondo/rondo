@@ -24,7 +24,7 @@ export const applyApproved = Effect.fn('IngestTelegram.applyApproved')(function*
         resolvedBy: lineupEntry.resolvedBy
     };
     const approvals = yield* db
-        .select({ ...columns, approved: aliasLink.personId })
+        .select({ ...columns, approved: aliasLink.personId, kind: personAlias.kind })
         .from(lineupEntry)
         .innerJoin(session, eq(session.id, lineupEntry.sessionId))
         .innerJoin(
@@ -35,6 +35,7 @@ export const applyApproved = Effect.fn('IngestTelegram.applyApproved')(function*
                 sql`${aliasLink.during} @> ${session.localDate}`
             )
         )
+        .innerJoin(personAlias, eq(personAlias.id, aliasLink.aliasId))
         .where(and(inScope, notInArray(lineupEntry.resolvedBy, [...fixed])))
         .orderBy(
             sql`upper(${aliasLink.during}) - lower(${aliasLink.during}) nulls last`,
@@ -56,12 +57,21 @@ export const applyApproved = Effect.fn('IngestTelegram.applyApproved')(function*
     const playing = new Set(named.filter(row => isFixed.has(row.resolvedBy)).map(row => `${row.sessionId}|${row.personId}`));
     const pinned = new Map<string, (typeof approvals)[number]>();
 
+    const blocked = new Set<string>();
+
     for (const row of approvals) {
         const player = `${row.sessionId}|${row.approved}`;
 
-        if (!playing.has(player) && !pinned.has(row.id)) {
+        if (pinned.has(row.id) || blocked.has(row.id)) {
+            continue;
+        }
+
+        if (!playing.has(player)) {
             playing.add(player);
             pinned.set(row.id, row);
+        } else if (row.kind !== 'placeholder') {
+            // A wider approval of another player must not take the slot
+            blocked.add(row.id);
         }
     }
 

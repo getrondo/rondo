@@ -2,7 +2,7 @@ import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { aliasLink, person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { activity, community, membership, telegramChat } from '@rondo/db/schema/org.schema';
-import { importedPoll, messageRef, pollVote } from '@rondo/db/schema/platform.schema';
+import { importedPoll, messageRef, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session, sessionChange } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -1132,16 +1132,19 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
             const mentioned = messages.map(item => (item.id === 12 ? { ...item, text: `${item.text}, @Striker` } : item));
             const first = yield* load(slug, mentioned);
             const striker = yield* accountPerson(ids.striker);
-            yield* db.insert(aliasLink).values({
+            const other = yield* accountPerson(ids.other);
+            const row = {
                 communityId: first.communityId,
                 aliasId: first.alias('семен')?.id ?? '',
-                personId: striker,
-                during: '(,)',
-                method: 'owner_list',
-                status: 'approved'
-            });
+                method: 'owner_list' as const,
+                status: 'approved' as const
+            };
+            yield* db.insert(aliasLink).values([
+                { ...row, personId: striker, during: '[2025-05-02,2025-05-03)' },
+                { ...row, personId: other, during: '(,)' }
+            ]);
             yield* applyApproved(first.communityId);
-            const listed = yield* namedOn(first.communityId, '2025-05-02', [striker]);
+            const listed = yield* namedOn(first.communityId, '2025-05-02', [striker, other]);
 
             expect(listed).toEqual([{ raw: '@Striker', personId: striker, resolvedBy: 'handle' }]);
         })
@@ -1261,6 +1264,35 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
         })
     );
 
+    it.effect('keeps the attendance of a game whose only entries are guests from chat', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'chat-guest-fc';
+            const squadless = messages.filter(item => item.id !== 12);
+            const first = yield* load(slug, squadless);
+            const striker = yield* accountPerson(ids.striker);
+            const [game] = yield* db
+                .select()
+                .from(session)
+                .where(and(eq(session.communityId, first.communityId), eq(session.localDate, '2025-05-02')));
+            const sessionId = game?.id ?? '';
+            yield* db.insert(lineupEntry).values({
+                sessionId,
+                messageId: 5,
+                teamOrdinal: 0,
+                position: 1,
+                resolvedBy: 'guest',
+                isGuest: true,
+                guestOfPersonId: striker
+            });
+            yield* db.insert(attendance).values({ sessionId, personId: striker, outcome: 'attended', source: 'bot' });
+            yield* load(slug, squadless);
+            const kept = yield* db.select().from(attendance).where(eq(attendance.sessionId, sessionId));
+
+            expect(kept).toMatchObject([{ personId: striker, source: 'bot' }]);
+        })
+    );
+
     it.effect('never takes over polls of another community', () =>
         Effect.gen(function* () {
             const db = yield* Db;
@@ -1287,6 +1319,18 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
             const votesOnly = yield* Effect.flip(run('polls-away-fc'));
             const kept = yield* db.select().from(pollVote).where(ofHome);
 
+            yield* db.delete(pollVote).where(ofHome);
+            const [game] = yield* db.select().from(session).where(eq(session.communityId, first.communityId));
+            yield* db.insert(telegramPoll).values({
+                pollId: pollIdIn('polls-home-fc', 0),
+                chatId: -1n,
+                messageId: 1,
+                sessionId: game?.id ?? '',
+                options: ['in', 'out']
+            });
+            const botPoll = yield* Effect.flip(run('polls-away-fc'));
+
+            expect(botPoll).toMatchObject({ _tag: 'ForeignPollError' });
             expect(refused).toMatchObject({ _tag: 'ForeignPollError' });
             expect(refused).toHaveProperty('pollIds.length', games);
             expect(String(refused)).toContain(pollIdIn('polls-home-fc', 0));

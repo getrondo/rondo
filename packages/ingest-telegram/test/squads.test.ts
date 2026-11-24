@@ -69,6 +69,13 @@ describe('squads by structure', () => {
         expect(namesOf('Составы:\n🟢Я, Иван\n🔵Олег, Семён\n📌Форма: белая, синяя, чёрная')).toHaveLength(2);
     });
 
+    it('reads teams that are labelled with their colour', () => {
+        expect(namesOf('🟢Зелёные: Иван, Пётр, Олег, Марк\n🔵Синие: Семён, Павел, Глеб, Ян')).toEqual([
+            ['Иван', 'Пётр', 'Олег', 'Марк'],
+            ['Семён', 'Павел', 'Глеб', 'Ян']
+        ]);
+    });
+
     it('stops at a second list of the same players', () => {
         expect(
             namesOf('🟢Я, Иван, Пётр, Олег\n🔵Семён, Павел, Глеб, Ян\nДальше:\n🟢Я, Иван, Семён, Павел\n🔵Пётр, Олег, Глеб, Ян')

@@ -1,5 +1,5 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
-import { importedPoll, pollVote } from '@rondo/db/schema/platform.schema';
+import { importedPoll, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { and, eq, inArray, ne } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
@@ -78,6 +78,13 @@ export const insertVotes = Effect.fn('IngestTelegram.insertVotes')(function* (
                 .select({ pollId: importedPoll.pollId })
                 .from(importedPoll)
                 .where(and(inArray(importedPoll.pollId, [...known]), ne(importedPoll.communityId, communityId)))
+        )
+        .union(
+            transaction
+                .select({ pollId: telegramPoll.pollId })
+                .from(telegramPoll)
+                .innerJoin(session, eq(session.id, telegramPoll.sessionId))
+                .where(and(inArray(telegramPoll.pollId, [...known]), ne(session.communityId, communityId)))
         );
 
     if (isNotEmptyArray(foreign)) {
