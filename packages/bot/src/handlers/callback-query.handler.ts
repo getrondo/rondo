@@ -8,6 +8,7 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { actionContextFor } from '../context/action-context';
+import { failureText } from '../menu/failure-text';
 import { handleMenuTap } from '../menu/menu-callback.handler';
 import { menuText } from '../menu/menu-text';
 import { menuUserOf } from '../menu/menu-user';
@@ -57,7 +58,24 @@ const handleMenuCallback = Effect.fn('Bot.handleMenuCallback')(function* (query:
         return;
     }
 
-    const toast = yield* handleMenuTap(user.value, query.data ?? '', messageId);
+    const toast = yield* handleMenuTap(user.value, query.data ?? '', messageId).pipe(
+        Effect.catchTag('ActionFailedError', error =>
+            Effect.gen(function* () {
+                const { text: reason } = failureText(user.value.locale, error.reason, { where: '', isPrivate: false });
+                yield* showScreen(chatId, messageId, {
+                    text: reason,
+                    keyboard: [
+                        [
+                            { text: menuText(user.value.locale, 'games'), callback_data: 'm:gl' },
+                            { text: menuText(user.value.locale, 'home_'), callback_data: 'm:h' }
+                        ]
+                    ]
+                });
+
+                return Option.fromNullishOr(reason);
+            })
+        )
+    );
     yield* answer(Option.getOrUndefined(toast));
 });
 

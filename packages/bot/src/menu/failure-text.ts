@@ -34,6 +34,7 @@ export const failureText = (locale: Locale, reason: string, target: FailureTarge
         ],
         [/a poll answer is longer than (\d+)/u, ([, limit = '']) => menuText(locale, 'reasonAnswerLong', { limit })],
         [/poll template in the community settings is not valid/u, () => menuText(locale, 'reasonTemplate')],
+        [/the poll question is empty/u, () => menuText(locale, 'reasonEmptyQuestion')],
         [/no group is linked/u, () => menuText(locale, 'reasonNoGroup')],
         [/already has an open poll/u, () => menuText(locale, 'reasonOpenPoll')],
         [refused, () => menuText(locale, target.isPrivate ? 'reasonRefusedPrivate' : 'reasonRefused')],

@@ -89,6 +89,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the poll in the style of th
 
             expect(fits.question).toHaveLength(300);
             expect(refused.map(error => error._tag)).toEqual(Array.from({ length: 5 }, () => 'ActionFailedError'));
+            expect(JSON.stringify(refused.at(-1))).toContain('the poll question is empty');
         })
     );
 

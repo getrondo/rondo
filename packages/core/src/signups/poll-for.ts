@@ -70,7 +70,11 @@ export const pollFor = Effect.fn('Core.pollFor')(function* (communityId: string,
         .join('\n');
     const question = [fillQuestion(template.question, valuesOf(locale, game)), lastLine].filter(part => isNotEmptyString(part)).join('\n');
 
-    if (!isNotEmptyString(question) || question.length > questionLimit) {
+    if (!isNotEmptyString(question)) {
+        return yield* ActionFailedError.make({ reason: 'the poll question is empty' });
+    }
+
+    if (question.length > questionLimit) {
         return yield* ActionFailedError.make({
             reason: `the poll question has ${question.length} characters, 1 to ${questionLimit} are allowed`
         });
