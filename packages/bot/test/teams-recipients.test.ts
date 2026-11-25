@@ -2,20 +2,23 @@ import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { syncMember } from '@rondo/core/identity/telegram-user';
 import { loadDraft, markRosterChanged } from '@rondo/core/teams/team-draft.service';
+import { person, personAlias } from '@rondo/db/schema/identity.schema';
 import { teamDraft } from '@rondo/db/schema/play.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder, refusal } from '@rondo/telegram/testing/recording-telegram.layer';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { runTeamsTick } from '../src/jobs/teams.job';
 import { notifyRosterChange } from '../src/menu/teams/teams-notify';
 
+import { conversation, deliver } from './support/conversation';
 import { grantOrganizer } from './support/season';
 import { teamsGame } from './support/teams-game';
-import { menuTestLayer } from './support/test-layer';
+import { buttonData, draftTeams, openEditor } from './support/teams-screen';
+import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const blocked = new Set<number>();
 let messageId = 70_000;
@@ -100,6 +103,63 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect(versions.length).toBeGreaterThan(0);
             expect(versions.every(entry => entry.endsWith(`:${row?.version}:`))).toBe(true);
+        })
+    );
+
+    it.effect('takes a squad an organizer typed in the group as the draft, stops the proposal notes and posts that squad', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId, people } = yield* teamsGame('teams-typed-squad', {
+                groupChatId: -3409,
+                adminId: 349,
+                players: 8
+            });
+            const named = yield* db
+                .select({ personId: person.id, alias: person.displayName })
+                .from(person)
+                .where(inArray(person.id, people));
+            yield* db.insert(personAlias).values(
+                named.map(entry => ({
+                    personId: entry.personId,
+                    alias: entry.alias,
+                    communityId,
+                    aliasNorm: entry.alias.toLowerCase(),
+                    resolution: 'confirmed' as const
+                }))
+            );
+            yield* runTeamsTick(at('17:05'));
+            const [proposed] = yield* db.select().from(teamDraft).where(eq(teamDraft.sessionId, sessionId));
+            yield* deliver({
+                message: {
+                    message_id: 9100,
+                    date: Math.floor(at('17:10').getTime() / 1000),
+                    chat: { id: -3409, type: 'supergroup', title: 'Games' },
+                    from: { id: 349, is_bot: false, first_name: 'Admin 349' },
+                    text: 'Склади: Пт 27.11 19:00\n\n🔴 Червоні · 4\nAndriy\nBohdan\nVasyl\nHryhoriy\n\n🔵 Сині · 4\nDmytro\nYevhen\nZakhar\nIvan'
+                }
+            });
+            const [typed] = yield* db.select().from(teamDraft).where(eq(teamDraft.sessionId, sessionId));
+            const admin = conversation(recorder, adminNumbered(349));
+            yield* openEditor(admin);
+            const { teams } = yield* draftTeams(sessionId);
+            const personId = yield* syncMember(communityId, { id: 34_999n, firstName: 'Later' }, 'active');
+            yield* db.insert(signup).values({ sessionId, personId, status: 'in' });
+            yield* markRosterChanged(sessionId, at('17:20'));
+            const noted = yield* notifyRosterChange(sessionId, at('17:30'));
+            yield* admin.press(buttonData(admin.screen(), '👌 Готово'));
+            yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
+            yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
+            const posted = String(reached(-3409).at(-1)?.payload.text);
+            const red = posted.split('\n\n').find(block => block.startsWith('🔴')) ?? '';
+
+            expect(typed?.version).toBe((proposed?.version ?? 0) + 1);
+            expect(typed?.proposedAt).toBeNull();
+            expect(teams.map(members => members.toSorted())).toEqual([
+                ['Andriy', 'Bohdan', 'Hryhoriy', 'Vasyl'],
+                ['Dmytro', 'Ivan', 'Yevhen', 'Zakhar']
+            ]);
+            expect(noted).toBe(false);
+            expect(['Andriy', 'Bohdan', 'Vasyl', 'Hryhoriy'].every(name => red.includes(name))).toBe(true);
         })
     );
 });

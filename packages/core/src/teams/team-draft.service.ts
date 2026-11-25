@@ -286,6 +286,29 @@ export const prepareProposal = Effect.fn('Core.prepareProposal')(function* (inpu
     return Option.getOrElse(saved, () => row);
 });
 
+// A squad posted by hand replaces the draft: the bot's proposal and its notes are over, old screens go stale
+export const reseedDraft = Effect.fn('Core.reseedDraft')(function* (communityId: string, sessionId: string) {
+    const db = yield* Db;
+    const found = yield* loadDraft(sessionId);
+    const inputs = yield* loadTeamInputs(communityId, sessionId);
+    const stored = yield* storedSquad(sessionId);
+    const seeded = seededState(inputs, stored);
+
+    if (Option.isNone(found) || !isDefined(seeded)) {
+        return;
+    }
+
+    yield* db
+        .update(teamDraft)
+        .set({
+            state: yield* Schema.encodeEffect(DraftStateSchema)(seeded).pipe(Effect.orDie),
+            version: found.value.version + 1,
+            proposedAt: null,
+            publishedAt: null
+        })
+        .where(eq(teamDraft.sessionId, sessionId));
+});
+
 export const markRosterChanged = Effect.fn('Core.markRosterChanged')(function* (sessionId: string, now: Date) {
     const db = yield* Db;
 
