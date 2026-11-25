@@ -3,7 +3,7 @@ import { person } from '@rondo/db/schema/identity.schema';
 import { pendingAction, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, count, eq, inArray, isNull, ne, notExists, sql } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, ne, notExists, notInArray, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -308,7 +308,7 @@ export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function*
         .where(
             and(
                 eq(pendingAction.kind, 'close_poll'),
-                ne(pendingAction.status, 'failed'),
+                notInArray(pendingAction.status, ['failed', 'expired']),
                 sql`${pendingAction.payload} ->> 'sessionId' = ${session.id}::text`
             )
         );

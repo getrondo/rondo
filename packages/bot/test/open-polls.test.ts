@@ -110,6 +110,23 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         })
     );
 
+    it.effect('is offered again by the nightly job when the offer ran out without an answer', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { approver, sessionId } = yield* posted('open-ran-out', 4691, -46_911);
+            yield* switchOff(-46_911);
+            yield* setStatus(sessionId, 'played');
+            yield* runMaintenance(night);
+            const told = approver.screen();
+            yield* db.update(pendingAction).set({ status: 'expired' }).where(eq(pendingAction.kind, 'close_poll'));
+            yield* runMaintenance(night);
+            const again = approver.screen();
+
+            expect(again.id).not.toBe(told.id);
+            expect(labelsOf(again)).toEqual([closeButton]);
+        })
+    );
+
     it.effect('is told without a button for a group that is not linked any more, and to the owners when there is no approver', () =>
         Effect.gen(function* () {
             const db = yield* Db;

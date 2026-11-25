@@ -88,7 +88,12 @@ export const offerClosure = Effect.fn('Bot.offerClosure')(function* (sessionId: 
 
         const button = { text: menuText(locale, isDeletion ? 'openPollDelete' : 'openPollClose'), callback_data: `act:${actionId}:y` };
 
-        if (yield* sendTo(tgUserId, locale, () => ({ text: textIn(locale), keyboard: [[button]] }))) {
+        // An offer that was cut off on its way is free again
+        const isDelivered = yield* sendTo(tgUserId, locale, () => ({ text: textIn(locale), keyboard: [[button]] })).pipe(
+            Effect.onError(() => closeUnheard(actionId).pipe(Effect.ignore))
+        );
+
+        if (isDelivered) {
             return;
         }
 
