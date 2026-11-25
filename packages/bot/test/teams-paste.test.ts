@@ -154,13 +154,17 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* openEditor(admin);
             yield* admin.press(buttonData(admin.screen(), '↩️'));
             const undone = yield* draftTeams(sessionId);
-            const locked = undone.teams[0]?.[0] ?? '';
+            yield* admin.press(buttonData(admin.screen(), '⚖️ Розставити нових'));
+            const placed = yield* draftTeams(sessionId);
+            const locked = placed.teams[1]?.[0] ?? '';
             yield* admin.press(playerData(admin.screen(), locked));
             yield* admin.press(buttonData(admin.screen(), '🔒'));
             const variants = [];
 
-            for (const label of ['2️⃣', '3️⃣']) {
-                yield* admin.press(buttonData(admin.screen(), label));
+            for (const label of ['2️⃣']) {
+                const shown = admin.screen();
+                expect(shown.buttons.flat().map(button => button.text)).toContain(label);
+                yield* admin.press(buttonData(shown, label));
                 variants.push(yield* draftTeams(sessionId));
             }
 
@@ -170,7 +174,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             }
 
             for (const shown of variants) {
-                expect(shown.teams[0]).toContain(locked);
+                expect(shown.teams[1]).toContain(locked);
             }
         })
     );
