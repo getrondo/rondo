@@ -9,6 +9,7 @@ import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
 import { failureOf, type ActionFailure } from '../error/action-failed.error';
+import { isClosed } from '../sessions/session.model';
 import { topicOptions } from '../utils/topic-options.util';
 
 import { ownPublish } from './publish-claim';
@@ -18,7 +19,6 @@ import type { DeliveryOutcome, PlannedDelivery } from './interface/publish.inter
 const notModified = /message is not modified/iu;
 const notFound = /message to edit not found/iu;
 const htmlOptions = { parse_mode: 'HTML' as const, link_preview_options: { is_disabled: true } };
-const closedStatuses = new Set(['cancelled', 'played', 'moved']);
 
 export interface Claim {
     readonly delivery: PlannedDelivery;
@@ -29,7 +29,7 @@ export const isGameOpen = Effect.fn('Core.isGameOpenForLineup')(function* (sessi
     const db = yield* Db;
     const [game] = yield* db.select({ status: session.status }).from(session).where(eq(session.id, sessionId));
 
-    return isDefined(game) && !closedStatuses.has(game.status);
+    return isDefined(game) && !isClosed(game.status);
 });
 
 const sendOne = (delivery: PlannedDelivery) =>
@@ -123,8 +123,8 @@ export const deliverOne = Effect.fn('Core.deliverLineup')(function* <Failure, Re
             const isKept = status === 'refused' && isDefined(delivery.messageId) && !isGone;
 
             // A refused send as a new message keeps the id of the message that is still in the group
-            return Effect.succeed(
-                answered({ status: isKept ? 'sent' : status, ...(isGone ? { messageId: null } : {}) }, outcome(status, failure))
+            return Effect.logWarning('[teams] line-up not delivered', error.description).pipe(
+                Effect.as(answered({ status: isKept ? 'sent' : status, ...(isGone ? { messageId: null } : {}) }, outcome(status, failure)))
             );
         })
     );

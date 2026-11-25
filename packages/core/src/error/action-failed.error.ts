@@ -44,6 +44,7 @@ const ActionFailureSchema = Schema.Union([
             'squad_changed',
             'team_not_found',
             'teams_unsaved',
+            'telegram_refused',
             'time_passed',
             'unexpected',
             'venue_exists',
@@ -55,8 +56,7 @@ const ActionFailureSchema = Schema.Union([
     }),
     Schema.Struct({ code: Schema.Literal('answer_too_long'), limit: Schema.Int }),
     Schema.Struct({ code: Schema.Literal('game_exists'), sessionId: Schema.String }),
-    Schema.Struct({ code: Schema.Literal('poll_too_long'), count: Schema.Int, limit: Schema.Int }),
-    Schema.Struct({ code: Schema.Literal('telegram_refused'), description: Schema.String })
+    Schema.Struct({ code: Schema.Literal('poll_too_long'), count: Schema.Int, limit: Schema.Int })
 ]);
 
 export type ActionFailure = typeof ActionFailureSchema.Type;
@@ -71,7 +71,7 @@ export class ActionFailedError extends Schema.TaggedError<ActionFailedError, { r
 
 export const failureOf = (error: unknown): ActionFailure => {
     if (Schema.is(TelegramApiError)(error)) {
-        return error.isUncertain ? { code: 'result_uncertain' } : { code: 'telegram_refused', description: error.description };
+        return error.isUncertain ? { code: 'result_uncertain' } : { code: 'telegram_refused' };
     }
 
     return Schema.is(ActionFailedError)(error) ? error.failure : { code: 'unexpected' };

@@ -1,5 +1,9 @@
 export type SessionStatus = 'draft' | 'open' | 'full' | 'locked' | 'played' | 'cancelled' | 'moved';
 
+export const closedStatuses = ['played', 'cancelled', 'moved'] as const satisfies readonly SessionStatus[];
+
+export const isClosed = (status: SessionStatus): boolean => closedStatuses.some(closed => closed === status);
+
 export type CancelReason = 'weather' | 'low_turnout' | 'venue' | 'holiday' | 'organizer' | 'other';
 
 export interface SessionView {

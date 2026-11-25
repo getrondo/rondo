@@ -13,8 +13,7 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { addMillis } from '../utils/add-millis.util';
 
 import { gameDurationMinutes, instantOf, localTimeOf } from './local-time';
-
-import type { CancelReason, SessionPatch, SessionView } from './session.model';
+import { closedStatuses, type CancelReason, type SessionPatch, type SessionView } from './session.model';
 
 const selection = {
     id: session.id,
@@ -205,7 +204,7 @@ export const cancelSession = Effect.fn('Core.cancelSession')(function* (
             const cancelled = yield* db
                 .update(session)
                 .set({ status: 'cancelled', cancelReason: reason })
-                .where(and(eq(session.id, target.id), notInArray(session.status, ['played', 'cancelled', 'moved'])))
+                .where(and(eq(session.id, target.id), notInArray(session.status, [...closedStatuses])))
                 .returning({ id: session.id });
 
             if (!isNotEmptyArray(cancelled)) {

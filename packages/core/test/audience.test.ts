@@ -118,13 +118,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('one game, one poll, several
             const audience = yield* audienceOf(sessionId);
 
             expect(noPoll).toMatchObject({ _tag: 'failed', failure: { code: 'no_open_poll' } });
-            expect(refused).toMatchObject({
-                _tag: 'failed',
-                failure: {
-                    code: 'telegram_refused',
-                    description: "Call to 'forwardMessage' failed! (400: Bad Request: chat not found)"
-                }
-            });
+            expect(refused).toEqual(expect.objectContaining({ _tag: 'failed', failure: { code: 'telegram_refused' } }));
             expect(recorder.calls.slice(start).filter(call => call.method === 'sendPoll')).toHaveLength(0);
             expect(stranger).toMatchObject({ _tag: 'failed', failure: { code: 'chat_not_linked' } });
             expect(audience.map(target => target.chatId)).toEqual([BigInt(main)]);

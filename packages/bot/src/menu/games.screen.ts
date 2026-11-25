@@ -3,6 +3,7 @@ import { linkedChatsOf } from '@rondo/core/community/community.repository';
 import { countOf, formatSessionLabel } from '@rondo/core/i18n/messages';
 import { hasOpenPoll } from '@rondo/core/menu/game-history.repository';
 import { hasOnlyAdminVotes, isDeletableSession } from '@rondo/core/sessions/delete-session';
+import { isClosed, type SessionView } from '@rondo/core/sessions/session.model';
 import { listSessions, requireSession } from '@rondo/core/sessions/session.service';
 import { audienceOf } from '@rondo/core/signups/audience';
 import { unknownForwardsOf } from '@rondo/core/signups/forward-poll';
@@ -25,7 +26,6 @@ import { teamsData } from './teams/teams-callback';
 
 import type { MenuButton, MenuUser, Screen } from './screen.interface';
 import type { Locale } from '@rondo/core/i18n/locale';
-import type { SessionView } from '@rondo/core/sessions/session.model';
 
 const pastShown = 5;
 const namesPerPage = 8;
@@ -210,7 +210,7 @@ const countLine = (user: MenuUser, game: SessionView, signedLine: string, signed
     }
 
     const free =
-        isDefined(game.capacityMax) && !['cancelled', 'played', 'moved'].includes(game.status)
+        isDefined(game.capacityMax) && !isClosed(game.status)
             ? [menuText(user.locale, 'free', { free: Math.max(0, game.capacityMax - signed) })]
             : [];
 

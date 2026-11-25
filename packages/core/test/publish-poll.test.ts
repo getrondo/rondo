@@ -92,7 +92,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             const { outcome, status } = yield* failing('sendPoll', refused, confirm(communityId, createAction));
 
             expect(outcome._tag).toBe('failed');
-            expect(reasonIn(outcome)).toContain('not enough rights to send polls');
+            expect(reasonIn(outcome)).toBe('{"code":"telegram_refused"}');
             expect(status).toBe('failed');
             expect(yield* gamesOf(communityId)).toEqual([]);
         })
