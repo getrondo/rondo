@@ -168,8 +168,9 @@ without the bot still arrive as poll answers with public voters.
 | 155 | AUDIENCE | Supergroup move keeps the game's messages | Posted poll with a forward claim, then migrate_to_chat_id | — | — | Poll, message refs and claims move to the new id in one transaction | update | `moves the polls, copies and forward claims of a group that became a supergroup in one go` |
 | 156 | AUDIENCE | Resend button used once | Unknown forward, resend times out, the old button tapped again, then the new one | Forward only from the current button | Old button refused with the warning; new one sends | Claim generation moves on | update | `sends again only once per resend button, even when the old button is tapped after another unknown result` |
 | 157 | SEND SAFETY | Resend at once | Eight taps of one resend button at the same moment (Postgres) | One forward | — | Generation moves once | service | `sends a retried forward once when its button is tapped many times at once` |
-| 158 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 159 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 160 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 161 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 162 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 158 | SEND SAFETY | Poll of an existing game after its kickoff | 💾 today 18:30, card 📣 at 18:20, ✅ at 18:35 | Nothing | «Час гри вже минув…» | — | update | `checks the stored kickoff again before posting the poll of an existing game` |
+| 159 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 160 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 161 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 162 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 163 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |

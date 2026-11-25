@@ -279,6 +279,12 @@ const plannedKickoff = Effect.fn('Core.plannedKickoff')(function* (action: Actio
         return Option.some({ localDate: action.localDate, localTime: action.localTime });
     }
 
+    if (action._tag === 'announce_session') {
+        const stored = yield* requireSession(communityId, action.sessionId);
+
+        return Option.some({ localDate: stored.localDate, localTime: stored.localTime });
+    }
+
     if (action._tag !== 'update_session' || (!isDefined(action.localDate) && !isDefined(action.localTime))) {
         return Option.none<{ readonly localDate: string; readonly localTime: string }>();
     }

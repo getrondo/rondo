@@ -2,8 +2,8 @@ import { expect, layer } from '@effect/vitest';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import * as Effect from 'effect/Effect';
 
-import { conversation, pollsTo } from './support/conversation';
-import { advanceNow } from './support/fixed-clock';
+import { conversation, pollsTo, walkManual } from './support/conversation';
+import { advanceNow, setNow } from './support/fixed-clock';
 import { gamesOn, grantOrganizer, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
@@ -51,6 +51,24 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(today).toEqual([]);
             expect(spring).toEqual([]);
             expect(pollsTo(recorder, -27_001)).toEqual([]);
+        })
+    );
+
+    it.effect('checks the stored kickoff again before posting the poll of an existing game', () =>
+        Effect.gen(function* () {
+            yield* seedSeason('r4-announce-kickoff', { groupChatId: -27_011, adminId: 2711 });
+            const admin = conversation(recorder, adminNumbered(2711));
+            yield* admin.type('/newgame');
+            yield* walkManual(admin, ['🛠 З нуля', 'Сьогодні 26.11', 'Park Field', '18:30', '👥 18', '💾 Зберегти без опитування']);
+            yield* setNow(Date.parse('2026-11-26T17:20:00Z'));
+            yield* admin.type('/games');
+            yield* admin.tap('Чт 26.11 18:30');
+            yield* admin.tap('📣 Надіслати в «Games»');
+            yield* advanceNow(15 * 60_000);
+            yield* admin.tap('✅ Надіслати в «Games»');
+
+            expect(pollsTo(recorder, -27_011)).toEqual([]);
+            expect(admin.screen().text.split('\n')[0]).toBe('⚠️ Час гри вже минув, нічого не надіслано. Обери інший час або день.');
         })
     );
 });
