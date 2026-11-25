@@ -1,5 +1,5 @@
 import { expect, layer } from '@effect/vitest';
-import { isEmptyString } from '@rnw-community/shared';
+import { isDefined, isEmptyString } from '@rnw-community/shared';
 import { runMigrations } from '@rondo/db/migration/migrate.effect';
 import { telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
@@ -15,7 +15,7 @@ import * as Option from 'effect/Option';
 import { Access } from '../src/access/admin-access';
 import { describeAction } from '../src/actions/describe-action';
 import { decideAction, proposeAction } from '../src/actions/pending-action.service';
-import { consumeAdminState, saveAdminState, takeAwaiting } from '../src/menu/admin-state.repository';
+import { clearAdminState, consumeAdminState, replaceAdminState, saveAdminState, takeAwaiting } from '../src/menu/admin-state.repository';
 import { deleteSession } from '../src/sessions/delete-session';
 import { createSession } from '../src/sessions/session.service';
 import { forwardPoll } from '../src/signups/forward-poll';
@@ -184,6 +184,30 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
 
             expect(outcomes.filter(outcome => outcome._tag === 'Success')).toHaveLength(1);
             expect(forwards).toHaveLength(1);
+        })
+    );
+
+    it.effect.skipIf(withoutPostgres)('lands one of many writes over the same loaded draft and never hands a revision out twice', () =>
+        Effect.gen(function* () {
+            const { communityId } = yield* seedCommunity(seedConfig(`race-draft-${unique()}`));
+            const tgUserId = BigInt(Math.floor(performance.now() * 10));
+            const state = { tgUserId, communityId, messageId: 1, awaiting: null, now };
+            const loaded = yield* saveAdminState({ ...state, draft: { step: 0 } });
+            const writes = yield* Effect.all(
+                Array.from({ length: racers }, (_, index) => replaceAdminState({ ...state, draft: { step: index + 1 } }, loaded.revision)),
+                { concurrency: 'unbounded' }
+            );
+            const churn = yield* Effect.all(
+                Array.from({ length: racers }, (_, index) =>
+                    index % 2 === 0 ? saveAdminState({ ...state, draft: { step: index } }) : clearAdminState(tgUserId).pipe(Effect.as(null))
+                ),
+                { concurrency: 'unbounded' }
+            );
+            const revisions = churn.filter(row => isDefined(row)).map(row => row.revision);
+
+            expect(writes.filter(entry => Option.isSome(entry))).toHaveLength(1);
+            expect(new Set(revisions).size).toBe(revisions.length);
+            expect(revisions.every(revision => revision > loaded.revision)).toBe(true);
         })
     );
 });
