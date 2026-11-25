@@ -1,13 +1,14 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
-import { pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { pendingAction, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, count, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, ne, notExists, notInArray, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
+import { ActionFailedError } from '../error/action-failed.error';
 import { primaryAccount } from '../identity/primary-account';
 import { syncMember, type TelegramUser } from '../identity/telegram-user';
 import { closedStatuses, isClosed } from '../sessions/session.model';
@@ -16,7 +17,7 @@ import { writeToChat, type Approval } from '../telegram/write-to-chat';
 import { isSettledPoll } from '../utils/is-settled-poll.util';
 
 import { closureApproval } from './closure-approval';
-import { pollChatsOf, titlesOfChats } from './poll-chats';
+import { openPollOf, pollChatsOf, titlesOfChats } from './poll-chats';
 
 type PollChoice = 'in' | 'gk' | 'out';
 
@@ -287,16 +288,45 @@ export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId:
     return yield* titlesOfChats(chatIds.map(chatId => `${chatId}`));
 });
 
-export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function* () {
+export const requirePollClosed = Effect.fn('Core.requirePollClosed')(function* (sessionId: string, approval: Approval) {
+    yield* closePollsOf(sessionId, approval);
+    const open = yield* openPollOf(sessionId);
+
+    if (Option.isSome(open)) {
+        return yield* ActionFailedError.make({ failure: { code: 'poll_not_closed' } });
+    }
+
+    return sessionId;
+});
+
+// The games whose poll the gate kept open, as far as the time reached. Once the approver has the button, only a tap closes it
+export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function* (budgetMs: number) {
     const db = yield* Db;
+    const told = db
+        .select({ id: pendingAction.id })
+        .from(pendingAction)
+        .where(
+            and(
+                eq(pendingAction.kind, 'close_poll'),
+                notInArray(pendingAction.status, ['failed', 'expired']),
+                sql`${pendingAction.payload} ->> 'sessionId' = ${session.id}::text`
+            )
+        );
     const games = yield* db
         .selectDistinct({ sessionId: telegramPoll.sessionId })
         .from(telegramPoll)
         .innerJoin(session, eq(session.id, telegramPoll.sessionId))
-        .where(and(isNull(telegramPoll.closedAt), inArray(session.status, closedStatuses)));
+        .where(and(isNull(telegramPoll.closedAt), inArray(session.status, closedStatuses), notExists(told)))
+        .orderBy(asc(telegramPoll.sessionId));
+    const left: string[] = [];
 
-    for (const { sessionId } of games) {
-        const approval = yield* closureApproval(sessionId);
-        yield* closePollsOf(sessionId, approval);
-    }
+    yield* Effect.gen(function* () {
+        for (const { sessionId } of games) {
+            const approval = yield* closureApproval(sessionId);
+            const kept = yield* closePollsOf(sessionId, approval);
+            left.push(...(isNotEmptyString(kept) ? [sessionId] : []));
+        }
+    }).pipe(Effect.timeoutOption(budgetMs));
+
+    return left;
 });

@@ -204,7 +204,8 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('settings of the groups', it
             ];
             const foreign = yield* loadGroups({ slug, approverTgUserId: 8842, chats }).pipe(Effect.flip);
             yield* loadGroups({ slug, approverTgUserId: 8841, chats });
-            const link = (chatId: bigint) => linkChat({ communityId, chatId, title: `Real ${chatId}`, actorPersonId: null });
+            const link = (chatId: bigint) =>
+                linkChat({ communityId, chatId, title: `Real ${chatId}`, type: 'supergroup', actorPersonId: null });
             const unknown = yield* link(-8849n).pipe(Effect.flip);
             yield* link(-8842n);
             const [notLive] = yield* db.select({ since: community.liveSince }).from(community).where(eq(community.id, communityId));

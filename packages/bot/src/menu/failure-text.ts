@@ -49,6 +49,7 @@ const keys: Readonly<Record<ActionFailure['code'], MenuKey>> = {
     place_gone: 'placeGone',
     poll_already_in_chat: 'reasonPollAlreadyInChat',
     poll_empty: 'reasonEmptyQuestion',
+    poll_left_open: 'reasonPollLeftOpen',
     poll_not_closed: 'reasonPollOpen',
     poll_open: 'reasonOpenPoll',
     poll_template_invalid: 'reasonTemplate',

@@ -13,13 +13,13 @@ import { actionContextFor } from '../context/action-context';
 import { failureText, type FailureTarget } from './failure-text';
 import { askApprover, noteOutcome, staysOpen } from './groups/approval';
 
-import type { MenuUser } from './screen.interface';
+import type { MenuButton, MenuUser } from './screen.interface';
 import type { Action } from '@rondo/core/actions/action.model';
 import type { ActionFailure } from '@rondo/core/error/action-failed.error';
 
 type ConfirmedOutcome =
     | { readonly _tag: 'done'; readonly sessionId: string | null; readonly note: string }
-    | { readonly _tag: 'asked'; readonly text: string }
+    | { readonly _tag: 'asked'; readonly text: string; readonly rows: MenuButton[][] }
     | { readonly _tag: 'failed'; readonly text: string; readonly uncertain: boolean; readonly failure: ActionFailure };
 
 export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (
@@ -38,6 +38,8 @@ export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (
         now: user.now
     });
 
+    yield* noteOutcome(outcome, { actionId, decidedBy: user.tgUserId, isEdited: false });
+
     if (outcome._tag === 'done') {
         const [row] = yield* db.select({ result: pendingAction.result }).from(pendingAction).where(eq(pendingAction.id, actionId));
         const result = row?.result;
@@ -51,10 +53,9 @@ export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (
     }
 
     if (outcome._tag === 'awaiting') {
-        return { _tag: 'asked', text: yield* askApprover(outcome.request, user.locale) } satisfies ConfirmedOutcome;
+        return { _tag: 'asked', ...(yield* askApprover(outcome.request, user.locale)) } satisfies ConfirmedOutcome;
     }
 
-    yield* noteOutcome(outcome, { decidedBy: user.tgUserId, isEdited: false });
     const failed: ActionFailure = outcome._tag === 'failed' ? outcome.failure : { code: 'unexpected' };
     const failure: ActionFailure =
         failed.code === 'notice_missed' ? { ...failed, chats: escapeHtml(failed.chats), sent: escapeHtml(failed.sent) } : failed;

@@ -128,7 +128,7 @@ const askForTeams = Effect.fn('Bot.askForTeams')(function* (user: MenuUser, view
     const name = Option.match(approver, { onNone: () => '', onSome: found => found.name });
 
     if (isRepeat) {
-        return menuText(user.locale, 'onlyApprover', { name: escapeHtml(name) });
+        return { text: menuText(user.locale, 'onlyApprover', { name: escapeHtml(name) }), rows: [] };
     }
 
     const { row, inputs } = view;
@@ -152,7 +152,7 @@ const askForTeams = Effect.fn('Bot.askForTeams')(function* (user: MenuUser, view
     });
     const outcome = yield* runConfirmed(user, action, { summary: null, target: { where: '', isPrivate: false } });
 
-    return outcome._tag === 'done' ? '' : outcome.text;
+    return { text: outcome._tag === 'done' ? '' : outcome.text, rows: outcome._tag === 'asked' ? outcome.rows : [] };
 });
 
 export const publishAndShow = Effect.fn('Bot.publishAndShow')(function* (user: MenuUser, tap: TeamsTap, messageId: number) {
@@ -162,10 +162,14 @@ export const publishAndShow = Effect.fn('Bot.publishAndShow')(function* (user: M
     const isToGroup = view.plan.deliveries.some(delivery => delivery.chatId < 0n && (delivery.isDue || isDefined(ticket)));
 
     if (isToGroup && view.plan.fingerprint === fingerprint && !(yield* isApproverOf(user.tgUserId, user.communityId))) {
-        const note = yield* askForTeams(user, view, isDefined(ticket));
-        const asked = yield* loadView(user, tap.sessionId, { notes: [note] });
+        const { text, rows } = yield* askForTeams(user, view, isDefined(ticket));
+        const asked = yield* loadView(user, tap.sessionId, { notes: [text] });
+        const screen = yield* overviewScreen(user, asked);
 
-        return yield* showTeams(user, messageId, { sessionId: tap.sessionId, screen: yield* overviewScreen(user, asked) });
+        return yield* showTeams(user, messageId, {
+            sessionId: tap.sessionId,
+            screen: { ...screen, keyboard: [...rows, ...screen.keyboard] }
+        });
     }
 
     const published = yield* publishLineup({

@@ -70,7 +70,7 @@ export const noticeOf = Effect.fn('Core.noticeOf')(function* (action: NoticeActi
 });
 
 export const withNotice = Effect.fn('Core.withNotice')(function* (action: Action, context: NoticeContext) {
-    const isClosing = action._tag === 'cancel_session' || action._tag === 'delete_session';
+    const isClosing = action._tag === 'cancel_session' || action._tag === 'delete_session' || action._tag === 'close_poll';
     const closing = isClosing ? { ...action, closes: yield* closureOf(action.sessionId) } : action;
 
     return isNoticeAction(closing) && closing.notify ? { ...closing, preview: yield* noticeOf(closing, context) } : closing;

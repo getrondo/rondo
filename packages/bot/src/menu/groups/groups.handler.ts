@@ -30,21 +30,21 @@ const showGroup = Effect.fn('Bot.showGroup')(function* (user: MenuUser, { chatId
     yield* showScreen(user.chatId, messageId, screen);
 });
 
-// The title Telegram knows, none when the bot is not in the group
-const liveTitle = Effect.fn('Bot.liveTitle')(function* (chatId: number) {
+// The chat as Telegram knows it, none when the bot is not in the group
+const liveChat = Effect.fn('Bot.liveChat')(function* (chatId: number) {
     const telegram = yield* Telegram;
     const chat = yield* telegram.call('getChat', api => api.getChat(chatId)).pipe(Effect.option);
 
-    return chat.pipe(Option.map(({ title }) => title ?? ''));
+    return chat.pipe(Option.map(({ title, type }) => ({ title: title ?? '', type })));
 });
 
 const decide = Effect.fn('Bot.decideGroup')(function* (user: MenuUser, op: string, tap: GroupTap) {
     const { chatId, messageId } = tap;
     const known = yield* findKnownChat(chatId);
     const linked = yield* findLinkedChat(BigInt(chatId));
-    const live = op === 'q' || op === 'y' ? yield* liveTitle(chatId) : linked.pipe(Option.map(chat => chat.title));
-    const settings = known.pipe(Option.map(({ chat }) => chat.title));
-    const title = escapeHtml(Option.getOrElse(live, () => Option.getOrElse(settings, () => '')));
+    const live = op === 'q' || op === 'y' ? yield* liveChat(chatId) : linked.pipe(Option.map(found => ({ title: found.title, type: '' })));
+    const named = Option.orElse(live, () => known.pipe(Option.map(found => found.chat)));
+    const title = escapeHtml(Option.getOrNull(named)?.title ?? '');
     const chat = { communityId: user.communityId, chatId: BigInt(chatId), actorPersonId: yield* personIdOfTelegramUser(user.tgUserId) };
 
     switch (op) {
@@ -57,10 +57,10 @@ const decide = Effect.fn('Bot.decideGroup')(function* (user: MenuUser, op: strin
             }
 
             if (op === 'q') {
-                return yield* showScreen(user.chatId, messageId, askScreen(user.locale, known.value.chat, live.value));
+                return yield* showScreen(user.chatId, messageId, askScreen(user.locale, known.value.chat, live.value.title));
             }
 
-            yield* linkChat({ ...chat, title: live.value });
+            yield* linkChat({ ...chat, ...live.value });
 
             return yield* showGroup(user, tap, menuText(user.locale, 'groupLinked', { title }));
         }

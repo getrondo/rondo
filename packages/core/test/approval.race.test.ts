@@ -16,7 +16,7 @@ import { linkChat, setChatSwitch } from '../src/community/chat-links';
 import { loadGroups } from '../src/community/group-settings';
 import { syncMember } from '../src/identity/telegram-user';
 import { createSession } from '../src/sessions/session.service';
-import { decideAs, proposeAs } from '../src/testing/confirm-action';
+import { decideAs, proposeAs, withdrawAs } from '../src/testing/confirm-action';
 import { linkGroup } from '../src/testing/link-group';
 import { localPostgresLayer, raceDatabaseUrl } from '../src/testing/local-postgres.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
@@ -44,6 +44,16 @@ const gameOf = (communityId: string) =>
         actorPersonId: null
     });
 
+const requested = Effect.fn('test.helperAndGroup')(function* (slug: string, base: number) {
+    const chatId = -94_000_000 - base;
+    const { communityId } = yield* seedCommunity(seedConfig(slug));
+    yield* linkGroup(communityId, { chatId });
+    const personId = yield* syncMember(communityId, { id: BigInt(base), firstName: 'Helper' }, 'active');
+    yield* grantAdmin({ communityId, personId, grantedBy: null });
+
+    return { communityId, chatId, sessionId: yield* gameOf(communityId) };
+});
+
 const atOnce = <Value, Failure, Requirements>(effect: (index: number) => Effect.Effect<Value, Failure, Requirements>) =>
     Effect.all(
         Array.from({ length: racers }, (_, index) => effect(index)),
@@ -55,12 +65,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('approvals
         Effect.gen(function* () {
             const db = yield* Db;
             const base = yield* Random.nextIntBetween(1_000_000_000, 2_000_000_000);
-            const chatId = -94_000_000 - base;
-            const { communityId } = yield* seedCommunity(seedConfig(`race-approve-${base}`));
-            yield* linkGroup(communityId, { chatId });
-            const personId = yield* syncMember(communityId, { id: BigInt(base), firstName: 'Helper' }, 'active');
-            yield* grantAdmin({ communityId, personId, grantedBy: null });
-            const sessionId = yield* gameOf(communityId);
+            const { communityId, sessionId, chatId } = yield* requested(`race-approve-${base}`, base);
             const actionId = yield* proposeAs(communityId, BigInt(base), { _tag: 'announce_session', sessionId });
             const other = yield* proposeAs(communityId, BigInt(base), { _tag: 'announce_session', sessionId });
             const asked = yield* atOnce(() => decideAs(actionId, BigInt(base)));
@@ -73,6 +78,20 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('approvals
             expect(taps.filter(outcome => outcome._tag === 'done')).toHaveLength(1);
             expect(polls).toHaveLength(1);
             expect(stored).toHaveLength(1);
+        })
+    );
+
+    it.effect.skipIf(withoutPostgres)('is either withdrawn or posted when both happen at once', () =>
+        Effect.gen(function* () {
+            const base = yield* Random.nextIntBetween(1_000_000_000, 2_000_000_000);
+            const { communityId, sessionId, chatId } = yield* requested(`race-withdraw-${base}`, base);
+            const actionId = yield* proposeAs(communityId, BigInt(base), { _tag: 'announce_session', sessionId });
+            yield* decideAs(actionId, BigInt(base));
+            const ends = yield* atOnce(index => (index % 2 === 0 ? withdrawAs(actionId, BigInt(base)) : decideAs(actionId, 42n)));
+            const polls = recorder.calls.filter(call => call.method === 'sendPoll' && call.payload.chat_id === chatId);
+
+            expect(ends.filter(({ _tag }) => _tag === 'rejected' || _tag === 'done')).toHaveLength(1);
+            expect(polls).toHaveLength(ends.filter(({ _tag }) => _tag === 'done').length);
         })
     );
 
@@ -91,7 +110,9 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('approvals
                     approverTgUserId: base,
                     chats: [{ chatId: ids[index] ?? 0, title: `Group ${index}`, purpose: 'main', weekdays: [] }]
                 }).pipe(
-                    Effect.andThen(linkChat({ communityId, chatId: BigInt(ids[index] ?? 0), title: 'Main', actorPersonId: null })),
+                    Effect.andThen(
+                        linkChat({ communityId, chatId: BigInt(ids[index] ?? 0), title: 'Main', type: 'supergroup', actorPersonId: null })
+                    ),
                     Effect.ignore
                 )
             );

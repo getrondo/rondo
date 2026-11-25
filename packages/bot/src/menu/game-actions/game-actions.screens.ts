@@ -2,7 +2,7 @@ import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { formatSessionLabel } from '@rondo/core/i18n/messages';
 import { isNoticeAction, noticeOf } from '@rondo/core/notify/notice-preview';
 import { requireSession } from '@rondo/core/sessions/session.service';
-import { titlesOfChats } from '@rondo/core/signups/poll-chats';
+import { closureOutlook } from '@rondo/core/signups/poll-chats';
 import { pollFor } from '@rondo/core/signups/poll-for';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
@@ -95,14 +95,22 @@ export const confirmScreen = Effect.fn('Bot.confirmScreen')(function* (
     });
     const nav = [{ text: menuText(user.locale, 'back'), callback_data: `m:g:${toShortId(sessionId)}` }];
 
-    const titles = yield* titlesOfChats('closes' in action ? (action.closes?.chatIds ?? []) : []);
-    const closedIn = isNotEmptyString(titles) ? [menuText(user.locale, 'closesIn', { where: escapeHtml(titles) })] : [];
+    const outlook = yield* closureOutlook('closes' in action ? (action.closes ?? null) : null);
+    const where = escapeHtml(outlook.where);
+    const closedIn = isNotEmptyString(where) ? [menuText(user.locale, 'closesIn', { where })] : [];
+    const closes = outlook.isBlocked
+        ? [menuText(user.locale, 'pollStaysOpen', { where })]
+        : [menuText(user.locale, 'pollCloses'), ...closedIn];
 
     if (action._tag === 'delete_session') {
         const label = escapeHtml(formatSessionLabel(user.locale, game));
 
         return {
-            text: [menuText(user.locale, 'deleteAsk', { label }), ...closedIn].join('\n'),
+            text: [
+                menuText(user.locale, 'deleteAsk', { label }),
+                ...(outlook.hasPoll ? closes : []),
+                ...(outlook.hasPoll && !outlook.isBlocked ? [menuText(user.locale, 'copiesStay')] : [])
+            ].join('\n'),
             keyboard: [[ok(false)], nav]
         } satisfies Screen;
     }
@@ -114,7 +122,7 @@ export const confirmScreen = Effect.fn('Bot.confirmScreen')(function* (
     const sees = target.silent ? menuText(user.locale, 'noAudience') : reached;
     const notes = action._tag === 'update_session' ? yield* changeNotes(user, game, { action, loud: !target.me }) : [];
     const isGroupPoll = (action._tag === 'announce_session' || action._tag === 'forward_poll') && !target.me;
-    const closing = action._tag === 'cancel_session' ? [menuText(user.locale, 'pollCloses'), ...closedIn] : [];
+    const closing = action._tag === 'cancel_session' && outlook.hasPoll ? closes : [];
     const later = isGroupPoll ? [menuText(user.locale, 'closesAfter')] : [];
     const quiet = action._tag === 'update_session' || action._tag === 'cancel_session';
 

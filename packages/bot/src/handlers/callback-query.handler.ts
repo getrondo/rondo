@@ -123,23 +123,25 @@ export const handleCallbackQuery = Effect.fn('Bot.handleCallbackQuery')(function
     const tgUserId = BigInt(query.from.id);
     const locale = resolveLocale(query.from.language_code);
     yield* answer;
+    const [, actionId = ''] = match;
     const isEdited = match[2] === 'e';
     const outcome = yield* decideAction({
-        actionId: match[1] ?? '',
+        actionId,
         tgUserId,
         confirm: match[2] === 'y',
         context: actionContextFor
     });
     const { message } = query;
-    const asked = outcome._tag === 'awaiting' ? yield* askApprover(outcome.request, locale) : '';
+    const asked = outcome._tag === 'awaiting' ? yield* askApprover(outcome.request, locale) : { text: '', rows: [] };
     const isRefreshed = outcome._tag === 'awaiting' && outcome.request.approver.tgUserId === tgUserId;
-    const waiting = isRefreshed ? menuText(locale, 'requestRefreshed') : plainText(asked);
+    const waiting = isRefreshed ? menuText(locale, 'requestRefreshed') : plainText(asked.text);
+    const keyboard = isRefreshed ? [] : asked.rows;
     const shown = outcome._tag === 'awaiting' ? `${outcome.request.summary}\n\n${waiting}` : outcomeText(locale, outcome);
-    yield* noteOutcome(outcome, { decidedBy: tgUserId, isEdited });
+    yield* noteOutcome(outcome, { actionId, decidedBy: tgUserId, isEdited });
 
     // A second tap leaves the message to the first one
     if (isDefined(message) && outcome._tag !== 'missing') {
-        yield* editPrivate(message.chat.id, message.message_id, shown).pipe(Effect.ignore);
+        yield* editPrivate(message.chat.id, message.message_id, shown, { reply_markup: { inline_keyboard: keyboard } }).pipe(Effect.ignore);
     }
 
     if (isEdited && outcome._tag === 'rejected') {

@@ -89,7 +89,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the approver', it => {
             const [row] = yield* db.select().from(community).where(eq(community.id, communityId));
             yield* loadGroups({ slug: 'guard-load', approverTgUserId: 9021, chats: [chat(-9024)] });
             yield* linkGroup(foreignId, { chatId: -9024 }, 9022);
-            const stolen = yield* linkChat({ communityId, chatId: -9024n, title: 'G', actorPersonId: null }).pipe(Effect.flip);
+            const stolen = yield* linkChat({ communityId, chatId: -9024n, title: 'G', type: 'supergroup', actorPersonId: null }).pipe(
+                Effect.flip
+            );
             const [after] = yield* db.select().from(community).where(eq(community.id, communityId));
 
             expect([unknown, outsider].map(error => 'failure' in error && error.failure.code)).toEqual([
@@ -124,7 +126,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('closing a poll', it => {
             const awaiting = yield* decide(copied, 9031n);
             const alone = yield* decide(yield* other.ask(cancel(other.sessionId)), 9032n);
             yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
-            yield* closeFinishedPolls();
+            yield* closeFinishedPolls(20_000);
             const unapproved = sentTo(9031, 'stopPoll');
             yield* db.update(session).set({ status: 'open' }).where(eq(session.id, sessionId));
             recorder.failures.set('stopPoll', refusal('stopPoll', 'Bad Gateway', 502));
@@ -132,10 +134,10 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('closing a poll', it => {
             recorder.failures.delete('stopPoll');
             const tried = sentTo(9031, 'stopPoll');
             yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
-            yield* closeFinishedPolls();
+            yield* closeFinishedPolls(20_000);
             const restored = sentTo(9031, 'stopPoll');
             yield* db.update(session).set({ status: 'cancelled' }).where(eq(session.id, sessionId));
-            yield* closeFinishedPolls();
+            yield* closeFinishedPolls(20_000);
 
             expect(awaiting).toMatchObject({ _tag: 'awaiting', request: { groups: ['Main'] } });
             expect(awaiting._tag === 'awaiting' ? awaiting.request.summary : '').toContain('Опитування закриється і в пересланих копіях');
@@ -174,23 +176,23 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('closing a poll', it => {
                 .returning();
             yield* db.update(session).set({ status: 'played' }).where(eq(session.communityId, communityId));
             yield* linkGroup(communityId, { chatId: -9101, isPosting: false });
-            yield* closeFinishedPolls();
+            yield* closeFinishedPolls(20_000);
             const whileOff = stops();
             yield* linkGroup(communityId, { chatId: -9101 });
-            yield* closeFinishedPolls();
+            yield* closeFinishedPolls(20_000);
             const created = stops();
             yield* db.update(session).set({ status: 'open' }).where(eq(session.id, sessionId));
             yield* db.delete(messageRef).where(eq(messageRef.chatId, -9102n));
             const forward: Action = { _tag: 'forward_poll', sessionId, chatId: '-9102' };
             const forwarded = yield* confirmAsOwner(communityId, forward);
             yield* db.update(session).set({ status: 'cancelled' }).where(eq(session.id, sessionId));
-            yield* closeFinishedPolls();
+            yield* closeFinishedPolls(20_000);
             const cancelled = stops();
             yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
-            yield* closeFinishedPolls();
+            yield* closeFinishedPolls(20_000);
 
             expect(copy).toHaveLength(1);
-            expect(shown).toContain('«Main», закрию після гри');
+            expect(shown).toContain('«Main», закріплю й закрию після гри');
             expect(whileOff).toBe(0);
             expect(created).toBe(1);
             expect(forwarded._tag).toBe('done');
@@ -207,10 +209,10 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('closing a poll', it => {
             yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
             yield* moveChat(-9111n, -91_110n);
             yield* linkGroup(communityId, { chatId: -91_110 }, 9111);
-            yield* closeFinishedPolls();
+            yield* closeFinishedPolls(20_000);
             const replaced = sentTo(-91_110, 'stopPoll');
             yield* linkGroup(communityId, { chatId: -91_110 }, 42);
-            yield* closeFinishedPolls();
+            yield* closeFinishedPolls(20_000);
 
             expect(replaced).toBe(0);
             expect(sentTo(-91_110, 'stopPoll')).toBe(1);

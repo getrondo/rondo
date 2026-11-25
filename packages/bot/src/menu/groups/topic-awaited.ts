@@ -33,7 +33,7 @@ export const isTopicAwaited = Effect.fn('Bot.isTopicAwaited')(function* (tgUserI
 
 export const bindTopic = Effect.fn('Bot.bindTopic')(function* (
     tgUserId: number,
-    { id: chatId, title: liveTitle }: Message['chat'],
+    { id: chatId, title: liveTitle, type }: Message['chat'],
     topicId: number | null
 ) {
     const known = yield* findKnownChat(chatId);
@@ -50,6 +50,7 @@ export const bindTopic = Effect.fn('Bot.bindTopic')(function* (
         chatId: BigInt(chatId),
         topicId,
         title,
+        type,
         actorPersonId: yield* personIdOfTelegramUser(BigInt(tgUserId))
     });
     yield* clearAdminState(BigInt(tgUserId));

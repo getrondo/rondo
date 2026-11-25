@@ -1,4 +1,4 @@
-import { removeActionTexts } from '@rondo/core/actions/pending-action.service';
+import { removeActionTexts } from '@rondo/core/actions/remove-action-texts';
 import { finishPastSessions } from '@rondo/core/sessions/finish-session';
 import { closeFinishedPolls } from '@rondo/core/signups/signup.service';
 import { addMillis } from '@rondo/core/utils/add-millis.util';
@@ -9,6 +9,7 @@ import * as Effect from 'effect/Effect';
 
 import { maxAttempts } from '../handle-update';
 import { tellExpired } from '../menu/groups/approval';
+import { offerClosure } from '../menu/groups/closure-offer';
 
 import { notifyOwnersOfFailure } from './notify-owners';
 
@@ -34,6 +35,14 @@ const isDone = <Value, Failure, Requirements>(name: string, step: Effect.Effect<
         Effect.catchCause(cause => Effect.logError(`[maintenance] ${name} failed`, cause).pipe(Effect.as(false)))
     );
 
+const closePolls = Effect.gen(function* () {
+    const left = yield* closeFinishedPolls(closePollsMs);
+
+    for (const sessionId of left) {
+        yield* offerClosure(sessionId, false);
+    }
+});
+
 export const runMaintenance = Effect.fn('Bot.runMaintenance')(function* (now: Date) {
     const db = yield* Db;
     const before = yield* Effect.all([
@@ -44,7 +53,7 @@ export const runMaintenance = Effect.fn('Bot.runMaintenance')(function* (now: Da
         Effect.catchCause(cause => Effect.logError('[maintenance] end of games failed', cause).pipe(Effect.as({ finished: 0, failed: 1 })))
     );
     const after = yield* Effect.all([
-        isDone('close of polls', closeFinishedPolls().pipe(Effect.timeoutOption(closePollsMs))),
+        isDone('close of polls', closePolls),
         isDone(
             'notice of dropped updates',
             droppedUpdates(now).pipe(Effect.flatMap(dropped => notifyOwnersOfFailure('ownerDroppedUpdates', dropped, now)))

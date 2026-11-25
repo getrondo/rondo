@@ -79,6 +79,7 @@ export const publishTeamsAction = Effect.fn('Core.publishTeamsAction')(function*
         preview: {
             text: plainText(due[0]?.html ?? ''),
             to: due.map(delivery => (delivery.chatId > 0n ? null : delivery.title)),
+            chatIds: due.map(delivery => String(delivery.chatId)),
             clearsResult: plan.clearsResult
         }
     } satisfies Action;

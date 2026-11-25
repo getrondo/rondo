@@ -87,6 +87,9 @@ const stopForDelete = Effect.fn('Core.stopForDelete')(function* (poll: typeof te
         Effect.map(({ voters }) => voters),
         Effect.catchTag('TelegramApiError', error =>
             isSettledPoll(error.description) ? Effect.succeed(null) : ActionFailedError.make({ failure: { code: 'poll_not_closed' } })
+        ),
+        Effect.catchTag('ActionFailedError', error =>
+            error.failure.code === 'group_off' ? ActionFailedError.make({ failure: { code: 'poll_left_open' } }) : error
         )
     );
     const closedAt = yield* DateTime.nowAsDate;
