@@ -308,3 +308,4 @@ open the profile, and whether editing a posted line-up notifies the mentioned pl
 | 293 | TEAMS | Keepers not spread | Move a keeper to the other keeper's team | — | «⚠️ 🧤 Воротарі нерівно: 🔴 2 · 🔵 0» | — | update | `says plainly when the keepers are no longer spread over the teams` |
 | 294 | POST | Mention account | Person with two accounts | Mention of the account seen in the chat | — | — | service | `mentions the account seen in the community chat, else the only account, else nobody` |
 | 295 | TEAMS | Roster change races | Eight removes over the same draft version (Postgres) | — | — | One removal, one change | postgres | `commits a roster change only together with the draft change that won` |
+| 296 | PASTE | Same answer at once | Three taps of one question at the same moment (Postgres) | — | — | One answer taken | postgres | `takes one answer when the same pasted question is answered twice at once` |

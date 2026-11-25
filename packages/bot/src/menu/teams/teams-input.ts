@@ -1,5 +1,5 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
-import { loadAdminState } from '@rondo/core/menu/admin-state.repository';
+import { loadAdminState, replaceAdminState } from '@rondo/core/menu/admin-state.repository';
 import { addGuests } from '@rondo/core/signups/roster.service';
 import { badgeOfColour } from '@rondo/core/teams/badges';
 import { setColour, syncByAdmin, teamIndexOf, withChange, movePlayers, type DraftState } from '@rondo/core/teams/draft-state';
@@ -226,9 +226,13 @@ export const handlePasteTap = Effect.fn('Bot.handlePasteTap')(function* (user: M
     const draft = state.pipe(Option.flatMap(row => decodeDraft(row.draft)));
     const paste = draft.pipe(Option.flatMap(value => decodePaste(value.paste)));
 
-    const isCurrent = Option.exists(state, row => row.messageId === messageId);
-
-    if (Option.isNone(paste) || Option.isNone(draft) || draft.value.sessionId !== tap.sessionId || !isCurrent) {
+    if (
+        Option.isNone(state) ||
+        Option.isNone(paste) ||
+        Option.isNone(draft) ||
+        draft.value.sessionId !== tap.sessionId ||
+        state.value.messageId !== messageId
+    ) {
         yield* showEditor(user, tap.sessionId, messageId, []);
 
         return;
@@ -239,6 +243,12 @@ export const handlePasteTap = Effect.fn('Bot.handlePasteTap')(function* (user: M
     const member = paste.value.teams.flatMap(team => team.members)[index];
 
     if (revision !== String(paste.value.revision) || (tap.op === 'Q' && !isNotEmptyArray(member?.candidates))) {
+        return;
+    }
+
+    const claimed = yield* replaceAdminState({ ...state.value, now: user.now }, state.value.revision);
+
+    if (Option.isNone(claimed)) {
         return;
     }
 

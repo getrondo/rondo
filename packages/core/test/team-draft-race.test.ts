@@ -96,11 +96,11 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('team draf
                 );
                 yield* db
                     .update(teamDraft)
-                    .set({ changedAt: new Date(now.getTime() + 500) })
+                    .set({ changedAt: new Date(now.getTime() + 330_000) })
                     .where(eq(teamDraft.sessionId, sessionId));
                 const notices = yield* Effect.all(
                     Array.from({ length: racers }, () =>
-                        claimNotice(sessionId, new Date(now.getTime() + 1000), new Date('2026-12-04T18:30:00Z'))
+                        claimNotice(sessionId, new Date(now.getTime() + 360_000), new Date('2026-12-04T18:30:00Z'))
                     ),
                     { concurrency: 'unbounded' }
                 );
