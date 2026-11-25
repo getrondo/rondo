@@ -114,6 +114,7 @@ export const pendingAction = comms.table(
         id: id(),
         communityId: requiredRef('community_id', () => community.id),
         requestedByTgUserId: bigint('requested_by_tg_user_id', { mode: 'bigint' }).notNull(),
+        approverTgUserId: bigint('approver_tg_user_id', { mode: 'bigint' }),
         kind: text('kind').notNull(),
         payload: jsonb('payload').notNull(),
         summary: text('summary').notNull(),

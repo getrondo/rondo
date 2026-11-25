@@ -1,8 +1,8 @@
 import { isDefined } from '@rnw-community/shared';
 import { grantAdmin } from '@rondo/core/access/admin-access';
-import { bindChat } from '@rondo/core/community/community.repository';
 import { upsertTelegramUser } from '@rondo/core/identity/telegram-user';
 import { createSession } from '@rondo/core/sessions/session.service';
+import { linkGroup } from '@rondo/core/testing/link-group';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
 import { addDays } from '@rondo/core/utils/add-days.util';
 import { messageRef } from '@rondo/db/schema/platform.schema';
@@ -45,11 +45,12 @@ export const seedSeason = Effect.fn('test.seedSeason')(function* (
         yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
     }
 
+    yield* grantOrganizer(communityId, options.adminId);
+
     if (isDefined(options.groupChatId)) {
-        yield* bindChat({ communityId, chatId: BigInt(options.groupChatId), topicId: null, kind: 'supergroup', title: 'Games' });
+        yield* linkGroup(communityId, { chatId: options.groupChatId, title: 'Games' }, options.adminId);
     }
 
-    yield* grantOrganizer(communityId, options.adminId);
     yield* setNow(thursdayMorning);
 
     return { communityId, north: north ?? '', park: park ?? '' };
@@ -60,7 +61,7 @@ export const seedSecondGroup = Effect.fn('test.seedSecondGroup')(function* (
     chats: { readonly main: number; readonly second: number; readonly venueId: string }
 ) {
     const db = yield* Db;
-    yield* bindChat({ communityId, chatId: BigInt(chats.second), topicId: null, kind: 'supergroup', title: 'Second' });
+    yield* linkGroup(communityId, { chatId: chats.second, title: 'Second', purpose: 'other' });
     const base = { communityId, timezone: 'Europe/Vienna', title: null, actorPersonId: null, fieldsPlanned: 1 };
     const wednesdays = [1, 2, 3, 4].map(week => addDays('2026-11-25', -7 * week));
     let messageId = 70_000;

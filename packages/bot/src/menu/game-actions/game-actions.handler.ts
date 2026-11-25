@@ -32,7 +32,11 @@ const decodeAction = Schema.decodeUnknownOption(ActionSchema);
 const isToMe = (user: MenuUser, action: Action): boolean =>
     (action._tag === 'announce_session' || action._tag === 'forward_poll') && action.chatId === String(user.tgUserId);
 
-const afterDone = Effect.fn('Bot.afterGameDone')(function* (user: MenuUser, action: Action, messageId: number, target: GameTarget) {
+const afterDone = Effect.fn('Bot.afterGameDone')(function* (
+    user: MenuUser,
+    action: Action,
+    { messageId, target, note }: { readonly messageId: number; readonly target: GameTarget; readonly note: string }
+) {
     const { where } = target;
     const sessionId = sessionOf(action);
 
@@ -60,7 +64,7 @@ const afterDone = Effect.fn('Bot.afterGameDone')(function* (user: MenuUser, acti
             ? menuText(user.locale, `${prefix}ToList`, { where: escapeHtml(listed.told) })
             : menuText(user.locale, key, { where: escapeHtml(where) });
         const card = yield* gameCardScreen(user, sessionId, {
-            text,
+            text: `${text}${note}`,
             saysPoll: false
         });
 
@@ -124,9 +128,16 @@ const runGameAction = Effect.fn('Bot.runGameAction')(function* (
         yield* showAfterSuccess(
             user,
             tap.messageId,
-            afterDone(user, action, tap.messageId, target),
+            afterDone(user, action, { messageId: tap.messageId, target, note: outcome.note }),
             plainReceipt(user, sessionOf(action), 'changedDone')
         );
+
+        return Option.none<string>();
+    }
+
+    if (outcome._tag === 'asked') {
+        const card = yield* gameCardScreen(user, sessionOf(action), { text: outcome.text, saysPoll: false });
+        yield* showScreen(user.chatId, tap.messageId, card);
 
         return Option.none<string>();
     }

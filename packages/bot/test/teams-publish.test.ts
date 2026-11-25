@@ -120,7 +120,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                         date: Math.floor(Date.parse('2026-11-27T16:00:00Z') / 1000),
                         chat: { id: -3202, type: 'supergroup', title: 'Games' },
                         from: { id: 323, is_bot: false, first_name: 'Admin 323' },
-                        forward_origin: { type: 'user', date: 0, sender_user: { id: 777, is_bot: true, first_name: 'Rondo' } },
+                        forward_origin: { type: 'user', date: 0, sender_user: { id: 0, is_bot: true, first_name: 'Rondo' } },
                         text: String(update[0]?.payload.text)
                             .split(/<[^<>]*>/u)
                             .join('')
@@ -164,9 +164,10 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 expect(String(update[0]?.payload.text)).toMatch(/^Оновлені склади\n<b>Склади:/u);
                 expect(sentTo(-3202)).toEqual([]);
                 expect(teams.every(entry => isDefined(entry.colorId))).toBe(true);
-                expect(entries).toEqual([]);
                 expect(seen.map(ref => [ref.purpose, ref.entityId])).toEqual([['lineup', sessionId]]);
-                expect(other).toEqual([]);
+                // Only our own post is a copy, what another bot wrote is read like any squad the admin shares
+                expect([...new Set(entries.map(entry => entry.messageId))]).toEqual([9002]);
+                expect(other.map(ref => [ref.purpose, ref.entityId])).toEqual([['lineup', sessionId]]);
             })
     );
 

@@ -3,7 +3,7 @@ import { community, telegramChat } from '@rondo/db/schema/org.schema';
 import { messageRef, pollForward, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupDelivery } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
@@ -46,44 +46,48 @@ export const communityProfile = Effect.fn('Core.communityProfile')(function* (co
 export const groupLocaleOf = (communityId: string) =>
     communityProfile(communityId).pipe(Effect.map(Option.match({ onNone: () => resolveLocale(null), onSome: ({ locale }) => locale })));
 
-export const findCommunityBySlug = Effect.fn('Core.findCommunityBySlug')(function* (slug: string) {
-    const db = yield* Db;
-    const [row] = yield* db.select({ id: community.id }).from(community).where(eq(community.slug, slug));
-
-    return Option.fromNullishOr(row?.id);
-});
-
 export const findLinkedChat = Effect.fn('Core.findLinkedChat')(function* (chatId: bigint) {
     const db = yield* Db;
     const [row] = yield* db
-        .select({ communityId: telegramChat.communityId, topicId: telegramChat.topicId })
+        .select({
+            communityId: telegramChat.communityId,
+            topicId: telegramChat.topicId,
+            purpose: telegramChat.purpose,
+            title: telegramChat.title
+        })
         .from(telegramChat)
         .where(eq(telegramChat.chatId, chatId));
 
     return Option.fromNullishOr(row);
 });
 
-export const mainGroupOf = Effect.fn('Core.mainGroupOf')(function* (communityId: string) {
-    const db = yield* Db;
-    const [row]: GroupTarget[] = yield* db
-        .select({ chatId: telegramChat.chatId, topicId: telegramChat.topicId })
-        .from(telegramChat)
-        .where(and(eq(telegramChat.communityId, communityId), eq(telegramChat.purpose, 'main')))
-        .orderBy(asc(telegramChat.createdAt), asc(telegramChat.chatId))
-        .limit(1);
-
-    return Option.fromNullishOr(row);
-});
-
+// Linked groups, and whether the bot may write there
 export const linkedChatsOf = Effect.fn('Core.linkedChatsOf')(function* (communityId: string) {
     const db = yield* Db;
 
     return yield* db
-        .select({ chatId: telegramChat.chatId, topicId: telegramChat.topicId, title: telegramChat.title })
+        .select({
+            chatId: telegramChat.chatId,
+            topicId: telegramChat.topicId,
+            title: telegramChat.title,
+            purpose: telegramChat.purpose,
+            isPosting: telegramChat.isPosting,
+            isMentioning: telegramChat.isMentioning
+        })
         .from(telegramChat)
-        .where(and(eq(telegramChat.communityId, communityId), eq(telegramChat.purpose, 'main')))
-        .orderBy(asc(telegramChat.createdAt), asc(telegramChat.chatId));
+        .where(and(eq(telegramChat.communityId, communityId), inArray(telegramChat.purpose, ['main', 'other'])))
+        .orderBy(asc(telegramChat.purpose), asc(telegramChat.createdAt), asc(telegramChat.chatId));
 });
+
+export const postingChatsOf = (communityId: string) =>
+    linkedChatsOf(communityId).pipe(Effect.map(chats => chats.filter(({ isPosting }) => isPosting)));
+
+// The group of an action that names none: the main one, and never a stand-in for it
+export const mainGroupOf = (communityId: string) =>
+    postingChatsOf(communityId).pipe(
+        Effect.map(chats => Option.fromNullishOr(chats.find(({ purpose }) => purpose === 'main'))),
+        Effect.map(Option.map(({ chatId, topicId }): GroupTarget => ({ chatId, topicId })))
+    );
 
 export const moveChat = Effect.fn('Core.moveChat')(function* (from: bigint, to: bigint) {
     const db = yield* Db;
@@ -120,22 +124,4 @@ export const moveChat = Effect.fn('Core.moveChat')(function* (from: bigint, to: 
             return yield* db.update(lineupDelivery).set({ chatId: to }).where(eq(lineupDelivery.chatId, from));
         })
     );
-});
-
-export const bindChat = Effect.fn('Core.bindChat')(function* (input: {
-    readonly communityId: string;
-    readonly chatId: bigint;
-    readonly topicId: number | null;
-    readonly kind: 'group' | 'supergroup';
-    readonly title: string;
-}) {
-    const db = yield* Db;
-
-    yield* db
-        .insert(telegramChat)
-        .values({ ...input, purpose: 'main' })
-        .onConflictDoUpdate({
-            target: telegramChat.chatId,
-            set: { communityId: input.communityId, title: input.title, kind: input.kind, topicId: input.topicId }
-        });
 });

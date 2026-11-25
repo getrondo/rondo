@@ -145,6 +145,7 @@ interface ExportContent extends ChatContent {
     readonly config: CommunityConfig;
     readonly fileSha256: string;
     readonly allowRemoval?: boolean;
+    readonly acknowledgeLive?: boolean;
     readonly otherChats?: readonly ChatContent[];
 }
 
@@ -154,6 +155,7 @@ export const importMessages = Effect.fn('IngestTelegram.importMessages')(functio
     fileSha256,
     snapshot,
     allowRemoval,
+    acknowledgeLive,
     otherChats
 }: ExportContent) {
     const now = yield* DateTime.nowAsDate;
@@ -170,7 +172,8 @@ export const importMessages = Effect.fn('IngestTelegram.importMessages')(functio
             const stats = yield* loadPlan(config, all.plan, {
                 fileSha256,
                 snapshot: Option.getOrUndefined(all.snapshot),
-                allowRemoval
+                allowRemoval,
+                acknowledgeLive
             });
 
             return { ...stats, review: all.review };
@@ -182,6 +185,7 @@ interface IngestInput {
     readonly exportDir: string;
     readonly configPath: string;
     readonly allowRemoval: boolean;
+    readonly acknowledgeLive: boolean;
     readonly reviewFile?: Option.Option<string>;
 }
 
@@ -189,6 +193,7 @@ export const ingest = Effect.fn('IngestTelegram.ingest')(function* ({
     exportDir,
     configPath,
     allowRemoval,
+    acknowledgeLive,
     reviewFile = Option.none()
 }: IngestInput) {
     const fs = yield* FileSystem.FileSystem;
@@ -197,7 +202,15 @@ export const ingest = Effect.fn('IngestTelegram.ingest')(function* ({
     const { messages, fileSha256 } = yield* readMessages(exportDir, config);
     const snapshot = yield* readSnapshot(exportDir);
     const otherChats = yield* Effect.all((config.otherChats ?? []).map(chat => readTelethonChat(join(exportDir, chat.exportDir))));
-    const { review, ...stats } = yield* importMessages({ config, messages, fileSha256, snapshot, allowRemoval, otherChats });
+    const { review, ...stats } = yield* importMessages({
+        config,
+        messages,
+        fileSha256,
+        snapshot,
+        allowRemoval,
+        acknowledgeLive,
+        otherChats
+    });
 
     yield* Effect.logInfo('Telegram export ingested', { ...stats, review: review.length });
 

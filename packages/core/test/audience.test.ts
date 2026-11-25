@@ -7,12 +7,13 @@ import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
-import { bindChat, linkedChatsOf, mainGroupOf } from '../src/community/community.repository';
+import { linkedChatsOf, mainGroupOf } from '../src/community/community.repository';
 import { syncMember } from '../src/identity/telegram-user';
 import { footballHistory, plannedFootball } from '../src/menu/game-history.repository';
 import { createSession } from '../src/sessions/session.service';
 import { audienceOf } from '../src/signups/audience';
 import { confirmAsOwner, teamsActionAsOwner } from '../src/testing/confirm-action';
+import { linkGroup } from '../src/testing/link-group';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -20,7 +21,7 @@ const main = -7001;
 const second = -7002;
 
 const link = (communityId: string, chatId: number, title: string, topicId: number | null = null) =>
-    bindChat({ communityId, chatId: BigInt(chatId), topicId, kind: 'supergroup', title });
+    linkGroup(communityId, { chatId, title, topicId, purpose: title === 'Second' ? 'other' : 'main' });
 
 const callsTo = (chatId: number, since: number) => recorder.calls.slice(since).filter(call => call.payload.chat_id === chatId);
 

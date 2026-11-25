@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Predicate from 'effect/Predicate';
@@ -7,6 +7,7 @@ import { displayOfVenue } from '../actions/describe-action';
 import { ActionFailedError } from '../error/action-failed.error';
 import { requireSession } from '../sessions/session.service';
 import { noticeTargets } from '../signups/audience';
+import { closureOf } from '../signups/poll-chats';
 
 import { sessionCancelledHtml, sessionChangedHtml } from './notifier';
 
@@ -14,6 +15,8 @@ import type { Action } from '../actions/action.model';
 import type { ActionContext } from '../actions/execute-action';
 import type { GroupTarget } from '../interface/group-target.interface';
 import type { SessionView } from '../sessions/session.model';
+
+type NoticeContext = Pick<ActionContext, 'communityId' | 'group' | 'groupLocale' | 'requester'>;
 
 type NoticeAction = Extract<Action, { _tag: 'update_session' | 'cancel_session' }>;
 
@@ -33,16 +36,16 @@ const afterChange = Effect.fn('Core.afterChange')(function* (game: SessionView, 
     };
 });
 
-export const previewedTargets = (action: NoticeAction): readonly GroupTarget[] | null =>
-    isDefined(action.preview) ? action.preview.targets.map(target => ({ chatId: BigInt(target.chatId), topicId: target.topicId })) : null;
+export const previewedTargets = (action: NoticeAction): readonly GroupTarget[] =>
+    action.preview?.targets.map(target => ({ chatId: BigInt(target.chatId), topicId: target.topicId })) ?? [];
 
-export const noticeTargetsOf = Effect.fn('Core.noticeTargetsOf')(function* (context: ActionContext, sessionId: string) {
+const noticeTargetsOf = Effect.fn('Core.noticeTargetsOf')(function* (context: NoticeContext, sessionId: string) {
     const requester = isDefined(context.requester) ? [{ chatId: context.requester, topicId: null }] : [];
 
-    return yield* noticeTargets(sessionId, Option.isSome(context.group) ? [context.group.value] : requester);
+    return yield* noticeTargets(sessionId, Option.isSome(context.group) ? [context.group.value] : requester, requester);
 });
 
-const noticeHtml = Effect.fn('Core.noticeHtml')(function* (action: NoticeAction, game: SessionView, context: ActionContext) {
+const noticeHtml = Effect.fn('Core.noticeHtml')(function* (action: NoticeAction, game: SessionView, context: NoticeContext) {
     const locale = context.groupLocale;
 
     switch (action._tag) {
@@ -58,7 +61,7 @@ const noticeHtml = Effect.fn('Core.noticeHtml')(function* (action: NoticeAction,
     }
 });
 
-export const noticeOf = Effect.fn('Core.noticeOf')(function* (action: NoticeAction, context: ActionContext) {
+export const noticeOf = Effect.fn('Core.noticeOf')(function* (action: NoticeAction, context: NoticeContext) {
     const game = yield* requireSession(context.communityId, action.sessionId);
     const html = yield* noticeHtml(action, game, context);
     const targets = yield* noticeTargetsOf(context, action.sessionId);
@@ -66,16 +69,23 @@ export const noticeOf = Effect.fn('Core.noticeOf')(function* (action: NoticeActi
     return { html, targets: targets.map(target => ({ chatId: String(target.chatId), topicId: target.topicId })) };
 });
 
-export const requirePreviewed = Effect.fn('Core.requirePreviewed')(function* (action: NoticeAction, context: ActionContext) {
-    if (!isDefined(action.preview) || ('notify' in action && !action.notify)) {
-        return action;
-    }
+export const withNotice = Effect.fn('Core.withNotice')(function* (action: Action, context: NoticeContext) {
+    const isClosing = action._tag === 'cancel_session' || action._tag === 'delete_session';
+    const closing = isClosing ? { ...action, closes: yield* closureOf(action.sessionId) } : action;
 
-    const current = yield* noticeOf(action, context);
+    return isNoticeAction(closing) && closing.notify ? { ...closing, preview: yield* noticeOf(closing, context) } : closing;
+});
 
-    if (current.html !== action.preview.html || JSON.stringify(current.targets) !== JSON.stringify(action.preview.targets)) {
-        return yield* ActionFailedError.make({ failure: { code: 'preview_changed' } });
-    }
+// What was shown for the groups: the text, its targets, and the poll copies that close
+const shownOf = (action: Action): string => {
+    const closes = 'closes' in action && isNotEmptyArray([...(action.closes?.chatIds ?? [])]) ? action.closes : null;
 
-    return action;
+    return JSON.stringify([isNoticeAction(action) && action.notify ? action.preview : null, closes]);
+};
+
+export const isStillShown = (action: Action, context: NoticeContext) =>
+    withNotice(action, context).pipe(Effect.map(fresh => shownOf(fresh) === shownOf(action)));
+
+export const requirePreviewed = Effect.fn('Core.requirePreviewed')(function* (action: NoticeAction, context: NoticeContext) {
+    return (yield* isStillShown(action, context)) ? action : yield* ActionFailedError.make({ failure: { code: 'preview_changed' } });
 });

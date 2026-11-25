@@ -46,6 +46,7 @@ const seeded = Effect.fn('test.seeded')(function* (slug: string, base: bigint) {
         messageId += 1;
         yield* ingestGroupMessage(communityId, seedConfig(slug), {
             chatId: -base,
+            isMain: true,
             messageId,
             sentAt: new Date(`${localDate}T15:00:00Z`),
             senderPersonId: organizer,
@@ -243,6 +244,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('participation and squads as
             const pollOf = (pollId: string, sessionId: string, options: readonly string[]) => ({
                 pollId,
                 chatId: -6000n,
+                isMain: true,
                 messageId: 1,
                 sessionId,
                 options

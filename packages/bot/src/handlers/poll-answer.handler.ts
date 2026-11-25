@@ -38,7 +38,7 @@ export const handlePollAnswer = Effect.fn('Bot.handlePollAnswer')(function* (ans
     }
 
     const fallback = yield* mainGroupOf(target.value.communityId);
-    const groups = yield* noticeTargets(target.value.id, Option.toArray(fallback));
+    const groups = yield* noticeTargets(target.value.id, Option.toArray(fallback), []);
     const locale = yield* groupLocaleOf(target.value.communityId);
 
     for (const group of groups) {

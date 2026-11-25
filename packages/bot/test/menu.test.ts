@@ -41,7 +41,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const commands = recorder.calls.findLast(call => call.method === 'setMyCommands')?.payload;
 
             expect(home.text).toContain('Наступна гра: <b>Пт 27.11 19:00 · North Arena</b>, записались 0 з 22');
-            expect(home.buttons.flat()).toHaveLength(3);
+            expect(home.buttons.flat()).toHaveLength(4);
             expect(start.text).toBe(
                 'Привіт, Admin 301. Зберемо гру за пару дотиків. Спершу покажу опитування, без твого ✅ нічого не надішлю.'
             );

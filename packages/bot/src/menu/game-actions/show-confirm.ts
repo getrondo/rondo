@@ -1,9 +1,12 @@
 import { isDefined } from '@rnw-community/shared';
 import { ActionSchema, type Action } from '@rondo/core/actions/action.model';
 import { describeAction } from '@rondo/core/actions/describe-action';
-import { linkedChatsOf } from '@rondo/core/community/community.repository';
+import { postingChatsOf } from '@rondo/core/community/community.repository';
+import { ActionFailedError, failureOf } from '@rondo/core/error/action-failed.error';
 import { moveAdminMessage } from '@rondo/core/menu/admin-state.repository';
-import { isNoticeAction, noticeOf } from '@rondo/core/notify/notice-preview';
+import { withNotice } from '@rondo/core/notify/notice-preview';
+import { openPollOf } from '@rondo/core/signups/poll-chats';
+import { writeToChat } from '@rondo/core/telegram/write-to-chat';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Predicate from 'effect/Predicate';
@@ -52,14 +55,26 @@ const withDestination = Effect.fn('Bot.withDestination')(function* (
         return action;
     }
 
-    const chats = yield* linkedChatsOf(user.communityId);
+    const chats = yield* postingChatsOf(user.communityId);
     const chat = isDefined(action.chatId) ? chats.find(entry => String(entry.chatId) === action.chatId) : chats[0];
 
     if (!isDefined(chat)) {
         return action;
     }
 
-    return { ...action, chatId: String(chat.chatId), topicId: Predicate.isUndefined(action.topicId) ? chat.topicId : action.topicId };
+    const placed = {
+        ...action,
+        chatId: String(chat.chatId),
+        topicId: Predicate.isUndefined(action.topicId) ? chat.topicId : action.topicId
+    };
+
+    if (placed._tag !== 'forward_poll') {
+        return placed;
+    }
+
+    const poll = yield* openPollOf(placed.sessionId);
+
+    return { ...placed, ...Option.match(poll, { onNone: () => ({}), onSome: ({ pollId }) => ({ pollId }) }) };
 });
 
 const withPreview = Effect.fn('Bot.withPreview')(function* (user: MenuUser, action: Action) {
@@ -67,14 +82,22 @@ const withPreview = Effect.fn('Bot.withPreview')(function* (user: MenuUser, acti
         return yield* withDestination(user, action);
     }
 
-    if (!isNoticeAction(action)) {
-        return action;
+    const context = yield* actionContextFor(user.communityId, user.tgUserId);
+
+    return yield* withNotice(action, context);
+});
+
+// The poll itself is the preview of a forward: the text of the game may have changed since it was sent
+export const showPoll = Effect.fn('Bot.showPoll')(function* (tgUserId: bigint, action: Action) {
+    const poll = action._tag === 'forward_poll' ? yield* openPollOf(action.sessionId) : Option.none();
+
+    if (Option.isSome(poll)) {
+        const { chatId: fromChatId, messageId, sessionId } = poll.value;
+        const target = { chatId: tgUserId, topicId: null };
+        yield* writeToChat({ target, approval: null, content: { _tag: 'forward', fromChatId, messageId, sessionId } }).pipe(
+            Effect.catchTag('TelegramApiError', error => ActionFailedError.make({ failure: failureOf(error) }))
+        );
     }
-
-    const context = yield* actionContextFor(user.tgUserId)(user.communityId);
-    const preview = yield* noticeOf(action, context);
-
-    return { ...action, preview };
 });
 
 export const showConfirm = Effect.fn('Bot.showGameConfirm')(function* (
@@ -96,6 +119,7 @@ export const showConfirm = Effect.fn('Bot.showGameConfirm')(function* (
     const screen = yield* confirmScreen(user, action, saved.value.revision, notice);
     const shownId = yield* showScreen(user.chatId, at.messageId, screen);
     yield* placeScreen(user, { ...at, revision: saved.value.revision }, shownId);
+    yield* showPoll(user.tgUserId, action);
 });
 
 export const showGameList = Effect.fn('Bot.showGameList')(function* (

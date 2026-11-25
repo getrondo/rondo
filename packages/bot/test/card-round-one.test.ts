@@ -137,11 +137,11 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const limit = admin.screen().text;
 
             expect(remove.text).toBe(
-                '🗑 Видалити гру: Пт 27.11 19:00 · North Arena?\nОпитування закриється. Бот нікому не напише. Повернути гру не можна.\nПереслані копії можуть лишитися видимими.'
+                '🗑 Видалити гру: Пт 27.11 19:00 · North Arena?\nОпитування закриється, і в пересланих копіях теж. Бот нікому не напише. Повернути гру не можна.\nСамі копії можуть лишитися видимими.\nЗакриється в «Games».'
             );
             expect(labelsOf(remove)).not.toContain('🏠 Меню');
             expect(labelsOf(remove)).toContain('🗑 Видалити назавжди');
-            expect(cancel).toContain('Опитування закриється в будь-якому разі.');
+            expect(cancel).toContain('Опитування закриється в будь-якому разі, і в пересланих копіях теж.');
             expect(limit).toMatch(/<blockquote>[\s\S]*👥 Місць: 22 → 20[\s\S]*<\/blockquote>/u);
             expect(limit).toContain(
                 'Опитування в чаті не зміниться, там залишиться старе число місць. Гравці дізнаються з цього повідомлення.'

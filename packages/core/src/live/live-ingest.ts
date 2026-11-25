@@ -29,6 +29,7 @@ import type { CancelReason, SessionView } from '../sessions/session.model';
 
 export interface GroupMessage {
     readonly chatId: bigint;
+    readonly isMain: boolean;
     readonly messageId: number;
     readonly sentAt: Date;
     readonly senderPersonId: string;
@@ -42,6 +43,7 @@ export interface GroupMessage {
 interface LiveIngestResult {
     readonly poll: boolean;
     readonly lineup: boolean;
+    readonly isSquadSkipped?: boolean;
     readonly cancellation?: { readonly sessionId: string; readonly reason: CancelReason };
     readonly unknownPlace?: { readonly sessionId: string; readonly text: string };
 }
@@ -186,22 +188,22 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
     message: GroupMessage
 ) {
     const db = yield* Db;
-    const otherChatId = config.otherChats?.find(({ chatId }) => BigInt(chatId) === message.chatId)?.chatId;
+    const otherChatId = message.isMain ? null : Number(message.chatId);
     const sameDay = yield* footballOn(communityId, fact.localDate);
-    const own = yield* gamesOfChat(sameDay, { communityId, config, chatId: message.chatId });
+    const own = yield* gamesOfChat(sameDay, message);
     const found = yield* ensureSession(communityId, config, fact, {
         games: own.filter(({ status }) => status !== 'cancelled'),
         canCreate: !isDefined(otherChatId) || isEmptyArray(sameDay)
     });
 
     if (Option.isNone(found) || (isDefined(otherChatId) && (yield* hasMainRoster(found.value)))) {
-        return;
+        return false;
     }
 
     const sessionId = found.value;
 
     if (yield* isSquadFixed(sessionId)) {
-        return;
+        return false;
     }
 
     const colors = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId));
@@ -218,7 +220,13 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
             publishedAt: message.sentAt
         }))
     );
-    yield* storeHandSquad({ communityId, sessionId, lineup: fact, senderName: message.senderName, chatId: otherChatId });
+    yield* storeHandSquad({
+        communityId,
+        sessionId,
+        lineup: fact,
+        senderName: message.senderName,
+        ...(isDefined(otherChatId) ? { chatId: otherChatId } : {})
+    });
 
     const status = fact.localDate < todayIn(config.timeZone, message.sentAt) ? 'played' : 'locked';
     yield* db
@@ -226,6 +234,8 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
         .set({ status })
         .where(and(eq(session.id, sessionId), ne(session.status, 'played')));
     yield* rememberMessage(message, 'lineup', sessionId);
+
+    return true;
 });
 
 export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function* (
@@ -281,17 +291,18 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
         }
     }
 
-    if (Option.isSome(lineup)) {
-        yield* withCommunityLock({ id: communityId }, applyLineup(communityId, config, lineup.value, message));
-    }
+    const isStored = Option.isSome(lineup)
+        ? yield* withCommunityLock({ id: communityId }, applyLineup(communityId, config, lineup.value, message))
+        : true;
 
     const sameDay = Option.isSome(cancellation) ? yield* gamesOn(communityId, cancellation.value.localDate) : [];
-    const [target, ...others] = yield* gamesOfChat(sameDay, { communityId, config, chatId: message.chatId });
+    const [target, ...others] = yield* gamesOfChat(sameDay, message);
     const toCancel = isDefined(target) && isEmptyArray(others) && target.status !== 'played' ? target : null;
 
     return {
         poll: Option.isSome(poll),
         lineup: Option.isSome(lineup),
+        ...(isStored ? {} : { isSquadSkipped: true }),
         ...(isDefined(toCancel) && Option.isSome(cancellation)
             ? { cancellation: { sessionId: toCancel.id, reason: cancellation.value.reason } }
             : {}),

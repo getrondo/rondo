@@ -15,7 +15,7 @@ const program = Effect.gen(function* () {
     yield* telegram.call('setWebhook', api =>
         api.setWebhook(url, {
             secret_token: Redacted.value(secret),
-            allowed_updates: ['message', 'poll_answer', 'callback_query', 'chat_member'],
+            allowed_updates: ['message', 'poll_answer', 'callback_query', 'chat_member', 'my_chat_member'],
             max_connections: 1,
             drop_pending_updates: false
         })

@@ -1,5 +1,7 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { isUsualDay } from '@rondo/core/community/group-settings';
 import { predictGames, sizeAt, sizeOfPlace } from '@rondo/core/menu/game-suggestions';
+import { weekdayOf } from '@rondo/core/utils/weekday-of.util';
 
 import { fromShortId } from '../../utils/from-short-id.util';
 
@@ -25,7 +27,9 @@ export const candidatesOf = (data: NewGameData): GameCandidate[] => predictGames
 
 const fromCandidate = (candidate: GameCandidate, data: NewGameData, kept: Draft | null): Draft => {
     const linked = candidate.audience.filter(chatId => data.chats.some(chat => chat.id === chatId));
-    const remembered = data.lastChatId === data.selfChatId ? [data.selfChatId] : linked;
+    const usual = data.chats.filter(chat => isUsualDay(chat, weekdayOf(candidate.localDate))).map(chat => chat.id);
+    const grouped = isNotEmptyArray(linked) ? linked : usual;
+    const remembered = data.lastChatId === data.selfChatId ? [data.selfChatId] : grouped;
     const audience = isDefined(kept) && isNotEmptyArray(kept.audience) ? kept.audience : remembered;
     const size = isDefined(kept) && kept.custom ? { fields: kept.fields, places: kept.places, custom: true } : {};
 

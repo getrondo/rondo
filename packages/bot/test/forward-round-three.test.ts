@@ -1,5 +1,5 @@
 import { expect, layer } from '@effect/vitest';
-import { bindChat } from '@rondo/core/community/community.repository';
+import { linkGroup } from '@rondo/core/testing/link-group';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import * as Effect from 'effect/Effect';
 
@@ -14,7 +14,7 @@ const unknownForward = (slug: string, chats: { readonly main: number; readonly s
         const admin = conversation(recorder, adminNumbered(chats.admin));
         yield* admin.type('/newgame');
         yield* admin.tap('✅ Надіслати');
-        yield* bindChat({ communityId, chatId: BigInt(chats.second), topicId: null, kind: 'supergroup', title: 'Second' });
+        yield* linkGroup(communityId, { chatId: chats.second, title: 'Second', purpose: 'other' });
         yield* admin.type('/games');
         yield* admin.tap('Пт 27.11 19:00');
         yield* admin.tap('📣 Надіслати ще в «Second»');
@@ -103,7 +103,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         Effect.gen(function* () {
             const admin = yield* unknownForward('r5-forward-topic', { main: -24_031, second: -24_032, admin: 2431 });
             recorder.failures.delete('forwardMessage');
-            yield* bindChat({ communityId: admin.communityId, chatId: -24_032n, topicId: 5, kind: 'supergroup', title: 'Second' });
+            yield* linkGroup(admin.communityId, { chatId: -24_032, title: 'Second', topicId: 5, purpose: 'other' });
             yield* admin.type('/games');
             yield* admin.tap('Пт 27.11 19:00');
             yield* admin.tap('✅ Немає, надіслати в «Second»');

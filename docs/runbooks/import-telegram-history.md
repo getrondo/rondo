@@ -72,6 +72,9 @@ The lock test needs two real sessions and is skipped without a local Postgres:
 An import that would remove more than 5% of the imported games, or of the stored squads and their attendance, stops and prints the dates. Check them, then run it with
 `RONDO_ALLOW_REMOVAL=true`.
 
+Once the main group is linked (`org.community.live_since`), an import also needs `RONDO_ACKNOWLEDGE_LIVE=true` and is refused when it
+holds games after that day: export only older messages.
+
 ### After a release that adds `identity.alias_link`
 
 The migration turns earlier links and undone links into decisions. Links that the previous release changed while it was still running

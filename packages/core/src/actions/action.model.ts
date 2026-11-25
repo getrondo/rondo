@@ -17,6 +17,11 @@ const NoticeTarget = Schema.Struct({ chatId: Schema.String, topicId: Schema.Null
 
 const NoticePreview = Schema.Struct({ html: Schema.String, targets: Schema.Array(NoticeTarget) });
 
+// What a closure reaches: the open polls of the game and every group one of them is in
+export const ClosesSchema = Schema.Struct({ pollIds: Schema.Array(Schema.String), chatIds: Schema.Array(Schema.String) });
+
+export type Closes = typeof ClosesSchema.Type;
+
 const CreateSessionAction = Schema.TaggedStruct('create_session', {
     localDate: LocalDate,
     localTime: LocalTime,
@@ -45,7 +50,8 @@ const CancelSessionAction = Schema.TaggedStruct('cancel_session', {
     sessionId: Schema.String,
     reason: CancelReason,
     notify: Schema.Boolean,
-    preview: Schema.optional(NoticePreview)
+    preview: Schema.optional(NoticePreview),
+    closes: Schema.optional(ClosesSchema)
 });
 
 const AnnounceSessionAction = Schema.TaggedStruct('announce_session', {
@@ -55,13 +61,17 @@ const AnnounceSessionAction = Schema.TaggedStruct('announce_session', {
     topicId: Schema.optional(Schema.NullOr(Schema.Int))
 });
 
-const DeleteSessionAction = Schema.TaggedStruct('delete_session', { sessionId: Schema.String });
+const DeleteSessionAction = Schema.TaggedStruct('delete_session', {
+    sessionId: Schema.String,
+    closes: Schema.optional(ClosesSchema)
+});
 
 const ForwardPollAction = Schema.TaggedStruct('forward_poll', {
     sessionId: Schema.String,
     chatId: Schema.String,
     topicId: Schema.optional(Schema.NullOr(Schema.Int)),
-    resend: Schema.optional(Schema.String)
+    resend: Schema.optional(Schema.String),
+    pollId: Schema.optional(Schema.String)
 });
 
 const PublishTeamsAction = Schema.TaggedStruct('publish_teams', {

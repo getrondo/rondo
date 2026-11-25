@@ -28,6 +28,7 @@ const prepare = Effect.fn('test.prepare')(function* (id: bigint) {
     const personId = yield* syncMember(communityId, { id, firstName: oldName }, 'active');
     const message = ingestGroupMessage(communityId, seedConfig(slug), {
         chatId: -1n,
+        isMain: true,
         messageId: 1,
         sentAt: new Date('2025-05-01T09:00:00Z'),
         senderPersonId: personId,

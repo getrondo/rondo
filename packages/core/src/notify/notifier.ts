@@ -3,14 +3,13 @@ import { person } from '@rondo/db/schema/identity.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { escapeHtml, mentionHtml } from '@rondo/telegram/format/html';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, eq, inArray } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { cancelReasonText, formatSessionLabel, text, type MessageKey } from '../i18n/messages';
 import { primaryAccount } from '../identity/primary-account';
 import { addressHtml, placeOf } from '../signups/place-block';
-import { topicOptions } from '../utils/topic-options.util';
+import { writeToChat, type Approval } from '../telegram/write-to-chat';
 
 import type { Locale } from '../i18n/locale';
 import type { GroupTarget } from '../interface/group-target.interface';
@@ -30,12 +29,20 @@ const mentionsOf = Effect.fn('Core.mentionsOf')(function* (sessionId: string) {
     return rows.map(row => mentionHtml(row.tgUserId, row.name)).join(', ');
 });
 
-const post = Effect.fn('Core.post')(function* (group: GroupTarget, html: string, locale: Locale) {
-    const telegram = yield* Telegram;
-    const body = group.chatId > 0n ? `${html}\n\n${text(locale, 'forwardHint')}` : html;
-
-    yield* telegram.call('sendMessage', api => api.sendMessage(Number(group.chatId), body, { parse_mode: 'HTML', ...topicOptions(group) }));
-});
+export const postHtml = (
+    target: GroupTarget,
+    html: string,
+    { locale, approval }: { readonly locale: Locale; readonly approval: Approval }
+) =>
+    writeToChat({
+        target,
+        approval,
+        content: {
+            _tag: 'text',
+            html: target.chatId > 0n ? `${html}\n\n${text(locale, 'forwardHint')}` : html,
+            hasLinkPreview: true
+        }
+    });
 
 const dayOf = (locale: Locale, game: SessionView): string =>
     formatSessionLabel(locale, { localDate: game.localDate, localTime: '' }).trim();
@@ -65,17 +72,6 @@ export const sessionChangedHtml = Effect.fn('Core.sessionChangedHtml')(function*
     ].join('\n');
 });
 
-export const notifySessionChanged = Effect.fn('Core.notifySessionChanged')(function* (input: {
-    readonly before: SessionView;
-    readonly after: SessionView;
-    readonly group: GroupTarget;
-    readonly locale: Locale;
-}) {
-    const html = yield* sessionChangedHtml(input);
-
-    yield* post(input.group, html, input.locale);
-});
-
 export const sessionCancelledHtml = Effect.fn('Core.sessionCancelledHtml')(function* (input: {
     readonly target: SessionView;
     readonly reason: string;
@@ -88,17 +84,6 @@ export const sessionCancelledHtml = Effect.fn('Core.sessionCancelledHtml')(funct
         `${text(input.locale, 'reason')}: ${escapeHtml(cancelReasonText(input.locale, input.reason))}`,
         ...(isEmptyString(mentions) ? [] : [mentions])
     ].join('\n');
-});
-
-export const notifySessionCancelled = Effect.fn('Core.notifySessionCancelled')(function* (input: {
-    readonly target: SessionView;
-    readonly reason: string;
-    readonly group: GroupTarget;
-    readonly locale: Locale;
-}) {
-    const html = yield* sessionCancelledHtml(input);
-
-    yield* post(input.group, html, input.locale);
 });
 
 export const notifyPromoted = Effect.fn('Core.notifyPromoted')(function* (input: {
@@ -115,9 +100,9 @@ export const notifyPromoted = Effect.fn('Core.notifyPromoted')(function* (input:
         .map(player => (isDefined(player.tgUserId) ? mentionHtml(player.tgUserId, player.displayName) : escapeHtml(player.displayName)))
         .join(', ');
 
-    yield* post(
+    yield* postHtml(
         input.group,
         `🎉 ${names}, ${text(input.locale, 'promoted')} ${escapeHtml(formatSessionLabel(input.locale, input.target))}`,
-        input.locale
+        { locale: input.locale, approval: { _tag: 'mention' } }
     );
 });

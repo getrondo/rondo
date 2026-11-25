@@ -8,6 +8,7 @@ import { fromShortId } from '../utils/from-short-id.util';
 
 import { handleGameTap } from './game-actions/game-actions.handler';
 import { gameCardPage, gamesScreen, pastGamesScreen } from './games.screen';
+import { handleGroupTap } from './groups/groups.handler';
 import { homeScreen } from './home.screen';
 import { menuText } from './menu-text';
 import { DraftSchema } from './new-game/draft';
@@ -105,6 +106,9 @@ export const handleMenuTap = Effect.fn('Bot.handleMenuTap')(function* (user: Men
         }
         case 'c': {
             return yield* handleGameTap(user, parts, messageId);
+        }
+        case 'g': {
+            return yield* handleGroupTap(user, parts, messageId);
         }
         case 't': {
             return yield* handleTeamsTap(user, data, messageId);

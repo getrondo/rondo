@@ -1,4 +1,4 @@
-import { linkedChatsOf } from '@rondo/core/community/community.repository';
+import { postingChatsOf } from '@rondo/core/community/community.repository';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -34,7 +34,7 @@ export const confirmRetry = Effect.fn('Bot.confirmRetry')(function* (
         return yield* showConfirm(user, chosen, { messageId, expected: null });
     }
 
-    const chats = yield* linkedChatsOf(user.communityId);
+    const chats = yield* postingChatsOf(user.communityId);
     const title = op === 'pam' ? null : (chats.find(chat => String(chat.chatId) === arg)?.title ?? '');
     return yield* showScreen(user.chatId, messageId, {
         text: menuText(user.locale, 'ngLive'),

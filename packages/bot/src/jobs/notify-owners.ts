@@ -2,13 +2,13 @@ import { isNotEmptyArray } from '@rnw-community/shared';
 import { Access } from '@rondo/core/access/admin-access';
 import { recipientsOf } from '@rondo/core/access/recipients-of';
 import { Db } from '@rondo/db/service/db.service';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
+import { sendPrivate } from '../context/private-chat';
 import { menuText } from '../menu/menu-text';
 
-type OwnerNotice = 'ownerDroppedUpdates' | 'ownerMaintenanceFailed' | 'ownerTeamsFailed';
+type OwnerNotice = 'ownerDroppedUpdates' | 'ownerNoApprover' | 'ownerMaintenanceFailed' | 'ownerTeamsFailed';
 
 const claimNotice = Effect.fn('Bot.claimOwnerNotice')(function* (notice: OwnerNotice, now: Date) {
     const db = yield* Db;
@@ -26,18 +26,15 @@ const claimNotice = Effect.fn('Bot.claimOwnerNotice')(function* (notice: OwnerNo
 // One private message a day about each kind of trouble, a number and never a name or a text
 const notifyOwners = Effect.fn('Bot.notifyOwners')(function* (notice: OwnerNotice, count: number, now: Date) {
     const access = yield* Access;
-    const telegram = yield* Telegram;
 
     if (count === 0 || !(yield* claimNotice(notice, now))) {
         return;
     }
 
     for (const owner of yield* recipientsOf([...access.ownerTgUserIds])) {
-        yield* telegram
-            .call('sendMessage', api => api.sendMessage(Number(owner.tgUserId), menuText(owner.locale, notice, { count })))
-            .pipe(
-                Effect.catchTag('TelegramApiError', error => Effect.logWarning('[owners] not reached', { isUncertain: error.isUncertain }))
-            );
+        yield* sendPrivate(Number(owner.tgUserId), menuText(owner.locale, notice, { count })).pipe(
+            Effect.catchTag('TelegramApiError', error => Effect.logWarning('[owners] not reached', { isUncertain: error.isUncertain }))
+        );
     }
 });
 

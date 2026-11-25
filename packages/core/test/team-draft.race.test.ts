@@ -21,6 +21,7 @@ import { planLineup } from '../src/teams/lineup-plan';
 import { publishLineup } from '../src/teams/publish-lineup';
 import { changeDraft, openDraft } from '../src/teams/team-draft.service';
 import { claimNotice, claimProposal } from '../src/teams/team-schedule';
+import { linkGroup, ownerApproval } from '../src/testing/link-group';
 import { localPostgresLayer, raceDatabaseUrl } from '../src/testing/local-postgres.layer';
 import { seedGame } from '../src/testing/seed-game';
 
@@ -44,10 +45,12 @@ const plannedGame = Effect.fn('test.plannedGame')(function* (slug: string, offse
     const game = yield* gameWithPlayers(slug, Math.floor(performance.now()) * 100 + offset);
     const { row } = yield* openDraft(game.communityId, game.sessionId, null);
     const raceChat = -9_600_000n - BigInt(Math.floor(performance.now()));
+    yield* linkGroup(game.communityId, { chatId: Number(raceChat) });
     const input = {
         ...game,
         locale: 'uk' as const,
         actorPersonId: null,
+        approval: ownerApproval,
         privateChatId: null,
         fallback: Option.some({ chatId: raceChat, topicId: null })
     };

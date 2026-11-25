@@ -4,12 +4,15 @@ import * as Schema from 'effect/Schema';
 const ActionFailureSchema = Schema.Union([
     Schema.Struct({
         code: Schema.Literals([
+            'approver_merge',
+            'approver_unreachable',
             'chat_not_linked',
             'entry_not_found',
             'entry_not_linked',
             'forward_uncertain',
             'game_not_started',
             'game_over',
+            'group_off',
             'host_not_playing',
             'lineup_changed',
             'message_gone',
@@ -22,7 +25,9 @@ const ActionFailureSchema = Schema.Union([
             'no_open_poll',
             'no_such_time',
             'no_teams',
+            'no_approver',
             'not_admin',
+            'not_approved',
             'not_deletable',
             'other_period',
             'person_not_found',
@@ -56,6 +61,7 @@ const ActionFailureSchema = Schema.Union([
     }),
     Schema.Struct({ code: Schema.Literal('answer_too_long'), limit: Schema.Int }),
     Schema.Struct({ code: Schema.Literal('game_exists'), sessionId: Schema.String }),
+    Schema.Struct({ code: Schema.Literal('notice_missed'), chats: Schema.String, sent: Schema.String }),
     Schema.Struct({ code: Schema.Literal('poll_too_long'), count: Schema.Int, limit: Schema.Int })
 ]);
 

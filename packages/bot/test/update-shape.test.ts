@@ -60,6 +60,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000 })('shapes of updates', it => {
         Effect.gen(function* () {
             const db = yield* Db;
             const chat = { ...groupChat, type: 'community' };
+            yield* seedSeason('shape-unknown', { groupChatId: groupChat.id, adminId: 9045 });
             yield* handleUpdate({ update_id: 900_010, message: { message_id: 1, date: 1, chat, from: player, text: 'привет' } });
             yield* handleUpdate({ update_id: 900_011, chat_member: { chat, new_chat_member: { status: 'guest', user: player } } });
             const rows = yield* db.select().from(processedUpdate);

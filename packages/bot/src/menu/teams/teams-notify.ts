@@ -28,9 +28,10 @@ import {
     releaseProposal
 } from '@rondo/core/teams/team-schedule';
 import { escapeHtml } from '@rondo/telegram/format/html';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
+
+import { sendPrivate } from '../../context/private-chat';
 
 import { teamsData } from './teams-callback';
 import { stackRows } from './teams-editor.screen';
@@ -68,23 +69,17 @@ const adminUsers = Effect.fn('Bot.teamsAdminUsers')(function* (communityId: stri
 });
 
 const sendScreen = Effect.fn('Bot.sendTeamsScreen')(function* (user: MenuUser, screen: Screen) {
-    const telegram = yield* Telegram;
-
-    return yield* telegram
-        .call('sendMessage', api =>
-            api.sendMessage(user.chatId, screen.text, {
-                parse_mode: 'HTML',
-                disable_notification: true,
-                link_preview_options: { is_disabled: true },
-                reply_markup: { inline_keyboard: stackRows(screen.keyboard) }
-            })
+    return yield* sendPrivate(user.chatId, screen.text, {
+        parse_mode: 'HTML',
+        disable_notification: true,
+        link_preview_options: { is_disabled: true },
+        reply_markup: { inline_keyboard: stackRows(screen.keyboard) }
+    }).pipe(
+        Effect.as(true),
+        Effect.catchTag('TelegramApiError', error =>
+            Effect.logWarning('[teams] admin not reached', { isUncertain: error.isUncertain }).pipe(Effect.as(error.isUncertain))
         )
-        .pipe(
-            Effect.as(true),
-            Effect.catchTag('TelegramApiError', error =>
-                Effect.logWarning('[teams] admin not reached', { isUncertain: error.isUncertain }).pipe(Effect.as(error.isUncertain))
-            )
-        );
+    );
 });
 
 const labelOf = (locale: Locale, game: Parameters<typeof formatSessionLabel>[1]) => escapeHtml(formatSessionLabel(locale, game));

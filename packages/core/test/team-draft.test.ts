@@ -19,6 +19,7 @@ import { loadTeamInputs, membersOf } from '../src/teams/team-inputs';
 import { recordResult } from '../src/teams/team-result';
 import { setHomeColour, setTier } from '../src/teams/team.service';
 import { confirmAsOwner, teamsActionAsOwner } from '../src/testing/confirm-action';
+import { linkGroup, ownerApproval } from '../src/testing/link-group';
 import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer';
 import { seedGame } from '../src/testing/seed-game';
 
@@ -129,11 +130,13 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
             const { communityId, sessionId, people } = yield* playedGame('draft-result', 10, 83_000);
             yield* setTier({ communityId, personId: people[3] ?? '', tier: 'strong', actorPersonId: null });
             yield* openDraft(communityId, sessionId, null);
+            yield* linkGroup(communityId, { chatId: -830 });
             const input = {
                 communityId,
                 sessionId,
                 locale: 'uk' as const,
                 actorPersonId: null,
+                approval: ownerApproval,
                 privateChatId: null,
                 fallback: Option.some({ chatId: -830n, topicId: null })
             };
@@ -356,11 +359,13 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
                 const db = yield* Db;
                 const { communityId, sessionId, people } = yield* playedGame('draft-rated', 10, 87_000);
                 yield* openDraft(communityId, sessionId, null);
+                yield* linkGroup(communityId, { chatId: -870 });
                 const input = {
                     communityId,
                     sessionId,
                     locale: 'uk' as const,
                     actorPersonId: null,
+                    approval: ownerApproval,
                     privateChatId: null,
                     fallback: Option.some({ chatId: -870n, topicId: null })
                 };
@@ -591,11 +596,13 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
             const db = yield* Db;
             const { communityId, sessionId } = yield* playedGame('draft-result-checks', 8, 89_700);
             const { row } = yield* openDraft(communityId, sessionId, null);
+            yield* linkGroup(communityId, { chatId: -897 });
             const input = {
                 communityId,
                 sessionId,
                 locale: 'uk' as const,
                 actorPersonId: null,
+                approval: ownerApproval,
                 privateChatId: null,
                 fallback: Option.some({ chatId: -897n, topicId: null })
             };

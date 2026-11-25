@@ -2,6 +2,7 @@ import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { gamesNearStart, pendingNotices } from '@rondo/core/teams/team-schedule';
 import * as Effect from 'effect/Effect';
 
+import { tellExpired } from '../menu/groups/approval';
 import { notifyRosterChange, proposeTeamsFor } from '../menu/teams/teams-notify';
 
 import { notifyOwnersOfFailure } from './notify-owners';
@@ -37,7 +38,9 @@ const teamsTick = Effect.fn('Bot.teamsTick')(function* (now: Date) {
 });
 
 export const runTeamsTick = (now: Date) =>
-    teamsTick(now).pipe(
+    tellExpired(now).pipe(
+        Effect.catchCause(cause => Effect.logError('[approval] expired requests not told', cause)),
+        Effect.andThen(teamsTick(now)),
         Effect.tap(({ failed }) => notifyOwnersOfFailure('ownerTeamsFailed', failed, now)),
         Effect.tapCause(() => notifyOwnersOfFailure('ownerTeamsFailed', 1, now))
     );

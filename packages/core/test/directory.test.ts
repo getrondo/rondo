@@ -76,6 +76,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('players and venues learned 
             const poll = (messageId: number, question: string) =>
                 ingestGroupMessage(communityId, config, {
                     chatId: -102n,
+                    isMain: true,
                     messageId,
                     sentAt: new Date('2026-05-03T18:00:00Z'),
                     senderPersonId: actorPersonId,

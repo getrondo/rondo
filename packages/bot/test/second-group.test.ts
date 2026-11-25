@@ -1,6 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
-import { bindChat } from '@rondo/core/community/community.repository';
+import { linkGroup } from '@rondo/core/testing/link-group';
 import { community } from '@rondo/db/schema/org.schema';
 import { importedPoll, ingestRun, sourceRef } from '@rondo/db/schema/platform.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
@@ -32,7 +32,7 @@ const post = (chatId: number, messageId: number, sentAt: string, content: { read
 const seedMatchChat = Effect.fn('test.seedMatchChat')(function* (slug: string, chatId: number) {
     const db = yield* Db;
     const { communityId } = yield* seedSeason(slug, { groupChatId: null, adminId: 2901 });
-    yield* bindChat({ communityId, chatId: BigInt(chatId), topicId: null, kind: 'supergroup', title: 'Second' });
+    yield* linkGroup(communityId, { chatId, title: 'Second', purpose: 'other' });
     const otherChats = [{ chatId, exportDir: 'second', matchPatterns: ['friendly'] }];
     yield* db
         .update(community)

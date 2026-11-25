@@ -1,7 +1,8 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { formatSessionLabel } from '@rondo/core/i18n/messages';
 import { isNoticeAction, noticeOf } from '@rondo/core/notify/notice-preview';
 import { requireSession } from '@rondo/core/sessions/session.service';
+import { titlesOfChats } from '@rondo/core/signups/poll-chats';
 import { pollFor } from '@rondo/core/signups/poll-for';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
@@ -25,14 +26,18 @@ import type { SessionView } from '@rondo/core/sessions/session.model';
 const full = buttonBudget(1);
 
 const groupHtml = Effect.fn('Bot.groupHtml')(function* (user: MenuUser, game: SessionView, action: Action) {
-    if (action._tag === 'announce_session' || action._tag === 'forward_poll') {
+    if (action._tag === 'forward_poll') {
+        return menuText(user.locale, 'forwardBelow');
+    }
+
+    if (action._tag === 'announce_session') {
         const poll = yield* pollFor(user.communityId, game, null);
 
         return pollHtml(poll);
     }
 
     if (isNoticeAction(action)) {
-        const context = yield* actionContextFor(user.tgUserId)(user.communityId);
+        const context = yield* actionContextFor(user.communityId, user.tgUserId);
         const notice = action.preview ?? (yield* noticeOf(action, context));
 
         return `<blockquote>${notice.html}</blockquote>`;
@@ -90,10 +95,16 @@ export const confirmScreen = Effect.fn('Bot.confirmScreen')(function* (
     });
     const nav = [{ text: menuText(user.locale, 'back'), callback_data: `m:g:${toShortId(sessionId)}` }];
 
+    const titles = yield* titlesOfChats('closes' in action ? (action.closes?.chatIds ?? []) : []);
+    const closedIn = isNotEmptyString(titles) ? [menuText(user.locale, 'closesIn', { where: escapeHtml(titles) })] : [];
+
     if (action._tag === 'delete_session') {
         const label = escapeHtml(formatSessionLabel(user.locale, game));
 
-        return { text: menuText(user.locale, 'deleteAsk', { label }), keyboard: [[ok(false)], nav] } satisfies Screen;
+        return {
+            text: [menuText(user.locale, 'deleteAsk', { label }), ...closedIn].join('\n'),
+            keyboard: [[ok(false)], nav]
+        } satisfies Screen;
     }
 
     const groupSees = isDefined(target.reached)
@@ -102,11 +113,15 @@ export const confirmScreen = Effect.fn('Bot.confirmScreen')(function* (
     const reached = target.me ? menuText(user.locale, 'meSees') : groupSees;
     const sees = target.silent ? menuText(user.locale, 'noAudience') : reached;
     const notes = action._tag === 'update_session' ? yield* changeNotes(user, game, { action, loud: !target.me }) : [];
-    const closing = action._tag === 'cancel_session' ? [menuText(user.locale, 'pollCloses')] : [];
+    const isGroupPoll = (action._tag === 'announce_session' || action._tag === 'forward_poll') && !target.me;
+    const closing = action._tag === 'cancel_session' ? [menuText(user.locale, 'pollCloses'), ...closedIn] : [];
+    const later = isGroupPoll ? [menuText(user.locale, 'closesAfter')] : [];
     const quiet = action._tag === 'update_session' || action._tag === 'cancel_session';
 
     return {
-        text: [...(isDefined(notice) ? [notice] : []), sees, yield* groupHtml(user, game, action), ...notes, ...closing].join('\n'),
+        text: [...(isDefined(notice) ? [notice] : []), sees, yield* groupHtml(user, game, action), ...notes, ...closing, ...later].join(
+            '\n'
+        ),
         keyboard: [...(target.silent && quiet ? [] : [[ok(true)]]), ...(quiet ? [[ok(false)]] : []), nav]
     } satisfies Screen;
 });

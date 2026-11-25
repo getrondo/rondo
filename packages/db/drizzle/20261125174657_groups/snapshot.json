@@ -1,0 +1,181 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "f39d7a83-1cec-4216-903b-ca20ff8078e1",
+    "prevIds": ["55d172f9-78f3-4617-b369-0ef6ed40d121"],
+    "footprints": [
+        {
+            "statementType": "alter_enum",
+            "statementTarget": ["enum", "org", "chat_purpose"],
+            "writes": ["s|enum|org.chat_purpose"],
+            "reads": ["n|sch|org"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "org", "community", "approver_tg_user_id"],
+            "writes": [
+                "s|col|org.community.approver_tg_user_id",
+                "n|col|org.community.approver_tg_user_id",
+                "e|col|org.community.approver_tg_user_id"
+            ],
+            "reads": ["n|tbl|org.community", "n|sch|org"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "org", "community", "live_since"],
+            "writes": ["s|col|org.community.live_since", "n|col|org.community.live_since", "e|col|org.community.live_since"],
+            "reads": ["n|tbl|org.community", "n|sch|org"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "org", "telegram_chat", "is_posting"],
+            "writes": ["s|col|org.telegram_chat.is_posting", "n|col|org.telegram_chat.is_posting", "e|col|org.telegram_chat.is_posting"],
+            "reads": ["n|tbl|org.telegram_chat", "n|sch|org"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "org", "telegram_chat", "is_mentioning"],
+            "writes": [
+                "s|col|org.telegram_chat.is_mentioning",
+                "n|col|org.telegram_chat.is_mentioning",
+                "e|col|org.telegram_chat.is_mentioning"
+            ],
+            "reads": ["n|tbl|org.telegram_chat", "n|sch|org"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "comms", "pending_action", "approver_tg_user_id"],
+            "writes": [
+                "s|col|comms.pending_action.approver_tg_user_id",
+                "n|col|comms.pending_action.approver_tg_user_id",
+                "e|col|comms.pending_action.approver_tg_user_id"
+            ],
+            "reads": ["n|tbl|comms.pending_action", "n|sch|comms"]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "org", "community"],
+            "writes": [
+                "s|fk|org.community.community_approver_tg_user_id_telegram_account_tg_user_id_fkey",
+                "n|fk|org.community.community_approver_tg_user_id_telegram_account_tg_user_id_fkey",
+                "e|fk|org.community.community_approver_tg_user_id_telegram_account_tg_user_id_fkey",
+                "n|con|org.community.community_approver_tg_user_id_telegram_account_tg_user_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|org.community",
+                "n|sch|org",
+                "n|tbl|identity.telegram_account",
+                "n|sch|identity",
+                "n|col|org.community.approver_tg_user_id",
+                "n|col|identity.telegram_account.tg_user_id",
+                "e|uniqueness|identity.telegram_account.tg_user_id"
+            ]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "org",
+                "table": "community",
+                "name": "approver_tg_user_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "org",
+                "table": "community",
+                "name": "live_since",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "org",
+                "table": "telegram_chat",
+                "name": "is_posting",
+                "type": "boolean",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "false",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "org",
+                "table": "telegram_chat",
+                "name": "is_mentioning",
+                "type": "boolean",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "false",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "pending_action",
+                "name": "approver_tg_user_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "org",
+                "table": "community",
+                "name": "community_approver_tg_user_id_telegram_account_tg_user_id_fkey",
+                "nameExplicit": false,
+                "columns": ["approver_tg_user_id"],
+                "schemaTo": "identity",
+                "tableTo": "telegram_account",
+                "columnsTo": ["tg_user_id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "SET NULL",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "alter",
+            "key": "enums\u0000[\"org\",\"chat_purpose\"]",
+            "set": {
+                "values": ["main", "activity", "squad", "staff", "other"]
+            }
+        }
+    ]
+}

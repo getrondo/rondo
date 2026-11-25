@@ -5,11 +5,12 @@ import { telegramChat } from '@rondo/db/schema/org.schema';
 import { importedPoll } from '@rondo/db/schema/platform.schema';
 import { lineupDelivery, ratingEvent } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
+import { postingChatsOf } from '../community/community.repository';
 import { ActionFailedError } from '../error/action-failed.error';
 import { noticeTargets } from '../signups/audience';
 
@@ -40,21 +41,15 @@ export interface PlanInput {
 const audienceForTeams = Effect.fn('Core.audienceForTeams')(function* (
     communityId: string,
     sessionId: string,
-    fallback: Option.Option<GroupTarget>
+    { fallback, privateChatId }: Pick<PlanInput, 'fallback' | 'privateChatId'>
 ) {
     const db = yield* Db;
-    // An imported poll's own chat decides: that group when the bot has it, else the admin, never the main group
-    const [imported] = yield* db.select({ chatId: importedPoll.chatId }).from(importedPoll).where(eq(importedPoll.sessionId, sessionId));
-    const [own] = isDefined(imported?.chatId)
-        ? yield* db
-              .select({ chatId: telegramChat.chatId, topicId: telegramChat.topicId })
-              .from(telegramChat)
-              .where(and(eq(telegramChat.chatId, BigInt(imported.chatId)), eq(telegramChat.communityId, communityId)))
-        : [];
-    const audience = yield* noticeTargets(
-        sessionId,
-        isDefined(imported) ? Option.toArray(Option.fromNullishOr(own)) : Option.toArray(fallback)
-    );
+    // The chats of the imported polls decide: the groups the bot has, else the admin, never the main group
+    const imported = yield* db.select({ chatId: importedPoll.chatId }).from(importedPoll).where(eq(importedPoll.sessionId, sessionId));
+    const ownIds = new Set(imported.flatMap(({ chatId }) => (isDefined(chatId) ? [BigInt(chatId)] : [])));
+    const own = (yield* postingChatsOf(communityId)).filter(chat => ownIds.has(chat.chatId));
+    const admin = isDefined(privateChatId) ? [{ chatId: BigInt(privateChatId), topicId: null }] : [];
+    const audience = yield* noticeTargets(sessionId, isNotEmptyArray(imported) ? own : Option.toArray(fallback), admin);
     const isPrivate = audience.some(target => target.chatId > 0n);
     const targets = audience.filter(target => target.chatId < 0n);
     const titles = isNotEmptyArray(targets)
@@ -118,7 +113,7 @@ export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInp
     const diff = isNotEmptyArray(previous) ? lineupDiff(previous, placement, input.locale) : [];
     const teamOf = new Map(previous.map(entry => [entry.personId, entry.team]));
     const isSquadChanged = previous.length !== placement.length || placement.some(entry => teamOf.get(entry.personId) !== entry.team);
-    const audience = yield* audienceForTeams(input.communityId, input.sessionId, input.fallback);
+    const audience = yield* audienceForTeams(input.communityId, input.sessionId, input);
     const stored = yield* db.select().from(lineupDelivery).where(eq(lineupDelivery.sessionId, input.sessionId));
     const results = yield* db.select({ at: ratingEvent.at }).from(ratingEvent).where(eq(ratingEvent.sessionId, input.sessionId)).limit(1);
     const post = (isUpdate: boolean) =>

@@ -10,6 +10,7 @@ import { markUndecidedTeams } from '@rondo/core/roster/mark-undecided-teams';
 import { Db } from '@rondo/db/service/db.service';
 import * as Effect from 'effect/Effect';
 
+import { assertBeforeLive } from './assert-before-live';
 import { loadAccounts } from './load-accounts';
 import { assertUniqueVenueNames, purgePreviousImport, upsertCommunity, upsertReference } from './load-community';
 import { insertMoneyAndLeague } from './load-league';
@@ -28,16 +29,22 @@ interface LoadOptions {
     readonly fileSha256: string;
     readonly snapshot?: TelegramSnapshot;
     readonly allowRemoval?: boolean;
+    readonly acknowledgeLive?: boolean;
 }
 
 export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
     config: CommunityConfig,
     imported: ImportPlan,
-    { fileSha256, snapshot: importedSnapshot, allowRemoval }: LoadOptions
+    { fileSha256, snapshot: importedSnapshot, allowRemoval, acknowledgeLive }: LoadOptions
 ) {
     const db = yield* Db;
 
     yield* assertUniqueVenueNames(config);
+    yield* assertBeforeLive(
+        config,
+        imported.sessions.map(({ localDate }) => localDate),
+        acknowledgeLive === true
+    );
 
     return yield* db.transaction(transaction =>
         Effect.gen(function* () {

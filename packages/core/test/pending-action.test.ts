@@ -11,6 +11,7 @@ import { describeAction } from '../src/actions/describe-action';
 import { decideAction, proposeAction } from '../src/actions/pending-action.service';
 import { mergePeople } from '../src/people/people.service';
 import { createSession } from '../src/sessions/session.service';
+import { linkGroup } from '../src/testing/link-group';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -32,6 +33,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId, venueIdByName } = yield* seedCommunity(seedConfig('actions-fc'));
+            yield* linkGroup(communityId, { chatId: -100 });
             const action: Action = {
                 _tag: 'create_session',
                 localDate: '2026-12-05',
@@ -69,6 +71,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
     it.effect('reports a failed action and expires stale ones', () =>
         Effect.gen(function* () {
             const { communityId } = yield* seedCommunity(seedConfig('actions-fail-fc'));
+            yield* linkGroup(communityId, { chatId: -100 });
             const db = yield* Db;
             const unlinked: Action = {
                 _tag: 'create_session',
@@ -115,6 +118,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
     it.effect('fails a proposal it cannot read once, with a code, and still lets the admin reject one', () =>
         Effect.gen(function* () {
             const { communityId } = yield* seedCommunity(seedConfig('actions-unreadable-fc'));
+            yield* linkGroup(communityId, { chatId: -100 });
             const db = yield* Db;
             const row = {
                 communityId,
@@ -131,7 +135,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
             const rejected = yield* decideAction({ actionId: rejectId, tgUserId: admin, confirm: false, context: contextFor(null) });
             const [stored] = yield* db.select().from(pendingAction).where(eq(pendingAction.id, confirmId));
 
-            expect(failed).toEqual({ _tag: 'failed', summary: 'old', failure: { code: 'unexpected' } });
+            expect(failed).toMatchObject({ _tag: 'failed', summary: 'old', failure: { code: 'unexpected' } });
             expect(stored).toMatchObject({ status: 'failed', result: { failure: { code: 'unexpected' } } });
             expect(again._tag).toBe('missing');
             expect(rejected._tag).toBe('rejected');
@@ -142,6 +146,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('merge-fc'));
+            yield* linkGroup(communityId, { chatId: -100 });
             const [nickname, fullName] = yield* db
                 .insert(person)
                 .values([{ displayName: 'Ваня' }, { displayName: 'Іван Петренко' }])
@@ -224,6 +229,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('merge-signup-fc'));
+            yield* linkGroup(communityId, { chatId: -100 });
             const people = yield* db
                 .insert(person)
                 .values([{ displayName: 'One' }, { displayName: 'Two' }])

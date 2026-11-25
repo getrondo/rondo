@@ -1,5 +1,6 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
-import { communityProfile } from '@rondo/core/community/community.repository';
+import { communityProfile, linkedChatsOf } from '@rondo/core/community/community.repository';
+import { knownChatsOf } from '@rondo/core/community/group-settings';
 import { formatSessionLabel } from '@rondo/core/i18n/messages';
 import { listSessions } from '@rondo/core/sessions/session.service';
 import { rosterOf } from '@rondo/core/signups/signup.service';
@@ -57,6 +58,7 @@ export const homeScreen = Effect.fn('Bot.homeScreen')(function* (user: MenuUser)
     const [next] = yield* upcomingGames(user);
     const name = Option.match(profile, { onNone: () => '', onSome: value => value.name });
     const nextLine = yield* nextGameLine(user, next);
+    const groups = [...(yield* linkedChatsOf(user.communityId)), ...(yield* knownChatsOf(user.communityId))];
 
     return {
         text: [menuText(user.locale, 'home', { name: escapeHtml(name) }), '', nextLine].join('\n'),
@@ -74,7 +76,8 @@ export const homeScreen = Effect.fn('Bot.homeScreen')(function* (user: MenuUser)
                           }
                       ]
                   ]
-                : [])
+                : []),
+            ...(isNotEmptyArray(groups) ? [[{ text: menuText(user.locale, 'groupsButton'), callback_data: 'g:a' }]] : [])
         ]
     } satisfies Screen;
 });

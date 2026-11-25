@@ -18,6 +18,7 @@ import { deleteSession } from '../src/sessions/delete-session';
 import { createSession } from '../src/sessions/session.service';
 import { forwardPoll } from '../src/signups/forward-poll';
 import { applyPollAnswer } from '../src/signups/signup.service';
+import { linkGroup, ownerApproval } from '../src/testing/link-group';
 import { localPostgresLayer, raceDatabaseUrl } from '../src/testing/local-postgres.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -59,7 +60,7 @@ const forwardRace = Effect.fn('test.forwardRace')(function* (
     resend: string | null
 ) {
     const outcomes = yield* Effect.all(
-        Array.from({ length: 8 }, () => forwardPoll(sessionId, target, resend).pipe(Effect.exit)),
+        Array.from({ length: 8 }, () => forwardPoll(sessionId, target, { resend, approval: ownerApproval }).pipe(Effect.exit)),
         { concurrency: 'unbounded' }
     );
     const forwards = raceRecorder.calls.filter(call => call.method === 'forwardMessage' && call.payload.chat_id === Number(target.chatId));
@@ -118,6 +119,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig(`race-delete-${unique()}`));
+            yield* linkGroup(communityId, { chatId: -1 });
             const outcomes = yield* Effect.all(
                 Array.from({ length: rounds }, (_, round) =>
                     Effect.gen(function* () {
@@ -129,7 +131,13 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
                         const [voted, deleted] = yield* Effect.all(
                             [
                                 applyPollAnswer({ pollId, user: { id: BigInt(9_100_000 + round), firstName: 'Player' }, optionIds: [0] }),
-                                deleteSession({ communityId, sessionId, today: '2030-01-01', actorPersonId: null }).pipe(Effect.exit)
+                                deleteSession({
+                                    communityId,
+                                    sessionId,
+                                    today: '2030-01-01',
+                                    actorPersonId: null,
+                                    approval: { ...ownerApproval, closes: { pollIds: [pollId], chatIds: ['-1'] } }
+                                }).pipe(Effect.exit)
                             ],
                             { concurrency: 'unbounded' }
                         );
@@ -195,6 +203,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
             });
             const pollId = `race-forward-${unique()}`;
             const target = { chatId: -9_400_000n - BigInt(Math.floor(performance.now())), topicId: null };
+            yield* linkGroup(communityId, { chatId: Number(target.chatId) });
             yield* db.insert(telegramPoll).values({ pollId, chatId: -1n, messageId: 1, sessionId, options: ['in', 'out'] });
             expect(yield* forwardRace(sessionId, target, null)).toEqual({ sent: 1, forwards: 1 });
         })
@@ -228,14 +237,15 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig(`race-delete-twice-${unique()}`));
+            yield* linkGroup(communityId, { chatId: -2 });
             const sessionId = yield* menuGame(communityId, '19:00');
             const messageId = Math.floor(performance.now());
-            yield* db
-                .insert(telegramPoll)
-                .values({ pollId: `race-twice-${unique()}`, chatId: -2n, messageId, sessionId, options: ['in', 'out'] });
+            const pollId = `race-twice-${unique()}`;
+            const approval = { ...ownerApproval, closes: { pollIds: [pollId], chatIds: ['-2'] } };
+            yield* db.insert(telegramPoll).values({ pollId, chatId: -2n, messageId, sessionId, options: ['in', 'out'] });
             const outcomes = yield* Effect.all(
                 Array.from({ length: 4 }, () =>
-                    deleteSession({ communityId, sessionId, today: '2030-01-01', actorPersonId: null }).pipe(Effect.exit)
+                    deleteSession({ communityId, sessionId, today: '2030-01-01', actorPersonId: null, approval }).pipe(Effect.exit)
                 ),
                 { concurrency: 'unbounded' }
             );
@@ -253,6 +263,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
             const sessionId = yield* menuGame(communityId, '20:00');
             const pollId = `race-resend-${unique()}`;
             const target = { chatId: -9_500_000n - BigInt(Math.floor(performance.now())), topicId: null };
+            yield* linkGroup(communityId, { chatId: Number(target.chatId) });
             yield* db.insert(telegramPoll).values({ pollId, chatId: -1n, messageId: 1, sessionId, options: ['in', 'out'] });
             yield* db.insert(pollForward).values({ pollId, chatId: target.chatId, token: retryToken });
             expect(yield* forwardRace(sessionId, target, retryToken)).toEqual({ sent: 1, forwards: 1 });

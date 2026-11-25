@@ -1,7 +1,9 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
+import { decideAction } from '@rondo/core/actions/pending-action.service';
 import { syncMember } from '@rondo/core/identity/telegram-user';
 import { createSession } from '@rondo/core/sessions/session.service';
+import { linkGroup } from '@rondo/core/testing/link-group';
 import { recordedTelegramDbLayer } from '@rondo/core/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
 import { personAlias } from '@rondo/db/schema/identity.schema';
@@ -11,6 +13,7 @@ import { MockLanguageModelV4 } from 'ai/test';
 import { desc, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
+import * as Option from 'effect/Option';
 
 import { runAssistant } from '../src/run-assistant';
 import { AiGateway } from '../src/service/ai-gateway.service';
@@ -150,6 +153,39 @@ layer(Layer.mergeAll(recordedTelegramDbLayer, AiGateway.layerFor(model)), { time
 
                 expect({ toolName, ...proposal }).toMatchObject({ toolName, kind: expected._tag, payload: expected });
             }
+        })
+    );
+
+    it.effect('stores the group and the topic of a poll, names them, and is refused when they changed', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig('tools-place'));
+            yield* linkGroup(communityId, { chatId: -9501, title: 'Games', topicId: 7 });
+            const { payload } = yield* ask(communityId, 'propose_create_session', {
+                localDate: '2026-12-04',
+                localTime: '19:00',
+                announce: true
+            });
+            const [row] = yield* db.select().from(pendingAction).where(eq(pendingAction.communityId, communityId));
+            yield* linkGroup(communityId, { chatId: -9501, title: 'Games', topicId: 8 });
+            const outcome = yield* decideAction({
+                actionId: row?.id ?? '',
+                tgUserId: 42n,
+                confirm: true,
+                context: id =>
+                    Effect.succeed({
+                        communityId: id,
+                        timezone: 'Europe/Vienna',
+                        group: Option.none(),
+                        groupLocale: 'uk',
+                        actorPersonId: null,
+                        requester: 42n
+                    })
+            });
+
+            expect(payload).toMatchObject({ chatId: '-9501', topicId: 7 });
+            expect(row?.summary).toContain('«Games» 🧵 7');
+            expect(outcome).toMatchObject({ _tag: 'failed', failure: { code: 'preview_changed' } });
         })
     );
 });

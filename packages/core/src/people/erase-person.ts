@@ -195,6 +195,7 @@ const eraseTexts = Effect.fn('Core.eraseTexts')(function* (
                 ne(pendingAction.summary, ''),
                 or(
                     inArray(pendingAction.requestedByTgUserId, [...tgUserIds]),
+                    inArray(pendingAction.approverTgUserId, [...tgUserIds]),
                     mentions(pendingAction.summary, texts),
                     mentions(pendingAction.payload, texts),
                     mentions(pendingAction.result, texts)

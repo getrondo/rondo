@@ -19,7 +19,7 @@ export interface TelegramRecorder {
 
 let nextMessageId = 1000;
 
-const defaultReply = (method: string, payload: Readonly<Record<string, unknown>>): unknown => {
+export const defaultReply = (method: string, payload: Readonly<Record<string, unknown>>): unknown => {
     nextMessageId += 1;
 
     if (method === 'sendPoll') {
@@ -29,6 +29,10 @@ const defaultReply = (method: string, payload: Readonly<Record<string, unknown>>
             chat: { id: payload.chat_id, type: 'supergroup' },
             poll: { id: `poll-${nextMessageId}` }
         };
+    }
+
+    if (method === 'getChat') {
+        return { id: payload.chat_id, type: 'supergroup', title: 'Games' };
     }
 
     if (method === 'stopPoll') {

@@ -4,15 +4,24 @@ import * as Option from 'effect/Option';
 
 import { describeAction } from '../actions/describe-action';
 import { decideAction, proposeAction } from '../actions/pending-action.service';
-import { mainGroupOf } from '../community/community.repository';
+import { groupLocaleOf, mainGroupOf } from '../community/community.repository';
+import { withNotice } from '../notify/notice-preview';
 import { publishTeamsAction, type ProposedTeam } from '../teams/team.service';
+
+import { linkGroup } from './link-group';
 
 import type { Action } from '../actions/action.model';
 
 const groupFor = Effect.fn('Testing.groupFor')(function* (communityId: string, chatId?: bigint) {
     const linked = yield* mainGroupOf(communityId);
 
-    return Option.isSome(linked) || !isDefined(chatId) ? linked : Option.some({ chatId, topicId: null });
+    if (Option.isNone(linked) && isDefined(chatId)) {
+        yield* linkGroup(communityId, { chatId: Number(chatId) });
+
+        return Option.some({ chatId, topicId: null });
+    }
+
+    return linked;
 });
 
 export const teamsActionAsOwner = Effect.fn('Testing.teamsActionAsOwner')(function* (
@@ -34,14 +43,17 @@ export const teamsActionAsOwner = Effect.fn('Testing.teamsActionAsOwner')(functi
 });
 
 export const proposeAs = Effect.fn('Testing.proposeAs')(function* (communityId: string, tgUserId: bigint, action: Action) {
-    const summary = yield* describeAction(action, 'uk', communityId);
+    const group = yield* groupFor(communityId);
+    const context = { communityId, group, groupLocale: yield* groupLocaleOf(communityId) };
+    const shown = yield* withNotice(action, context);
+    const summary = yield* describeAction(shown, 'uk', communityId);
 
-    return yield* proposeAction({ communityId, tgUserId, action, summary });
+    return yield* proposeAction({ communityId, tgUserId, action: shown, summary });
 });
 
 export const confirmAsOwner = Effect.fn('Testing.confirmAsOwner')(function* (communityId: string, action: Action, chatId?: bigint) {
-    const actionId = yield* proposeAs(communityId, 42n, action);
     const group = yield* groupFor(communityId, chatId);
+    const actionId = yield* proposeAs(communityId, 42n, action);
 
     return yield* decideAction({
         actionId,
@@ -50,3 +62,23 @@ export const confirmAsOwner = Effect.fn('Testing.confirmAsOwner')(function* (com
         context: id => Effect.succeed({ communityId: id, timezone: 'Europe/Vienna', group, groupLocale: 'uk', actorPersonId: null })
     });
 });
+
+export const decideAs = (actionId: string, tgUserId: bigint, now?: Date) =>
+    decideAction({
+        actionId,
+        tgUserId,
+        confirm: true,
+        ...(isDefined(now) ? { now } : {}),
+        context: (communityId, requester) =>
+            mainGroupOf(communityId).pipe(
+                Effect.orDie,
+                Effect.map(group => ({
+                    communityId,
+                    timezone: 'Europe/Vienna',
+                    group,
+                    groupLocale: 'uk' as const,
+                    actorPersonId: null,
+                    requester
+                }))
+            )
+    });

@@ -232,6 +232,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('erasing a person', it => {
                 isTrusted: true
             };
             yield* ingestGroupMessage(communityId, seedConfig(slug), {
+                isMain: true,
                 ...post,
                 messageId: 900,
                 text: 'Составы на сегодня, North:\n🟢Зорро, Олег\n🔵Семён, Павел'

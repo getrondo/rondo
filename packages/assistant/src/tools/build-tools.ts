@@ -1,7 +1,4 @@
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
-import { describeAction } from '@rondo/core/actions/describe-action';
-import { requireActionScope } from '@rondo/core/actions/execute-action';
-import { proposeAction } from '@rondo/core/actions/pending-action.service';
 import { groupLocaleOf, mainGroupOf } from '@rondo/core/community/community.repository';
 import { personIdOfTelegramUser } from '@rondo/core/identity/telegram-user';
 import { suggestAliasLinks } from '@rondo/core/people/alias-links.service';
@@ -17,20 +14,12 @@ import * as Effect from 'effect/Effect';
 import * as Predicate from 'effect/Predicate';
 import * as Schema from 'effect/Schema';
 
+import { propose, type ToolScope } from './propose';
 import { IsoDate, LocalTime, optionalNullable, toolSchema } from './tool-schema';
 import { withCoverage } from './with-coverage';
 
-import type { Action } from '@rondo/core/actions/action.model';
-import type { Locale } from '@rondo/core/i18n/locale';
 import type { Db } from '@rondo/db/service/db.service';
 import type { Telegram } from '@rondo/telegram/service/telegram.service';
-
-export interface ToolScope {
-    readonly communityId: string;
-    readonly tgUserId: bigint;
-    readonly locale: Locale;
-    readonly proposals: { actionId: string; summary: string }[];
-}
 
 export type ToolRunner = <Value, Failure>(
     effect: Effect.Effect<Value, Failure, Db | Telegram>
@@ -64,16 +53,6 @@ const venueFields = {
     district: optionalNullable(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 23 }))),
     indoor: optionalNullable(Schema.Boolean)
 };
-
-const propose = (scope: ToolScope, action: Action) =>
-    Effect.gen(function* () {
-        yield* requireActionScope(action, scope.communityId);
-        const summary = yield* describeAction(action, scope.locale, scope.communityId);
-        const actionId = yield* proposeAction({ communityId: scope.communityId, tgUserId: scope.tgUserId, action, summary });
-        scope.proposals.push({ actionId, summary });
-
-        return { status: 'awaiting_admin_confirmation', summary };
-    });
 
 const readTools = (scope: ToolScope, run: ToolRunner) => ({
     list_sessions: tool({

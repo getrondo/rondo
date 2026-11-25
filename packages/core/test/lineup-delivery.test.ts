@@ -24,7 +24,7 @@ import { changeDraft, openDraft } from '../src/teams/team-draft.service';
 import { recordResult } from '../src/teams/team-result';
 import { confirmAsOwner, teamsActionAsOwner } from '../src/testing/confirm-action';
 
-import { publishPlanned, publishWhile, twoGroupGame } from './support/two-group-game';
+import { ownerApproval, publishPlanned, publishWhile, twoGroupGame } from './support/two-group-game';
 
 const blocked = new Map<number, Error>();
 let messageId = 50_000;
@@ -130,7 +130,14 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
         Effect.gen(function* () {
             const db = yield* Db;
             const game = yield* twoGroupGame('delivery-bound', [-7301, -7302], 73_000);
-            const input = { ...game, locale: 'uk' as const, actorPersonId: null, privateChatId: null, fallback: Option.none() };
+            const input = {
+                ...game,
+                locale: 'uk' as const,
+                actorPersonId: null,
+                approval: ownerApproval,
+                privateChatId: null,
+                fallback: Option.none()
+            };
             const plan = yield* planLineup(input);
             yield* db.update(telegramChat).set({ topicId: 9 }).where(eq(telegramChat.chatId, -7302n));
             const moved = yield* publishLineup({ ...input, version: plan.version, fingerprint: plan.fingerprint }).pipe(Effect.flip);
@@ -247,6 +254,19 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             yield* db.update(importedPoll).set({ chatId: -7982 }).where(eq(importedPoll.pollId, 'imported-elsewhere'));
             const linked = yield* planLineup({ ...game, locale: 'uk', privateChatId: 4244, fallback });
 
+            yield* db.insert(importedPoll).values({
+                pollId: 'imported-second',
+                communityId: game.communityId,
+                sessionId: game.sessionId,
+                chatId: -7981,
+                messageId: 2,
+                postedAt: new Date('2026-12-01T09:00:00Z'),
+                kind: 'participation',
+                answers: 2
+            });
+            const both = yield* planLineup({ ...game, locale: 'uk', privateChatId: 4244, fallback });
+
+            expect(new Set(both.deliveries.map(delivery => delivery.chatId))).toEqual(new Set([-7981n, -7982n]));
             expect(unlinked.deliveries.map(delivery => delivery.chatId)).toEqual([4244n]);
             expect(linked.deliveries.map(delivery => delivery.chatId)).toEqual([-7982n]);
         })
@@ -311,6 +331,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
                 ...game,
                 locale: 'uk' as const,
                 actorPersonId: null,
+                approval: ownerApproval,
                 privateChatId: null,
                 fallback: Option.none(),
                 asNewMessage: true

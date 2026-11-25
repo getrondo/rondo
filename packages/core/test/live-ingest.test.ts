@@ -28,6 +28,7 @@ const seedMatchChat = Effect.fn('test.seedMatchChat')(function* (slug: string, s
     const post = (chatId: number, messageId: number, sentAt: string, content: { readonly text?: string; readonly question?: string }) =>
         ingestGroupMessage(communityId, scoped, {
             chatId: BigInt(chatId),
+            isMain: chatId !== secondChatId,
             messageId,
             sentAt: new Date(sentAt),
             senderPersonId: personId,
@@ -63,6 +64,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             const organizerPersonId = yield* upsertTelegramUser(organizer);
             const base = {
                 chatId: -100n,
+                isMain: true,
                 senderPersonId: organizerPersonId,
                 senderTgUserId: organizer.id,
                 senderName: 'Org',
@@ -129,7 +131,14 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             const { communityId } = yield* seedCommunity(scoped);
             const member = { id: 8n, firstName: 'Org' };
             const personId = yield* upsertTelegramUser(member);
-            const base = { chatId: -101n, senderPersonId: personId, senderTgUserId: member.id, senderName: 'Org', isTrusted: false };
+            const base = {
+                chatId: -101n,
+                isMain: true,
+                senderPersonId: personId,
+                senderTgUserId: member.id,
+                senderName: 'Org',
+                isTrusted: false
+            };
 
             yield* ingestGroupMessage(communityId, scoped, {
                 ...base,
@@ -178,7 +187,14 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             const scoped = seedConfig('two-games-fc');
             const { communityId } = yield* seedCommunity(scoped);
             const personId = yield* upsertTelegramUser({ id: 9n, firstName: 'Org' });
-            const base = { chatId: -103n, senderPersonId: personId, senderTgUserId: 9n, senderName: 'Org', isTrusted: true };
+            const base = {
+                chatId: -103n,
+                isMain: true,
+                senderPersonId: personId,
+                senderTgUserId: 9n,
+                senderName: 'Org',
+                isTrusted: true
+            };
             const pollAt = (messageId: number, time: string) =>
                 ingestGroupMessage(communityId, scoped, {
                     ...base,
@@ -212,6 +228,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             const post = (messageId: number, text: string) =>
                 ingestGroupMessage(communityId, scoped, {
                     chatId: -177n,
+                    isMain: true,
                     messageId,
                     sentAt: new Date('2026-05-08T12:00:00Z'),
                     senderPersonId: personId,
@@ -248,6 +265,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
                 ingestGroupMessage(communityId, matches, {
                     ...base,
                     chatId: BigInt(chat),
+                    isMain: true,
                     messageId,
                     sentAt: new Date(sentAt),
                     ...(isDefined(content.text) ? { text: content.text } : {}),

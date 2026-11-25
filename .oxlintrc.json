@@ -910,6 +910,23 @@
                     }
                 ]
             }
+        },
+        {
+            "files": ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts"],
+            "rules": {
+                "rondo/telegram-write-gate": "error"
+            }
+        },
+        {
+            "files": [
+                "packages/core/src/telegram/write-to-chat.ts",
+                "packages/bot/src/context/private-chat.ts",
+                "packages/telegram/src/service/telegram.service.ts",
+                "packages/*/src/testing/**/*.ts"
+            ],
+            "rules": {
+                "rondo/telegram-write-gate": "off"
+            }
         }
     ]
 }

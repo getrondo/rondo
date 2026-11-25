@@ -14,6 +14,7 @@ import * as Layer from 'effect/Layer';
 import * as Option from 'effect/Option';
 import * as Random from 'effect/Random';
 
+import { Access } from '../src/access/admin-access';
 import { erasePerson } from '../src/people/erase-person';
 import { finishPastSessions } from '../src/sessions/finish-session';
 import { swapPlayers } from '../src/teams/draft-state';
@@ -25,7 +26,7 @@ import { localPostgresLayer, raceDatabaseUrl } from '../src/testing/local-postgr
 import { publishPlanned, publishWhile, twoGroupGame } from './support/two-group-game';
 
 const recorder = makeRecorder();
-const postgresLayer = Layer.mergeAll(localPostgresLayer(raceDatabaseUrl), recordingTelegramLayer(recorder));
+const postgresLayer = Layer.mergeAll(localPostgresLayer(raceDatabaseUrl), recordingTelegramLayer(recorder), Access.layerFor([42n]));
 const afterKickoff = new Date('2026-12-04T20:30:00Z');
 
 interface Game {

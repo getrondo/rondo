@@ -1,6 +1,7 @@
 import { isDefined } from '@rnw-community/shared';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
 import * as Effect from 'effect/Effect';
+
+import { clearPrivateKeyboard, editPrivate, sendPrivate } from '../context/private-chat';
 
 import type { Screen } from './screen.interface';
 
@@ -8,7 +9,6 @@ const telegramMessageLimit = 4000;
 const notModified = /message is not modified/iu;
 
 export const showScreen = Effect.fn('Bot.showScreen')(function* (chatId: number, messageId: number | null, screen: Screen) {
-    const telegram = yield* Telegram;
     const text = screen.text.slice(0, telegramMessageLimit);
     const options = {
         parse_mode: 'HTML' as const,
@@ -17,27 +17,19 @@ export const showScreen = Effect.fn('Bot.showScreen')(function* (chatId: number,
     };
 
     if (isDefined(messageId)) {
-        const isShown = yield* telegram
-            .call('editMessageText', api => api.editMessageText(chatId, messageId, text, options))
-            .pipe(
-                Effect.as(true),
-                Effect.catch(error => Effect.succeed(notModified.test(error.description)))
-            );
+        const isShown = yield* editPrivate(chatId, messageId, text, options).pipe(
+            Effect.as(true),
+            Effect.catch(error => Effect.succeed(notModified.test(error.description)))
+        );
 
         if (isShown) {
             return messageId;
         }
     }
 
-    const sent = yield* telegram.call('sendMessage', api => api.sendMessage(chatId, text, options));
+    const sent = yield* sendPrivate(chatId, text, options);
 
     return sent.message_id;
 });
 
-export const clearKeyboard = Effect.fn('Bot.clearKeyboard')(function* (chatId: number, messageId: number) {
-    const telegram = yield* Telegram;
-
-    yield* telegram
-        .call('editMessageReplyMarkup', api => api.editMessageReplyMarkup(chatId, messageId, { reply_markup: { inline_keyboard: [] } }))
-        .pipe(Effect.ignore);
-});
+export const clearKeyboard = (chatId: number, messageId: number) => clearPrivateKeyboard(chatId, messageId).pipe(Effect.ignore);

@@ -1,5 +1,5 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
-import { linkedChatsOf } from '@rondo/core/community/community.repository';
+import { postingChatsOf } from '@rondo/core/community/community.repository';
 import { countOf, formatSessionLabel } from '@rondo/core/i18n/messages';
 import { hasOpenPoll } from '@rondo/core/menu/game-history.repository';
 import { hasOnlyAdminVotes, isDeletableSession } from '@rondo/core/sessions/delete-session';
@@ -274,7 +274,7 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
     const roster = yield* rosterOf(sessionId);
     const signed = roster.filter(entry => entry.status === 'in' && entry.role === 'field');
     const isUpcoming = game.localDate >= user.today && ['open', 'full', 'locked', 'draft'].includes(game.status);
-    const chats = yield* linkedChatsOf(user.communityId);
+    const chats = yield* postingChatsOf(user.communityId);
     const audience = (yield* audienceOf(sessionId)).map(target => target.chatId);
     const isOpen = yield* hasOpenPoll(sessionId);
     const onlyAdmins = yield* hasOnlyAdminVotes(user.communityId, sessionId);
@@ -283,7 +283,7 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
     const stored = yield* storedTeams(sessionId);
     const result = resultOf(user, game, { teams: stored, squad: yield* squadFingerprint(sessionId) }, card.isChoosing === true);
     const state: CardState = {
-        hasPoll: isNotEmptyArray(audience),
+        hasPoll: isNotEmptyArray(audience) || isOpen,
         canDelete,
         privateOnly: isOpen && onlyAdmins && isNotEmptyArray(audience) && audience.every(chatId => chatId > 0n),
         signed: signed.length,

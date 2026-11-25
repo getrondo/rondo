@@ -9,6 +9,7 @@ import * as Option from 'effect/Option';
 import { createSession } from '../src/sessions/session.service';
 import { publishPoll } from '../src/signups/publish-poll';
 import { applyPollAnswer } from '../src/signups/signup.service';
+import { linkGroup, ownerApproval } from '../src/testing/link-group';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -19,6 +20,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('signup-fc'));
+            yield* linkGroup(communityId, { chatId: -100_123 });
             const sessionId = yield* createSession({
                 communityId,
                 timezone: 'Europe/Vienna',
@@ -32,6 +34,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
             yield* publishPoll({
                 communityId,
                 group: { chatId: -100_123n, topicId: null },
+                approval: ownerApproval,
                 note: null,
                 approvedSummary: null,
                 prepare: Effect.succeed(sessionId),
@@ -88,6 +91,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('signup-race-fc'));
+            yield* linkGroup(communityId, { chatId: -100_123 });
             const sessionId = yield* createSession({
                 communityId,
                 timezone: 'Europe/Vienna',
@@ -114,6 +118,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('sign-ups through the bot po
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('rollback-fc'));
+            yield* linkGroup(communityId, { chatId: -100_123 });
             yield* Effect.exit(
                 db.transaction(() =>
                     createSession({

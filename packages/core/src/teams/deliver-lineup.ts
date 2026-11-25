@@ -3,14 +3,13 @@ import { lineupDelivery, teamDraft } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/db/service/with-community-lock';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, eq } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
 import { failureOf, type ActionFailure } from '../error/action-failed.error';
 import { isClosed } from '../sessions/session.model';
-import { topicOptions } from '../utils/topic-options.util';
+import { writeToChat, type Approval } from '../telegram/write-to-chat';
 
 import { ownPublish } from './publish-claim';
 
@@ -18,7 +17,6 @@ import type { DeliveryOutcome, PlannedDelivery } from './interface/publish.inter
 
 const notModified = /message is not modified/iu;
 const notFound = /message to edit not found/iu;
-const htmlOptions = { parse_mode: 'HTML' as const, link_preview_options: { is_disabled: true } };
 
 export interface Claim {
     readonly delivery: PlannedDelivery;
@@ -32,36 +30,30 @@ export const isGameOpen = Effect.fn('Core.isGameOpenForLineup')(function* (sessi
     return isDefined(game) && !isClosed(game.status);
 });
 
-const sendOne = (delivery: PlannedDelivery) =>
-    Effect.gen(function* () {
-        const telegram = yield* Telegram;
-        const chatId = Number(delivery.chatId);
-        const { messageId } = delivery;
-
-        if (isDefined(messageId)) {
-            yield* telegram.call('editMessageText', api => api.editMessageText(chatId, messageId, delivery.html, htmlOptions));
-
-            return { messageId, status: 'edited' as const };
-        }
-
-        const sent = yield* telegram.call('sendMessage', api =>
-            api.sendMessage(chatId, delivery.html, { ...htmlOptions, ...topicOptions(delivery) })
-        );
-
-        return { messageId: sent.message_id, status: 'sent' as const };
-    });
+const sendOne = (delivery: PlannedDelivery, approval: Approval | null) =>
+    writeToChat({
+        target: delivery,
+        approval,
+        content: isDefined(delivery.messageId)
+            ? { _tag: 'edit', messageId: delivery.messageId, html: delivery.html }
+            : { _tag: 'text', html: delivery.html, hasLinkPreview: false }
+    }).pipe(
+        Effect.map(({ messageId }) => ({ messageId, status: isDefined(delivery.messageId) ? ('edited' as const) : ('sent' as const) }))
+    );
 
 export const deliverOne = Effect.fn('Core.deliverLineup')(function* <Failure, Requirements>({
     communityId,
     sessionId,
     claim,
     publishToken,
+    approval,
     onPosted
 }: {
     readonly communityId: string;
     readonly sessionId: string;
     readonly claim: Claim;
     readonly publishToken: string;
+    readonly approval: Approval | null;
     readonly onPosted: Effect.Effect<void, Failure, Requirements>;
 }) {
     const db = yield* Db;
@@ -105,27 +97,33 @@ export const deliverOne = Effect.fn('Core.deliverLineup')(function* <Failure, Re
         return null;
     });
     const answered = (receipt: Partial<typeof lineupDelivery.$inferInsert>, result: DeliveryOutcome) => ({ receipt, result });
-    const send = sendOne(delivery).pipe(
+    const send = sendOne(delivery, approval).pipe(
         Effect.map(done =>
             answered(
                 { status: 'sent', messageId: done.messageId, text: delivery.text, topicId: delivery.topicId },
                 outcome(done.status, null)
             )
         ),
-        Effect.catchTag('TelegramApiError', error => {
-            if (notModified.test(error.description)) {
-                return Effect.succeed(answered({ status: 'sent', text: delivery.text }, outcome('edited', null)));
+        Effect.catchTags({
+            ActionFailedError: ({ failure }) =>
+                Effect.succeed(answered({ status: isDefined(delivery.messageId) ? 'sent' : 'refused' }, outcome('refused', failure))),
+            TelegramApiError: error => {
+                if (notModified.test(error.description)) {
+                    return Effect.succeed(answered({ status: 'sent', text: delivery.text }, outcome('edited', null)));
+                }
+
+                const status = error.isUncertain ? 'uncertain' : 'refused';
+                const isGone = notFound.test(error.description);
+                const failure: ActionFailure = isGone ? { code: 'message_gone' } : failureOf(error);
+                const isKept = status === 'refused' && isDefined(delivery.messageId) && !isGone;
+
+                // A refused send as a new message keeps the id of the message that is still in the group
+                return Effect.logWarning('[teams] line-up not delivered', error.description).pipe(
+                    Effect.as(
+                        answered({ status: isKept ? 'sent' : status, ...(isGone ? { messageId: null } : {}) }, outcome(status, failure))
+                    )
+                );
             }
-
-            const status = error.isUncertain ? 'uncertain' : 'refused';
-            const isGone = notFound.test(error.description);
-            const failure: ActionFailure = isGone ? { code: 'message_gone' } : failureOf(error);
-            const isKept = status === 'refused' && isDefined(delivery.messageId) && !isGone;
-
-            // A refused send as a new message keeps the id of the message that is still in the group
-            return Effect.logWarning('[teams] line-up not delivered', error.description).pipe(
-                Effect.as(answered({ status: isKept ? 'sent' : status, ...(isGone ? { messageId: null } : {}) }, outcome(status, failure)))
-            );
         })
     );
     const delivered = Effect.gen(function* () {

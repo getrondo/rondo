@@ -4,15 +4,15 @@ import { importedPoll, messageRef, pendingAction, pollVote, telegramPoll } from 
 import { lineupEntry, teamMember } from '@rondo/db/schema/play.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { maxWaitInTransaction, Telegram } from '@rondo/telegram/service/telegram.service';
+import { maxWaitInTransaction } from '@rondo/telegram/service/telegram.service';
 import { and, count, eq, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
-import * as Predicate from 'effect/Predicate';
 
 import { adminPersonIds } from '../access/admin-access';
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
+import { writeToChat, type Approval } from '../telegram/write-to-chat';
 import { isSettledPoll } from '../utils/is-settled-poll.util';
 
 export const hasOnlyAdminVotes = Effect.fn('Core.hasOnlyAdminVotes')(function* (communityId: string, sessionId: string) {
@@ -76,17 +76,19 @@ export const isDeletableSession = Effect.fn('Core.isDeletableSession')(function*
 
 const refusedDelete = ActionFailedError.make({ failure: { code: 'not_deletable' } });
 
-const stopForDelete = Effect.fn('Core.stopForDelete')(function* (poll: typeof telegramPoll.$inferSelect) {
+const stopForDelete = Effect.fn('Core.stopForDelete')(function* (poll: typeof telegramPoll.$inferSelect, approval: Approval) {
     const db = yield* Db;
-    const telegram = yield* Telegram;
-    const stopped = yield* telegram
-        .call('stopPoll', api => api.stopPoll(Number(poll.chatId), poll.messageId), maxWaitInTransaction)
-        .pipe(
-            Effect.map(result => (Predicate.isNumber(result.total_voter_count) ? result.total_voter_count : null)),
-            Effect.catch(error =>
-                isSettledPoll(error.description) ? Effect.succeed(null) : ActionFailedError.make({ failure: { code: 'poll_not_closed' } })
-            )
-        );
+    const stopped = yield* writeToChat({
+        target: { chatId: poll.chatId, topicId: null },
+        approval,
+        content: { _tag: 'stop_poll', messageId: poll.messageId },
+        options: maxWaitInTransaction
+    }).pipe(
+        Effect.map(({ voters }) => voters),
+        Effect.catchTag('TelegramApiError', error =>
+            isSettledPoll(error.description) ? Effect.succeed(null) : ActionFailedError.make({ failure: { code: 'poll_not_closed' } })
+        )
+    );
     const closedAt = yield* DateTime.nowAsDate;
     yield* db.update(telegramPoll).set({ closedAt }).where(eq(telegramPoll.pollId, poll.pollId));
     const [stored] = yield* db.select({ count: count() }).from(pollVote).where(eq(pollVote.pollId, poll.pollId));
@@ -103,6 +105,7 @@ export const deleteSession = Effect.fn('Core.deleteSession')(function* (input: {
     readonly sessionId: string;
     readonly today: string;
     readonly actorPersonId: string | null;
+    readonly approval: Approval;
 }) {
     const db = yield* Db;
     const outcome = yield* db.transaction(() =>
@@ -121,7 +124,7 @@ export const deleteSession = Effect.fn('Core.deleteSession')(function* (input: {
             const checks: ('counted' | 'unseen' | 'uncounted')[] = [];
 
             for (const poll of polls) {
-                const check = yield* stopForDelete(poll);
+                const check = yield* stopForDelete(poll, input.approval);
                 checks.push(check);
             }
 

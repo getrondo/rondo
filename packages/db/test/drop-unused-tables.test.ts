@@ -11,7 +11,7 @@ import * as Exit from 'effect/Exit';
 
 import { runMigrations } from '../src/migration/migrate.effect';
 import { person } from '../src/schema/identity.schema';
-import { community, membership } from '../src/schema/org.schema';
+import { membership } from '../src/schema/org.schema';
 import { Db } from '../src/service/db.service';
 import { unmigratedDbLayer } from '../src/testing/test-db.layer';
 
@@ -54,8 +54,11 @@ layer(unmigratedDbLayer, { timeout: 120_000 })('drop of the unused tables', it =
                 .values([{ displayName: 'Kept' }, { displayName: 'Merged' }])
                 .returning({ id: person.id });
             const [kept = '', merged = ''] = people.map(({ id }) => id);
-            const [home] = yield* db.insert(community).values({ slug: 'home', name: 'Home' }).returning({ id: community.id });
-            const communityId = home?.id ?? '';
+            // The schema of today has columns the table of that migration does not have
+            const home = yield* db.execute<{ readonly id: string }>(
+                sql`insert into org.community (id, slug, name) values (gen_random_uuid(), 'home', 'Home') returning id`
+            );
+            const communityId = home.rows[0]?.id ?? '';
             yield* db.insert(membership).values([
                 { communityId, personId: kept, status: 'left' },
                 { communityId, personId: merged }

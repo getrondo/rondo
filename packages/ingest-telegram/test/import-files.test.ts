@@ -68,7 +68,13 @@ const makeExport = Effect.fn('test.makeExport')(function* (slug: string, second?
 
     return {
         root,
-        run: ingest({ exportDir: root, configPath: `${root}/config.json`, allowRemoval: true, reviewFile: Option.some(`${root}/review`) })
+        run: ingest({
+            exportDir: root,
+            configPath: `${root}/config.json`,
+            allowRemoval: true,
+            acknowledgeLive: false,
+            reviewFile: Option.some(`${root}/review`)
+        })
     };
 });
 

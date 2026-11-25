@@ -40,15 +40,10 @@ isec run getrondo prod -- sh -c 'RONDO_WEBHOOK_URL=https://<production-domain>/a
 ## Connect the community group
 
 1. In @BotFather: `/setprivacy` → **Disable** for the bot, so it sees every group message.
-2. Add the bot to the group as an admin: Telegram sends reliable join and leave updates only to admin bots.
-   Bots cannot list existing members, so people appear once they write, vote or join.
-   Give it the right to pin messages: without it the polls are posted but not pinned.
-3. An owner sends `/link <community-slug>` (the slug from the import config) in the topic where games are organized.
-   The bot posts there and reads games only there. In General, or in a group without topics, the whole
-   group outside other topics counts. Send `/link` again in another topic to move. `/link` in a second group
-   adds it to the community: a game's poll is then posted to one group and forwarded to the others. Turning topics on can turn
-   a group into a supergroup with a new id: the bot moves the link to the new id by itself and keeps the topic.
-   If it was offline when that happened, send `/link` in the new supergroup.
+2. Follow [add-bot-to-group](add-bot-to-group.md): the owner loads the known groups and the approver, the organizer adds the bot and
+   answers it privately. Nothing is sent to a group by linking it.
+3. Bots cannot list existing members, so people appear once they write, vote or join. The bot reads games only in the bound topic.
+   In General, or in a group without topics, the whole group outside other topics counts.
 4. Set the language of the group and the poll template once (`isec`, production database, ask the owner first).
    Placeholders: `{weekday}`, `{date}`, `{time}`, `{place}`, `{station}`, `{fields}`, `{places}`. One without a value
    disappears with the separator beside it. Without a template the bot uses a generic one. The import keeps both.

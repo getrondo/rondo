@@ -105,7 +105,7 @@ const selection = (user: MenuUser, draft: Draft, data: NewGameData): string =>
 const destinationLine = (user: MenuUser, draft: Draft, data: NewGameData): string =>
     isSelfAudience(draft, data)
         ? menuText(user.locale, 'selfLine')
-        : menuText(user.locale, 'destLine', { where: escapeHtml(quotedTitles(destinationTitles(draft, data), user.locale)) });
+        : `${menuText(user.locale, 'destLine', { where: escapeHtml(quotedTitles(destinationTitles(draft, data), user.locale)) })}\n${menuText(user.locale, 'closesAfter')}`;
 
 const otherGameLine = (user: MenuUser, draft: Draft, data: NewGameData): string[] => {
     const other = otherGameLabel(data, draft, user.locale);

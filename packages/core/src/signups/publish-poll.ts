@@ -2,7 +2,7 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { maxWaitInTransaction, Telegram } from '@rondo/telegram/service/telegram.service';
+import { maxWaitInTransaction } from '@rondo/telegram/service/telegram.service';
 import { and, eq, isNull } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -12,7 +12,7 @@ import * as Ref from 'effect/Ref';
 
 import { ActionFailedError } from '../error/action-failed.error';
 import { requireSession } from '../sessions/session.service';
-import { topicOptions } from '../utils/topic-options.util';
+import { writeToChat, type Approval } from '../telegram/write-to-chat';
 
 import { pollFor, previewOf } from './poll-for';
 import { lockSession } from './signup.service';
@@ -22,12 +22,14 @@ import type { GroupTarget } from '../interface/group-target.interface';
 interface PublishPollInput<PrepareFailure, PrepareRequirements, SettleFailure, SettleRequirements> {
     readonly communityId: string;
     readonly group: GroupTarget;
+    readonly approval: Approval;
     readonly note: string | null | undefined;
     readonly approvedSummary: string | null;
     readonly prepare: Effect.Effect<string, PrepareFailure, PrepareRequirements>;
     readonly settle: (result: {
         readonly sessionId: string;
         readonly messageId: number;
+        readonly pollId: string;
     }) => Effect.Effect<void, SettleFailure, SettleRequirements>;
 }
 
@@ -35,8 +37,8 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
     input: PublishPollInput<PrepareFailure, PrepareRequirements, SettleFailure, SettleRequirements>
 ) {
     const db = yield* Db;
-    const telegram = yield* Telegram;
-    const { chatId } = input.group;
+    const { group: target, approval } = input;
+    const { chatId } = target;
     const sentMessage = yield* Ref.make<number | null>(null);
     const isWritten = yield* Ref.make(false);
 
@@ -58,41 +60,31 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
             return yield* ActionFailedError.make({ failure: { code: 'poll_open' } });
         }
 
-        const target = yield* requireSession(input.communityId, sessionId);
+        const game = yield* requireSession(input.communityId, sessionId);
 
-        if (target.startsAt.getTime() <= (yield* DateTime.nowAsDate).getTime()) {
+        if (game.startsAt.getTime() <= (yield* DateTime.nowAsDate).getTime()) {
             return yield* ActionFailedError.make({ failure: { code: 'time_passed' } });
         }
 
-        const poll = yield* pollFor(input.communityId, target, input.note);
+        const poll = yield* pollFor(input.communityId, game, input.note);
 
         if (isDefined(input.approvedSummary) && input.approvedSummary.split('\n\n').slice(1).join('\n\n') !== previewOf(poll)) {
             return yield* ActionFailedError.make({ failure: { code: 'preview_changed' } });
         }
 
-        const options = poll.answers.map(answer => ({ text: answer }));
-        const sent = yield* telegram.call(
-            'sendPoll',
-            api =>
-                api.sendPoll(Number(chatId), poll.question, options, {
-                    is_anonymous: false,
-                    allows_multiple_answers: false,
-                    ...(isDefined(poll.description) ? { description: poll.description, description_parse_mode: 'HTML' } : {}),
-                    ...(isDefined(poll.route)
-                        ? { reply_markup: { inline_keyboard: [[{ text: poll.route.label, url: poll.route.url }]] } }
-                        : {}),
-                    ...topicOptions(input.group)
-                }),
-            maxWaitInTransaction
-        );
-        const messageId = sent.message_id;
+        const { messageId, pollId } = yield* writeToChat({
+            target,
+            approval,
+            content: { _tag: 'poll', poll, sessionId },
+            options: maxWaitInTransaction
+        });
         yield* Ref.set(sentMessage, messageId);
-        yield* db.insert(telegramPoll).values({ pollId: sent.poll.id, chatId, messageId, sessionId, options: ['in', 'out'] });
+        yield* db.insert(telegramPoll).values({ pollId, chatId, messageId, sessionId, options: ['in', 'out'] });
         yield* db
             .insert(messageRef)
             .values({ chatId, messageId, purpose: 'poll', entityType: 'session', entityId: sessionId })
             .onConflictDoNothing();
-        yield* input.settle({ sessionId, messageId });
+        yield* input.settle({ sessionId, messageId, pollId });
         yield* Ref.set(isWritten, true);
 
         return { sessionId, messageId };
@@ -126,7 +118,7 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
                         return yield* uncertain;
                     }
 
-                    const stopped = yield* Effect.exit(telegram.call('stopPoll', api => api.stopPoll(Number(chatId), sent)));
+                    const stopped = yield* Effect.exit(writeToChat({ target, approval, content: { _tag: 'stop_poll', messageId: sent } }));
 
                     return yield* ActionFailedError.make({
                         failure: { code: Exit.isSuccess(stopped) ? 'poll_unsaved_closed' : 'poll_unsaved_open' }
@@ -136,9 +128,9 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
         );
 
     if (chatId < 0n) {
-        yield* telegram
-            .call('pinChatMessage', api => api.pinChatMessage(Number(chatId), result.messageId, { disable_notification: true }))
-            .pipe(Effect.catch(error => Effect.logInfo('[poll] not pinned', error)));
+        yield* writeToChat({ target, approval, content: { _tag: 'pin', messageId: result.messageId } }).pipe(
+            Effect.catch(error => Effect.logInfo('[poll] not pinned', error))
+        );
     }
 
     return result;

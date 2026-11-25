@@ -3,7 +3,6 @@ import { person } from '@rondo/db/schema/identity.schema';
 import { pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, asc, count, eq, inArray, isNull, ne } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -12,7 +11,12 @@ import * as Option from 'effect/Option';
 import { primaryAccount } from '../identity/primary-account';
 import { syncMember, type TelegramUser } from '../identity/telegram-user';
 import { closedStatuses, isClosed } from '../sessions/session.model';
+import { unsignedSquad } from '../teams/team-inputs';
+import { writeToChat, type Approval } from '../telegram/write-to-chat';
 import { isSettledPoll } from '../utils/is-settled-poll.util';
+
+import { closureApproval } from './closure-approval';
+import { pollChatsOf, titlesOfChats } from './poll-chats';
 
 type PollChoice = 'in' | 'gk' | 'out';
 
@@ -30,7 +34,7 @@ export interface PollAnswerOutcome {
     readonly promoted: readonly PromotedPlayer[];
 }
 
-export const fieldPlayersIn = Effect.fn('Core.fieldPlayersIn')(function* (sessionId: string, exceptPersonId: string | null) {
+const fieldPlayersIn = Effect.fn('Core.fieldPlayersIn')(function* (sessionId: string, exceptPersonId: string | null) {
     const db = yield* Db;
     const conditions = [
         eq(signup.sessionId, sessionId),
@@ -44,6 +48,14 @@ export const fieldPlayersIn = Effect.fn('Core.fieldPlayersIn')(function* (sessio
         .where(and(...conditions));
 
     return row?.value ?? 0;
+});
+
+// Seats: field players who said yes, and squad members who play without a «yes»
+export const seatsTaken = Effect.fn('Core.seatsTaken')(function* (sessionId: string, exceptPersonId: string | null = null) {
+    const unsigned = yield* unsignedSquad(sessionId);
+    const seated = unsigned.filter(member => member.role === 'field' && member.personId !== exceptPersonId);
+
+    return (yield* fieldPlayersIn(sessionId, exceptPersonId)) + seated.length;
 });
 
 const writeSignup = Effect.fn('Core.writeSignup')(function* (input: {
@@ -105,7 +117,7 @@ const refreshFullness = Effect.fn('Core.refreshFullness')(function* (sessionId: 
         return;
     }
 
-    const taken = yield* fieldPlayersIn(sessionId, null);
+    const taken = yield* seatsTaken(sessionId);
     const [current] = yield* db.select({ status: session.status }).from(session).where(eq(session.id, sessionId));
 
     if (current?.status === 'open' && taken >= capacityMax) {
@@ -118,9 +130,7 @@ const refreshFullness = Effect.fn('Core.refreshFullness')(function* (sessionId: 
 });
 
 export const fillFreeSeats = Effect.fn('Core.fillFreeSeats')(function* (sessionId: string, capacityMax: number | null) {
-    const promoted = isDefined(capacityMax)
-        ? yield* promoteWaitlisted(sessionId, capacityMax - (yield* fieldPlayersIn(sessionId, null)))
-        : [];
+    const promoted = isDefined(capacityMax) ? yield* promoteWaitlisted(sessionId, capacityMax - (yield* seatsTaken(sessionId))) : [];
     yield* refreshFullness(sessionId, capacityMax);
 
     return promoted;
@@ -152,7 +162,7 @@ const setSignup = Effect.fn('Core.setSignup')(function* (sessionId: string, pers
         .where(and(eq(signup.sessionId, sessionId), eq(signup.personId, personId)));
     const keptRole = previous?.role === 'gk' && !(asksGoalkeeper && choice === 'in') ? 'gk' : 'field';
     const role = choice === 'gk' ? 'gk' : keptRole;
-    const othersIn = yield* fieldPlayersIn(sessionId, personId);
+    const othersIn = yield* seatsTaken(sessionId, personId);
     const hasSeat = role === 'gk' || !isDefined(capacityMax) || othersIn < capacityMax;
     const seatedStatus = hasSeat ? 'in' : 'waitlisted';
     const status = choice === 'out' ? 'out' : seatedStatus;
@@ -243,27 +253,38 @@ export const rosterOf = Effect.fn('Core.rosterOf')(function* (sessionId: string)
         .orderBy(asc(signup.createdAt));
 });
 
-export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId: string) {
+// The groups whose poll could not be closed because nothing may be written there
+export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId: string, approval: Approval | null) {
     const db = yield* Db;
-    const telegram = yield* Telegram;
     const open = yield* db
         .select()
         .from(telegramPoll)
         .where(and(eq(telegramPoll.sessionId, sessionId), isNull(telegramPoll.closedAt)));
+    const kept: boolean[] = [];
 
     for (const poll of open) {
-        const isSettled = yield* telegram
-            .call('stopPoll', api => api.stopPoll(Number(poll.chatId), poll.messageId))
-            .pipe(
-                Effect.as(true),
-                Effect.catch(error => Effect.logWarning('[poll] not closed', error).pipe(Effect.as(isSettledPoll(error.description))))
-            );
+        const outcome = yield* writeToChat({
+            target: { chatId: poll.chatId, topicId: null },
+            approval,
+            content: { _tag: 'stop_poll', messageId: poll.messageId }
+        }).pipe(
+            Effect.as({ isSettled: true, isKept: false }),
+            Effect.tapError(error => Effect.logWarning('[poll] not closed', error)),
+            Effect.catchTags({
+                ActionFailedError: () => Effect.succeed({ isSettled: false, isKept: true }),
+                TelegramApiError: error => Effect.succeed({ isSettled: isSettledPoll(error.description), isKept: false })
+            })
+        );
+        kept.push(outcome.isKept);
 
-        if (isSettled) {
+        if (outcome.isSettled) {
             const closedAt = yield* DateTime.nowAsDate;
             yield* db.update(telegramPoll).set({ closedAt }).where(eq(telegramPoll.pollId, poll.pollId));
         }
     }
+
+    const chatIds = kept.includes(true) ? yield* pollChatsOf(sessionId) : [];
+    return yield* titlesOfChats(chatIds.map(chatId => `${chatId}`));
 });
 
 export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function* () {
@@ -275,6 +296,7 @@ export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function*
         .where(and(isNull(telegramPoll.closedAt), inArray(session.status, closedStatuses)));
 
     for (const { sessionId } of games) {
-        yield* closePollsOf(sessionId);
+        const approval = yield* closureApproval(sessionId);
+        yield* closePollsOf(sessionId, approval);
     }
 });

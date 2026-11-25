@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -8,8 +8,8 @@ import * as Predicate from 'effect/Predicate';
 import { grantAdmin, isAdminOf } from '../access/admin-access';
 import { linkedChatsOf } from '../community/community.repository';
 import { ActionFailedError } from '../error/action-failed.error';
-import { noticeTargetsOf, previewedTargets, requirePreviewed } from '../notify/notice-preview';
-import { notifySessionCancelled, notifySessionChanged } from '../notify/notifier';
+import { deliverNotices } from '../notify/deliver-notices';
+import { previewedTargets, requirePreviewed } from '../notify/notice-preview';
 import { linkAlias, requireAlias, unlinkAlias } from '../people/alias-links.service';
 import { arePeopleOf, createPerson, mergePeople, renamePerson } from '../people/people.service';
 import { deleteSession } from '../sessions/delete-session';
@@ -23,6 +23,7 @@ import { createVenue, requireVenue, updateVenue } from '../venues/venue.service'
 
 import type { Locale } from '../i18n/locale';
 import type { GroupTarget } from '../interface/group-target.interface';
+import type { Approval } from '../telegram/write-to-chat';
 import type { Action } from './action.model';
 
 export interface ActionContext {
@@ -34,22 +35,15 @@ export interface ActionContext {
     readonly requester?: bigint;
 }
 
+interface Decision {
+    readonly approval: Extract<Approval, { _tag: 'approver' }>;
+    readonly summary: string;
+}
+
 const requireGroup = (context: ActionContext) =>
     Option.isSome(context.group)
         ? Effect.succeed(context.group.value)
         : Effect.fail(ActionFailedError.make({ failure: { code: 'no_group' } }));
-
-const toAudience = Effect.fn('Core.toAudience')(function* <Value, Failure, Requirements>(
-    context: ActionContext,
-    action: Extract<Action, { _tag: 'update_session' | 'cancel_session' }>,
-    effect: (group: GroupTarget) => Effect.Effect<Value, Failure, Requirements>
-) {
-    const targets = previewedTargets(action) ?? (yield* noticeTargetsOf(context, action.sessionId));
-
-    for (const group of targets) {
-        yield* effect(group);
-    }
-});
 
 interface Destination {
     readonly chatId?: string | undefined;
@@ -73,6 +67,10 @@ const linkedTarget = Effect.fn('Core.linkedTarget')(function* (context: ActionCo
 
     if (!isDefined(found)) {
         return yield* ActionFailedError.make({ failure: { code: 'chat_not_linked' } });
+    }
+
+    if (!found.isPosting) {
+        return yield* ActionFailedError.make({ failure: { code: 'group_off' } });
     }
 
     if (!Predicate.isUndefined(topicId) && found.topicId !== topicId) {
@@ -102,9 +100,14 @@ const createFrom = (action: Extract<Action, { _tag: 'create_session' }>, { commu
 
 const executeAction = Effect.fn('Core.executeAction')(function* (
     action: Exclude<Action, { _tag: 'announce_session' }>,
-    context: ActionContext
+    context: ActionContext,
+    { approval }: Pick<Decision, 'approval'>
 ) {
     const { actorPersonId, communityId, groupLocale: locale } = context;
+    const notify = (notice: Extract<Action, { _tag: 'update_session' | 'cancel_session' }>) =>
+        notice.notify && isDefined(notice.preview)
+            ? deliverNotices({ approval, locale, html: notice.preview.html, targets: previewedTargets(notice) })
+            : Effect.void;
 
     switch (action._tag) {
         case 'create_session': {
@@ -117,10 +120,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
                 yield* requirePreviewed(action, context);
                 const before = yield* requireSession(communityId, action.sessionId);
                 yield* updateSession(before, action, context.timezone, actorPersonId);
-                const after = yield* requireSession(communityId, action.sessionId);
-                if (action.notify) {
-                    yield* toAudience(context, action, group => notifySessionChanged({ before, after, group, locale }));
-                }
+                yield* notify(action);
 
                 return { sessionId: action.sessionId };
             }).pipe(asResult);
@@ -130,12 +130,13 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
                 yield* requirePreviewed(action, context);
                 const target = yield* requireSession(communityId, action.sessionId);
                 yield* cancelSession(target, action.reason, actorPersonId);
-                yield* closePollsOf(target.id);
-                if (action.notify) {
-                    yield* toAudience(context, action, group => notifySessionCancelled({ target, reason: action.reason, group, locale }));
-                }
+                const kept = yield* closePollsOf(target.id, { ...approval, closes: action.closes });
+                yield* notify(action);
 
-                return { sessionId: action.sessionId };
+                return {
+                    sessionId: action.sessionId,
+                    ...(isNotEmptyString(kept) ? { openIn: kept } : {})
+                };
             }).pipe(asResult);
         }
         case 'publish_teams': {
@@ -143,6 +144,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
                 communityId,
                 locale,
                 actorPersonId,
+                approval,
                 privateChatId: isDefined(context.requester) ? Number(context.requester) : null,
                 fallback: context.group
             }).pipe(Effect.as({ sessionId: action.sessionId }), asResult);
@@ -154,19 +156,24 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
                 communityId,
                 sessionId: action.sessionId,
                 today: todayIn(context.timezone, now),
-                actorPersonId
+                actorPersonId,
+                approval: { ...approval, closes: action.closes }
             }).pipe(Effect.as({ sessionId: action.sessionId }), asResult);
         }
         case 'forward_poll': {
             return yield* Effect.gen(function* () {
                 const target = yield* linkedTarget(context, { chatId: action.chatId, topicId: action.topicId }, context.requester);
-                const forwarded = yield* forwardPoll(action.sessionId, target, action.resend ?? null);
+                const forwarded = yield* forwardPoll(action.sessionId, target, {
+                    resend: action.resend ?? null,
+                    pollId: action.pollId,
+                    approval
+                });
 
-                return { sessionId: action.sessionId, messageId: forwarded.messageId };
+                return forwarded;
             }).pipe(asResult);
         }
         case 'merge_people': {
-            return yield* mergePeople({ ...action, communityId, actorPersonId }).pipe(
+            return yield* mergePeople({ ...action, communityId, actorPersonId, decidedBy: approval.tgUserId }).pipe(
                 Effect.as({ personId: action.intoPersonId }),
                 asResult
             );
@@ -213,33 +220,11 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
 });
 
 const peopleIn = (action: Action): readonly string[] => {
-    switch (action._tag) {
-        case 'merge_people': {
-            return [action.fromPersonId, action.intoPersonId];
-        }
-        case 'link_alias':
-        case 'rename_person':
-        case 'grant_admin':
-        case 'set_rating': {
-            return [action.personId];
-        }
-        case 'unlink_alias':
-        case 'create_person':
-        case 'create_venue':
-        case 'update_venue':
-        case 'create_session':
-        case 'update_session':
-        case 'cancel_session':
-        case 'announce_session':
-        case 'publish_teams':
-        case 'delete_session':
-        case 'forward_poll': {
-            return [];
-        }
-        default: {
-            return [];
-        }
+    if (action._tag === 'merge_people') {
+        return [action.fromPersonId, action.intoPersonId];
     }
+
+    return 'personId' in action ? [action.personId] : [];
 };
 
 export const requireActionScope = Effect.fn('Core.requireActionScope')(function* (action: Action, communityId: string) {
@@ -264,6 +249,15 @@ export const requireActionScope = Effect.fn('Core.requireActionScope')(function*
     }
 
     return action;
+});
+
+// A request to the approver ends with the kick-off that is planned now
+export const kickoffOf = Effect.fn('Core.kickoffOf')(function* (action: Action, { communityId, timezone }: ActionContext) {
+    if (action._tag === 'create_session') {
+        return instantOf(action.localDate, action.localTime, timezone);
+    }
+
+    return 'sessionId' in action && isDefined(action.sessionId) ? (yield* requireSession(communityId, action.sessionId)).startsAt : null;
 });
 
 const plannedKickoff = Effect.fn('Core.plannedKickoff')(function* (action: Action, communityId: string) {
@@ -311,8 +305,10 @@ export const runAdminAction = Effect.fn('Core.runAdminAction')(function* <Failur
     tgUserId: bigint,
     action: Action,
     context: ActionContext,
-    { summary, settle }: { readonly summary: string; readonly settle: (result: ActionResult) => Effect.Effect<void, Failure, Requirements> }
+    decision: Decision & { readonly settle: (result: ActionResult) => Effect.Effect<void, Failure, Requirements> }
 ) {
+    const { approval, summary, settle } = decision;
+
     if (!(yield* isAdminOf(tgUserId, context.communityId))) {
         return yield* ActionFailedError.make({ failure: { code: 'not_admin' } });
     }
@@ -331,6 +327,7 @@ export const runAdminAction = Effect.fn('Core.runAdminAction')(function* <Failur
         return yield* publishPoll({
             communityId: context.communityId,
             group,
+            approval,
             note: action.note,
             approvedSummary: summary,
             prepare,
@@ -338,7 +335,7 @@ export const runAdminAction = Effect.fn('Core.runAdminAction')(function* <Failur
         });
     }
 
-    const result = yield* executeAction(action, context);
+    const result = yield* executeAction(action, context, decision);
     yield* settle(result);
 
     return result;

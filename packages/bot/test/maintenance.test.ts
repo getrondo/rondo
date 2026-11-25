@@ -37,7 +37,7 @@ const outcomesOf = Effect.fn('test.outcomesOf')(function* (sessionId: string) {
 
 const addPoll = Effect.fn('test.addPoll')(function* (sessionId: string, pollId: string, messageId: number) {
     const db = yield* Db;
-    yield* db.insert(telegramPoll).values({ pollId, chatId: -100n, messageId, sessionId, options: ['in', 'out'] });
+    yield* db.insert(telegramPoll).values({ pollId, chatId: 100n, messageId, sessionId, options: ['in', 'out'] });
 });
 
 const isClosed = Effect.fn('test.isClosed')(function* (pollId: string) {

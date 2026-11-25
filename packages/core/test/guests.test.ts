@@ -21,6 +21,38 @@ const attendedAfterFinishing = Effect.fn('test.attendedAfterFinishing')(function
 });
 
 layer(recordedTelegramDbLayer, { timeout: 60_000 })('guests of one game', it => {
+    it.effect('keeps a guest queued while a typed squad without a poll holds every seat', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* seedGame('guests-typed-seats', 2);
+            const squad = yield* Effect.all(
+                [1, 2].map(index => syncMember(communityId, { id: BigInt(88_400 + index), firstName: `Seat${index}` }, 'active'))
+            );
+            yield* db.insert(team).values({ sessionId, ordinal: 1, publishedAt: new Date('2026-12-04T17:00:00Z') });
+            yield* db.insert(lineupEntry).values(
+                squad.map((personId, index) => ({
+                    sessionId,
+                    messageId: 1,
+                    teamOrdinal: 1,
+                    position: index + 1,
+                    personId,
+                    resolvedBy: 'manual' as const
+                }))
+            );
+            const [guest] = yield* addGuests(
+                { communityId, sessionId, actorPersonId: null },
+                { hostPersonId: squad[0] ?? '', count: 1, name: null }
+            );
+            const [stored] = yield* db
+                .select({ status: signup.status })
+                .from(signup)
+                .where(eq(signup.personId, guest?.personId ?? ''));
+
+            expect(guest?.status).toBe('waitlisted');
+            expect(stored?.status).toBe('waitlisted');
+        })
+    );
+
     it.effect('counts a typed squad member whose «no» is older than the squad and keeps the attendance of the undecided', () =>
         Effect.gen(function* () {
             const db = yield* Db;
