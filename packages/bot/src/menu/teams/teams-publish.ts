@@ -33,6 +33,7 @@ export const previewScreen = (user: MenuUser, view: EditorView, notes: readonly 
             ...(isNotEmptyArray(due) ? [teamsText(user.locale, 'sees', { where: where(due, 'at') })] : []),
             `<blockquote>${due[0]?.html ?? plan.deliveries[0]?.html ?? ''}</blockquote>`,
             ...(isNotEmptyArray(plan.diff) ? [teamsText(user.locale, 'changes'), escapeHtml(plan.diff.join('\n'))] : []),
+            ...(plan.clearsResult ? [teamsText(user.locale, 'clearsResult')] : []),
             ...unsure.map(delivery => teamsText(user.locale, 'uncertain', { where: where([delivery], 'at') })),
             teamsText(user.locale, isNotEmptyArray(due) ? 'quiet' : 'unchanged')
         ].join('\n'),

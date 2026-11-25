@@ -49,6 +49,30 @@ export const teamSettingsOf = Effect.fn('Core.teamSettingsOf')(function* (commun
     } satisfies TeamSettings;
 });
 
+export const ratingsOf = Effect.fn('Core.ratingsOf')(function* (activityId: string, personIds: readonly string[]) {
+    const db = yield* Db;
+    const ratings = isNotEmptyArray(personIds)
+        ? yield* db
+              .select()
+              .from(rating)
+              .where(and(eq(rating.activityId, activityId), inArray(rating.personId, [...personIds])))
+        : [];
+    const seedOf = new Map(ratings.filter(row => row.model === 'organizer_seed').map(row => [row.personId, row.mu]));
+    const learned = new Map(ratings.filter(row => row.model === 'openskill_pl').map(row => [row.personId, row]));
+    const strengthOf = (personId: string) => {
+        const known = learned.get(personId);
+        const seed = seedOf.get(personId);
+
+        if (isDefined(known)) {
+            return { mu: known.mu, sigma: known.sigma };
+        }
+
+        return isDefined(seed) ? { mu: unknownRating.mu + 2 * (seed - tierLevels.normal), sigma: seededSigma } : unknownRating;
+    };
+
+    return { seedOf, strengthOf, hasLevels: seedOf.size + learned.size > 0 };
+});
+
 export const membersOf = Effect.fn('Core.membersOf')(function* (sessionId: string, activityId: string) {
     const db = yield* Db;
     const account = primaryAccount(db);
@@ -68,22 +92,10 @@ export const membersOf = Effect.fn('Core.membersOf')(function* (sessionId: strin
         .leftJoin(telegramAccount, eq(telegramAccount.tgUserId, account.tgUserId))
         .where(and(eq(signup.sessionId, sessionId), eq(signup.status, 'in')))
         .orderBy(asc(signup.createdAt), asc(signup.personId));
-    const ratings = isNotEmptyArray(rows)
-        ? yield* db
-              .select()
-              .from(rating)
-              .where(
-                  and(
-                      eq(rating.activityId, activityId),
-                      inArray(
-                          rating.personId,
-                          rows.map(row => row.personId)
-                      )
-                  )
-              )
-        : [];
-    const seedOf = new Map(ratings.filter(row => row.model === 'organizer_seed').map(row => [row.personId, row.mu]));
-    const learned = new Map(ratings.filter(row => row.model === 'openskill_pl').map(row => [row.personId, row]));
+    const { seedOf, strengthOf, hasLevels } = yield* ratingsOf(
+        activityId,
+        rows.map(row => row.personId)
+    );
     const members = rows.map((row): TeamMember => {
         const seed = seedOf.get(row.personId);
 
@@ -98,18 +110,7 @@ export const membersOf = Effect.fn('Core.membersOf')(function* (sessionId: strin
             tier: isDefined(seed) ? tierOfLevel(seed) : null
         };
     });
-    const strengthOf = (personId: string) => {
-        const known = learned.get(personId);
-        const seed = seedOf.get(personId);
-
-        if (isDefined(known)) {
-            return { mu: known.mu, sigma: known.sigma };
-        }
-
-        return isDefined(seed) ? { mu: unknownRating.mu + 2 * (seed - tierLevels.normal), sigma: seededSigma } : unknownRating;
-    };
-
-    return { members, strengthOf, hasLevels: seedOf.size + learned.size > 0 };
+    return { members, strengthOf, hasLevels };
 });
 
 const historyRows = Effect.fn('Core.historyRows')(function* (communityId: string, before: string) {

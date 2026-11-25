@@ -1,7 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { auditLog } from '@rondo/db/schema/platform.schema';
 import { rating, ratingEvent, team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
-import { signup } from '@rondo/db/schema/scheduling.schema';
+import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, asc, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
@@ -186,5 +186,58 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
 
             expect(Option.getOrNull(loaded)?.state.colours).toEqual(['blue', 'red', 'green']);
         })
+    );
+
+    it.effect(
+        'rates the posted members, reverts the result even when the teams were stored again, and lets a tier replace a learned rating',
+        () =>
+            Effect.gen(function* () {
+                const db = yield* Db;
+                const { communityId, sessionId, people } = yield* playedGame('draft-rated', 10, 87_000);
+                yield* openDraft(communityId, sessionId, null);
+                const input = {
+                    communityId,
+                    sessionId,
+                    locale: 'uk' as const,
+                    actorPersonId: null,
+                    privateChatId: null,
+                    fallback: Option.some({ chatId: -870n, topicId: null })
+                };
+                const plan = yield* planLineup(input);
+                yield* publishLineup({ ...input, version: plan.version, fingerprint: plan.fingerprint });
+                const [game] = yield* db.select({ activityId: session.activityId }).from(session).where(eq(session.id, sessionId));
+                const absent = people[9] ?? '';
+                yield* db
+                    .insert(rating)
+                    .values({ personId: absent, activityId: game?.activityId ?? '', model: 'openskill_pl', mu: 40, sigma: 2, games: 30 });
+                yield* db
+                    .update(signup)
+                    .set({ status: 'out' })
+                    .where(and(eq(signup.sessionId, sessionId), eq(signup.personId, absent)));
+                const evening = new Date('2026-12-04T20:30:00Z');
+                yield* recordResult({ communityId, sessionId, winner: 1, actorPersonId: null, now: evening });
+                const [event] = yield* db
+                    .select()
+                    .from(ratingEvent)
+                    .where(and(eq(ratingEvent.sessionId, sessionId), eq(ratingEvent.personId, absent)));
+                yield* db.update(team).set({ rank: null }).where(eq(team.sessionId, sessionId));
+                const again = yield* recordResult({ communityId, sessionId, winner: 1, actorPersonId: null, now: evening });
+                const events = yield* db.select().from(ratingEvent).where(eq(ratingEvent.sessionId, sessionId));
+                const [games] = yield* db
+                    .select({ games: rating.games })
+                    .from(rating)
+                    .where(and(eq(rating.personId, absent), eq(rating.model, 'openskill_pl')));
+                yield* setTier({ communityId, personId: absent, tier: 'new', actorPersonId: null });
+                const learned = yield* db
+                    .select()
+                    .from(rating)
+                    .where(and(eq(rating.personId, absent), eq(rating.model, 'openskill_pl')));
+
+                expect(event?.muBefore).toBe(40);
+                expect(again.isCorrection).toBe(true);
+                expect(events).toHaveLength(10);
+                expect(games?.games).toBe(31);
+                expect(learned).toEqual([]);
+            })
     );
 });

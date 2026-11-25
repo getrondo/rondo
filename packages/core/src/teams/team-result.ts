@@ -11,7 +11,7 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { requireSession } from '../sessions/session.service';
 
 import { rateResult } from './rate-result';
-import { membersOf } from './team-inputs';
+import { ratingsOf } from './team-inputs';
 
 const correctionMs = 12 * 60 * 60_000;
 
@@ -80,7 +80,12 @@ export const recordResult = Effect.fn('Core.recordResult')(
                 }
 
                 const ranks = teams.map(entry => (!isDefined(input.winner) || entry.ordinal === input.winner ? 1 : 2));
-                const isCorrection = teams.some(entry => isDefined(entry.rank));
+                const recorded = yield* db
+                    .select({ id: ratingEvent.id })
+                    .from(ratingEvent)
+                    .where(eq(ratingEvent.sessionId, input.sessionId))
+                    .limit(1);
+                const isCorrection = teams.some(entry => isDefined(entry.rank)) || isNotEmptyArray(recorded);
 
                 if (isCorrection && teams.every((entry, index) => entry.rank === ranks[index])) {
                     return { ranks, isCorrection: false };
@@ -105,7 +110,10 @@ export const recordResult = Effect.fn('Core.recordResult')(
                     .from(teamMember)
                     .leftJoin(signup, and(eq(signup.sessionId, teamMember.sessionId), eq(signup.personId, teamMember.personId)))
                     .where(eq(teamMember.sessionId, input.sessionId));
-                const { strengthOf } = yield* membersOf(input.sessionId, activityId);
+                const { strengthOf } = yield* ratingsOf(
+                    activityId,
+                    members.map(member => member.personId)
+                );
                 const rosters = teams.map(entry => members.filter(member => member.teamId === entry.id));
                 const rated = rateResult(
                     rosters.map(roster => roster.map(member => strengthOf(member.personId))),

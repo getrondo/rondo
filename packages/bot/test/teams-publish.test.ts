@@ -1,5 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
+import { recordResult } from '@rondo/core/teams/team-result';
 import { setTier } from '@rondo/core/teams/team.service';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { community } from '@rondo/db/schema/org.schema';
@@ -283,6 +284,21 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 ['sendMessage', null],
                 ['editMessageText', Predicate.hasProperty(posted?.result, 'message_id') ? posted.result.message_id : 0]
             ]);
+        })
+    );
+
+    it.effect('warns in the preview that a squad changed after the result clears it', () =>
+        Effect.gen(function* () {
+            const { sessionId, communityId } = yield* teamsGame('teams-post-result', { groupChatId: -3209, adminId: 329, players: 8 });
+            const admin = conversation(recorder, adminNumbered(329));
+            yield* openEditor(admin);
+            yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
+            yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
+            yield* recordResult({ communityId, sessionId, winner: 1, actorPersonId: null, now: new Date('2026-11-27T20:00:00Z') });
+            yield* swapFirstTwo(admin, sessionId);
+            yield* admin.press(buttonData(admin.screen(), '✅ Оновити в «Games»'));
+
+            expect(admin.screen().text).toContain('⚠️ Склади змінилися після результату: надішлеш — результат вечора скинеться.');
         })
     );
 });

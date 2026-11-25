@@ -1,6 +1,7 @@
 import { isDefined } from '@rnw-community/shared';
 import { rating } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
+import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
@@ -117,6 +118,9 @@ export const setSeedRating = Effect.fn('Core.setSeedRating')(function* (input: {
         .insert(rating)
         .values({ personId: input.personId, activityId, model: 'organizer_seed', mu: input.level, sigma: 0 })
         .onConflictDoUpdate({ target: [rating.personId, rating.activityId, rating.model], set: { mu: input.level } });
+    yield* db
+        .delete(rating)
+        .where(and(eq(rating.personId, input.personId), eq(rating.activityId, activityId), eq(rating.model, 'openskill_pl')));
     yield* recordAudit({
         communityId: input.communityId,
         actorPersonId: input.actorPersonId,
