@@ -1,5 +1,6 @@
 import { isDefined } from '@rnw-community/shared';
 import { ActionSchema, type Action } from '@rondo/core/actions/action.model';
+import { describeAction } from '@rondo/core/actions/describe-action';
 import { linkedChatsOf } from '@rondo/core/community/community.repository';
 import { moveAdminMessage } from '@rondo/core/menu/admin-state.repository';
 import { isNoticeAction, noticeOf } from '@rondo/core/notify/notice-preview';
@@ -79,7 +80,8 @@ export const showConfirm = Effect.fn('Bot.showGameConfirm')(function* (
 ) {
     const action = yield* withPreview(user, proposed);
     const encoded = yield* encodeAction(action).pipe(Effect.orDie);
-    const draft: GameDraft = { flow: 'game', view: 'confirm', page: 0, sessionId: sessionOf(action), action: encoded, summary: null };
+    const summary = action._tag === 'announce_session' ? yield* describeAction(action, user.locale, user.communityId) : null;
+    const draft: GameDraft = { flow: 'game', view: 'confirm', page: 0, sessionId: sessionOf(action), action: encoded, summary };
     const saved = yield* saveGameDraft(user, draft, at);
 
     if (Option.isNone(saved)) {

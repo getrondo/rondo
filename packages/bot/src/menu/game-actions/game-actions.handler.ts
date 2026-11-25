@@ -114,10 +114,13 @@ const afterDone = Effect.fn('Bot.afterGameDone')(function* (user: MenuUser, acti
 const runGameAction = Effect.fn('Bot.runGameAction')(function* (
     user: MenuUser,
     action: Action,
-    tap: { readonly messageId: number; readonly revision: string; readonly expected: number | null }
+    tap: { readonly messageId: number; readonly revision: string; readonly expected: number | null; readonly summary?: string | null }
 ) {
     const target = yield* targetOfAction(user, action, sessionOf(action));
-    const outcome = yield* runConfirmed(user, action, { summary: null, target: { where: target.where, isPrivate: target.me } });
+    const outcome = yield* runConfirmed(user, action, {
+        summary: tap.summary ?? null,
+        target: { where: target.where, isPrivate: target.me }
+    });
 
     if (outcome._tag === 'done') {
         if (isDefined(tap.expected)) {
@@ -183,7 +186,12 @@ const confirmTap = Effect.fn('Bot.confirmGameTap')(function* (user: MenuUser, re
 
     const chosen = 'notify' in action.value ? { ...action.value, notify } : action.value;
 
-    return yield* runGameAction(user, chosen, { messageId, revision, expected: consumed.value.revision });
+    const summary = draft.pipe(
+        Option.map(value => value.summary),
+        Option.getOrNull
+    );
+
+    return yield* runGameAction(user, chosen, { messageId, revision, expected: consumed.value.revision, summary });
 });
 
 const listTap = Effect.fn('Bot.gameListTap')(function* (

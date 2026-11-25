@@ -1,6 +1,9 @@
 import { expect, layer } from '@effect/vitest';
 import { bindChat } from '@rondo/core/community/community.repository';
+import { session } from '@rondo/db/schema/scheduling.schema';
+import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
+import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { conversation, forwardsTo, pollsTo, walkManual } from './support/conversation';
@@ -55,6 +58,24 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(afterCard).toBe(0);
             expect(fresh.text.split('\n')[0]).toBe(changed);
             expect(forwardsTo(recorder, -28_012).map(call => call.payload.message_thread_id)).toEqual([7]);
+        })
+    );
+
+    it.effect('posts the card poll only as it was previewed and shows a fresh preview when the game changed', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedSeason('r5-card-summary', { groupChatId: -28_031, adminId: 2804 });
+            const admin = conversation(recorder, adminNumbered(2804));
+            yield* admin.type('/newgame');
+            yield* walkManual(admin, saveManual);
+            yield* admin.tap('📣 Надіслати в «Games»');
+            yield* db.update(session).set({ capacityMax: 30 }).where(eq(session.communityId, communityId));
+            yield* admin.tap('✅ Надіслати в «Games»');
+            const fresh = admin.screen();
+
+            expect(pollsTo(recorder, -28_031)).toEqual([]);
+            expect(fresh.text.split('\n')[0]).toBe(changed);
+            expect(fresh.text).toContain('30');
         })
     );
 });
