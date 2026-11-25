@@ -36,10 +36,11 @@ const placeLines = (target: SessionView): string[] => {
     return isEmptyString(html) ? [] : [html];
 };
 
-const post = Effect.fn('Core.post')(function* (group: GroupTarget, html: string) {
+const post = Effect.fn('Core.post')(function* (group: GroupTarget, html: string, locale: Locale) {
     const telegram = yield* Telegram;
+    const body = group.chatId > 0n ? `${html}\n\n${text(locale, 'forwardHint')}` : html;
 
-    yield* telegram.call('sendMessage', api => api.sendMessage(Number(group.chatId), html, { parse_mode: 'HTML', ...topicOptions(group) }));
+    yield* telegram.call('sendMessage', api => api.sendMessage(Number(group.chatId), body, { parse_mode: 'HTML', ...topicOptions(group) }));
 });
 
 export const sessionChangedHtml = Effect.fn('Core.sessionChangedHtml')(function* (input: {
@@ -66,7 +67,7 @@ export const notifySessionChanged = Effect.fn('Core.notifySessionChanged')(funct
 }) {
     const html = yield* sessionChangedHtml(input);
 
-    yield* post(input.group, html);
+    yield* post(input.group, html, input.locale);
 });
 
 export const sessionCancelledHtml = Effect.fn('Core.sessionCancelledHtml')(function* (input: {
@@ -91,7 +92,7 @@ export const notifySessionCancelled = Effect.fn('Core.notifySessionCancelled')(f
 }) {
     const html = yield* sessionCancelledHtml(input);
 
-    yield* post(input.group, html);
+    yield* post(input.group, html, input.locale);
 });
 
 export const notifyPromoted = Effect.fn('Core.notifyPromoted')(function* (input: {
@@ -110,6 +111,7 @@ export const notifyPromoted = Effect.fn('Core.notifyPromoted')(function* (input:
 
     yield* post(
         input.group,
-        `🎉 ${names}, ${text(input.locale, 'promoted')} ${escapeHtml(formatSessionLabel(input.locale, input.target))}`
+        `🎉 ${names}, ${text(input.locale, 'promoted')} ${escapeHtml(formatSessionLabel(input.locale, input.target))}`,
+        input.locale
     );
 });

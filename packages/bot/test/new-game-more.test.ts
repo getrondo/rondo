@@ -117,12 +117,12 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const duplicate = admin.screen().text;
             yield* admin.tap('✖️');
             yield* admin.type('/newgame');
-            yield* admin.tap('📣 Опублікувати опитування');
+            yield* admin.tap('📣 Опублікувати');
             const games = yield* gamesOn(communityId, '2026-11-27');
 
             expect(announce.text).toContain('Гра вже є, опитування ще ні');
             expect(announce.buttons.map(row => row.map(button => button.text))).toEqual([
-                ['📣 Опублікувати опитування'],
+                ['📣 Опублікувати в «Games»', '🔁 Куди надіслати'],
                 ['Пн 30.11 18:30 · Park Field'],
                 ['🛠 Вручну', '✖️']
             ]);
@@ -160,7 +160,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             recorder.failures.delete('pinChatMessage');
             const games = yield* gamesOn(communityId, '2026-11-27');
 
-            expect(uncertain).toContain('невідомо, чи пішло');
+            expect(uncertain).toContain('Невідомо, чи пішло повідомлення');
             expect(games).toHaveLength(1);
             expect(admin.screen().text).toContain('✅ Гру створено');
         })

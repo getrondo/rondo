@@ -5,7 +5,7 @@ import { dayLabel } from '../../utils/day-label.util';
 import { toShortId } from '../../utils/to-short-id.util';
 import { menuText } from '../menu-text';
 
-import { audienceOfDraft, candidatesOf } from './new-game.flow';
+import { candidatesOf, destinationOf, isSelfAudience } from './new-game.flow';
 
 import type { MenuButton } from '../screen.interface';
 import type { Draft, NewGameData, VenueChoice } from './draft';
@@ -47,28 +47,24 @@ const mainRows = (
                   ]
               ]
             : [];
-    const audience = audienceOfDraft(draft, data);
-    const audienceLabel = data.chats
-        .filter(chat => audience.includes(chat.id))
-        .map(chat => chat.title.slice(0, 12))
-        .join(' + ');
-    const audienceButton = data.chats.length > 1 ? [button(`➡️ ${audienceLabel}`, 'au')] : [];
-    const first = data.hasGroup
-        ? [button(menuText(locale, isDefined(draft.sessionId) ? 'postExisting' : 'post'), 'ok'), ...audienceButton]
-        : [];
+    const self = isSelfAudience(draft, data);
+    const where = destinationOf(draft, data);
+    const announce = isDefined(draft.sessionId);
+    const postLabel = self
+        ? menuText(locale, announce ? 'sendExistingMe' : 'sendMe')
+        : menuText(locale, announce ? 'postExistingTo' : 'postTo', { where });
+    const first = [button(postLabel, 'ok'), button(menuText(locale, 'where'), 'au')];
     const closing = [button(menuText(locale, 'manual'), 'm'), button('✖️', 'x')];
 
     if (isDefined(draft.sessionId)) {
-        return [...(data.hasGroup ? [first] : []), ...otherRow, closing];
+        return [first, ...otherRow, closing];
     }
 
     const venue = data.venues.find(entry => entry.id === draft.venueId);
-    const manualRow = draft.manual
-        ? [[...(data.hasGroup ? [button(menuText(locale, 'save'), 'sv')] : []), button(menuText(locale, 'note'), 'nt')]]
-        : [];
+    const manualRow = draft.manual ? [[button(menuText(locale, 'save'), 'sv'), button(menuText(locale, 'note'), 'nt')]] : [];
 
     return [
-        data.hasGroup ? first : [button(menuText(locale, 'saveOnly'), 'sv')],
+        first,
         ...otherRow,
         ...manualRow,
         [button('👥 −', 'p-'), button(`👥 ${draft.places ?? '♾'}`, 'pz'), button('👥 +', 'p+')],

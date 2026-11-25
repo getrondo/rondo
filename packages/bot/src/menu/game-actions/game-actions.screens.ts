@@ -135,6 +135,9 @@ const groupHtml = Effect.fn('Bot.groupHtml')(function* (user: MenuUser, game: Se
 
             return pollHtml(poll);
         }
+        case 'delete_session': {
+            return menuText(user.locale, 'nothingSent');
+        }
         case 'create_person':
         case 'create_session':
         case 'create_venue':
@@ -161,6 +164,10 @@ const confirmButtons = (user: MenuUser, action: Action, revision: number, hasGro
 
     if (action._tag === 'announce_session' || action._tag === 'publish_teams' || action._tag === 'forward_poll') {
         return [[ok('post', true)]];
+    }
+
+    if (action._tag === 'delete_session') {
+        return [[ok('deleteYes', false)]];
     }
 
     const [loud, quiet]: [MenuKey, MenuKey] = action._tag === 'cancel_session' ? ['cancelYes', 'cancelNo'] : ['notifyYes', 'notifyNo'];

@@ -1,4 +1,4 @@
-import { isEmptyArray } from '@rnw-community/shared';
+import { isDefined, isEmptyArray } from '@rnw-community/shared';
 import { telegramAccount } from '@rondo/db/schema/identity.schema';
 import { community, roleGrant } from '@rondo/db/schema/org.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -84,4 +84,21 @@ export const grantAdmin = Effect.fn('Core.grantAdmin')(function* (input: {
             .insert(roleGrant)
             .values({ communityId: input.communityId, personId: input.personId, role: 'organizer', grantedBy: input.grantedBy });
     }
+});
+
+export const adminPersonIds = Effect.fn('Core.adminPersonIds')(function* (communityId: string) {
+    const db = yield* Db;
+    const access = yield* Access;
+    const granted = yield* db
+        .select({ personId: roleGrant.personId })
+        .from(roleGrant)
+        .where(and(eq(roleGrant.communityId, communityId), inArray(roleGrant.role, adminRoles), sql`${roleGrant.valid} @> now()`));
+    const owners = isEmptyArray([...access.ownerTgUserIds])
+        ? []
+        : yield* db
+              .select({ personId: telegramAccount.personId })
+              .from(telegramAccount)
+              .where(inArray(telegramAccount.tgUserId, [...access.ownerTgUserIds]));
+
+    return new Set([...granted, ...owners].map(row => row.personId).filter(personId => isDefined(personId)));
 });

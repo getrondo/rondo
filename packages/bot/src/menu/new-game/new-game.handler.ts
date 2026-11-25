@@ -17,7 +17,7 @@ import { runConfirmed } from '../run-confirmed';
 import { showScreen } from '../show-screen';
 
 import { loadNewGameData } from './new-game.data';
-import { applyOp, applyText, audienceOfDraft, awaitingOf, startDraft } from './new-game.flow';
+import { applyOp, applyText, audienceOfDraft, awaitingOf, destinationOf, isSelfAudience, startDraft } from './new-game.flow';
 import { newGameKeyboard } from './new-game.keyboard';
 import { actionOf, newGameText, withSummary } from './new-game.screen';
 import { applyPlaceInput } from './place-input';
@@ -72,7 +72,7 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
 
     const data = yield* loadNewGameData(user);
     const { messageId } = tap;
-    const announce = tap.withPoll && data.hasGroup;
+    const announce = tap.withPoll;
     const outcome = yield* runConfirmed(user, actionOf(draft, announce, data), announce ? draft.summary : null);
 
     if (outcome._tag === 'failed' || !isDefined(outcome.sessionId)) {
@@ -82,8 +82,9 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
         return Option.none<string>();
     }
 
-    const created = announce ? 'created' : 'createdQuiet';
-    const forwards = announce && data.chats.length > 1 ? audienceOfDraft(draft, data).slice(1) : [];
+    const self = isSelfAudience(draft, data);
+    const where = destinationOf(draft, data);
+    const forwards = announce && !isSelfAudience(draft, data) ? audienceOfDraft(draft, data).slice(1) : [];
     const failures: string[] = [];
 
     for (const chatId of forwards) {
@@ -94,7 +95,13 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
         }
     }
 
-    const header = [menuText(user.locale, isDefined(draft.sessionId) ? 'announced' : created), ...failures].join('\n');
+    const results = { announced: self ? 'announcedMe' : 'announced', created: self ? 'createdMe' : 'created' } as const;
+    const result = isDefined(draft.sessionId) ? results.announced : results.created;
+    const header = [
+        menuText(user.locale, announce ? result : 'createdQuiet', { where }),
+        ...(announce && self ? [menuText(user.locale, 'selfHint')] : []),
+        ...failures
+    ].join('\n');
     const card = yield* gameCardScreen(user, outcome.sessionId, header);
     yield* showScreen(user.chatId, messageId, card);
 

@@ -47,7 +47,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect(card.buttons.map(row => row.map(button => button.text))).toEqual([
                 ['🕖 Час', '📍 Місце', '👥 Місця'],
-                ['✖️ Скасувати гру'],
+                ['✖️ Скасувати гру', '🗑 Видалити гру'],
                 ['⬅️ Назад', '🏠 Меню']
             ]);
             expect(confirmTime.text).toContain('Так буде в групі');

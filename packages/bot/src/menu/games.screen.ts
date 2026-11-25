@@ -2,6 +2,7 @@ import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { linkedChatsOf } from '@rondo/core/community/community.repository';
 import { countOf, formatSessionLabel } from '@rondo/core/i18n/messages';
 import { hasOpenPoll, hasPollFor } from '@rondo/core/menu/game-history.repository';
+import { isDeletableSession } from '@rondo/core/sessions/delete-session';
 import { listSessions, requireSession } from '@rondo/core/sessions/session.service';
 import { audienceOf } from '@rondo/core/signups/audience';
 import { rosterOf } from '@rondo/core/signups/signup.service';
@@ -89,6 +90,7 @@ const actionRows = (
     game: SessionView,
     state: {
         readonly canPost: boolean;
+        readonly canDelete: boolean;
         readonly signed: number;
         readonly closedTo: readonly { readonly chatId: bigint; readonly title: string }[];
     }
@@ -107,7 +109,7 @@ const actionRows = (
         ...(isNotEmptyArray(first) ? [first] : []),
         ...openRows,
         [button('time', 't'), button('place', 'v'), button('size', 'z')],
-        [button('cancelGame', 'x')]
+        [button('cancelGame', 'x'), ...(state.canDelete ? [button('deleteGame', 'd')] : [])]
     ];
 };
 
@@ -120,6 +122,7 @@ export const gameCardScreen = Effect.fn('Bot.gameCardScreen')(function* (user: M
     const chats = yield* linkedChatsOf(user.communityId);
     const audience = yield* audienceOf(sessionId);
     const isOpen = yield* hasOpenPoll(sessionId);
+    const canDelete = yield* isDeletableSession(user.communityId, sessionId, user.today);
     const closedTo = isOpen ? chats.filter(chat => !audience.some(target => target.chatId === chat.chatId)) : [];
     const free = isDefined(game.capacityMax)
         ? [menuText(user.locale, 'free', { free: Math.max(0, game.capacityMax - signed.length), max: game.capacityMax })]
@@ -143,7 +146,9 @@ export const gameCardScreen = Effect.fn('Bot.gameCardScreen')(function* (user: M
     return {
         text: lines.join('\n'),
         keyboard: [
-            ...(isUpcoming ? actionRows(user, game, { canPost: !hasPoll && isNotEmptyArray(chats), signed: signed.length, closedTo }) : []),
+            ...(isUpcoming
+                ? actionRows(user, game, { canPost: !hasPoll && isNotEmptyArray(chats), canDelete, signed: signed.length, closedTo })
+                : []),
             navRow(user.locale, 'm:gl')
         ]
     } satisfies Screen;

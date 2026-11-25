@@ -1,4 +1,5 @@
 import { isDefined } from '@rnw-community/shared';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -8,6 +9,8 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { notifySessionCancelled, notifySessionChanged } from '../notify/notifier';
 import { linkAlias, requireAlias, unlinkAlias } from '../people/alias-links.service';
 import { arePeopleOf, createPerson, mergePeople, renamePerson } from '../people/people.service';
+import { deleteSession } from '../sessions/delete-session';
+import { todayIn } from '../sessions/local-time';
 import { cancelSession, createSession, requireSession, updateSession } from '../sessions/session.service';
 import { noticeTargets } from '../signups/audience';
 import { forwardPoll } from '../signups/forward-poll';
@@ -45,9 +48,13 @@ const toAudience = Effect.fn('Core.toAudience')(function* <Value, Failure, Requi
     }
 });
 
-const linkedTarget = Effect.fn('Core.linkedTarget')(function* (context: ActionContext, chatId: string | undefined) {
+const linkedTarget = Effect.fn('Core.linkedTarget')(function* (context: ActionContext, chatId: string | undefined, requester?: bigint) {
     if (!isDefined(chatId)) {
         return yield* requireGroup(context);
+    }
+
+    if (isDefined(requester) && chatId === String(requester)) {
+        return { chatId: requester, topicId: null };
     }
 
     const chats = yield* linkedChatsOf(context.communityId);
@@ -112,6 +119,16 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
 
                 return { sessionId: action.sessionId };
             }).pipe(asResult);
+        }
+        case 'delete_session': {
+            const now = yield* DateTime.nowAsDate;
+
+            return yield* deleteSession({
+                communityId,
+                sessionId: action.sessionId,
+                today: todayIn(context.timezone, now),
+                actorPersonId
+            }).pipe(Effect.as({ sessionId: action.sessionId }), asResult);
         }
         case 'forward_poll': {
             return yield* Effect.gen(function* () {
@@ -190,6 +207,7 @@ const peopleIn = (action: Action): readonly string[] => {
         case 'update_session':
         case 'cancel_session':
         case 'announce_session':
+        case 'delete_session':
         case 'forward_poll': {
             return [];
         }
@@ -236,11 +254,11 @@ export const runAdminAction = Effect.fn('Core.runAdminAction')(function* <Failur
     yield* requireActionScope(action, context.communityId);
 
     if ('chatId' in action && isDefined(action.chatId)) {
-        yield* linkedTarget(context, action.chatId);
+        yield* linkedTarget(context, action.chatId, tgUserId);
     }
 
     if (action._tag === 'announce_session' || (action._tag === 'create_session' && action.announce)) {
-        const group = yield* linkedTarget(context, action.chatId);
+        const group = yield* linkedTarget(context, action.chatId, tgUserId);
         const prepare = action._tag === 'create_session' ? createFrom(action, context) : Effect.succeed(action.sessionId);
 
         return yield* publishPoll({

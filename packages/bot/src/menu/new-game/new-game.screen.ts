@@ -1,4 +1,4 @@
-import { isDefined, isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
+import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { describeAction, displayOfVenue } from '@rondo/core/actions/describe-action';
 import { communityProfile } from '@rondo/core/community/community.repository';
 import { requireSession } from '@rondo/core/sessions/session.service';
@@ -31,7 +31,7 @@ const prompts: Partial<Record<Draft['view'], MenuKey>> = {
 
 export const actionOf = (draft: Draft, announce: boolean, data: NewGameData): Action => {
     const [chatId] = audienceOfDraft(draft, data);
-    const target = isDefined(chatId) && data.chats.length > 1 ? { chatId } : {};
+    const target = isDefined(chatId) && (data.chats.length > 1 || chatId === data.selfChatId) ? { chatId } : {};
 
     return isDefined(draft.sessionId)
         ? { _tag: 'announce_session', sessionId: draft.sessionId, ...target }
@@ -75,7 +75,7 @@ export const pollHtml = (poll: PollText): string =>
     ].join('\n');
 
 export const withSummary = Effect.fn('Bot.withSummary')(function* (user: MenuUser, draft: Draft, data: NewGameData) {
-    if (draft.view !== 'main' || !data.hasGroup) {
+    if (draft.view !== 'main') {
         return draft;
     }
 
@@ -114,7 +114,10 @@ const mainText = Effect.fn('Bot.newGameMainText')(function* (user: MenuUser, dra
         menuText(user.locale, isDefined(draft.sessionId) ? 'ngAnnounce' : 'ngTitle'),
         '',
         ...Option.match(poll, { onNone: () => [], onSome: value => [pollHtml(value)] }),
-        ...(isNotEmptyArray(warnings) || isNotEmptyString(draft.notice) ? ['', ...warnings, ...noticeText(user, draft.notice)] : [])
+        '',
+        ...warnings,
+        ...noticeText(user, draft.notice),
+        `<i>${menuText(user.locale, 'nothingSent')}</i>`
     ].join('\n');
 });
 

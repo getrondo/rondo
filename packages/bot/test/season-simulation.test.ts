@@ -138,7 +138,9 @@ const simulate = () => {
             today,
             nowTime: '12:00',
             hasGroup: true,
-            chats: [{ id: '-1', title: 'Main' }]
+            chats: [{ id: '-1', title: 'Main' }],
+            selfChatId: '1',
+            lastChatId: null
         };
 
         return { game, effort: planGame(game, data), warm: history.length >= 4 };

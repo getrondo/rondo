@@ -42,6 +42,8 @@ const AnnounceSessionAction = Schema.TaggedStruct('announce_session', {
     chatId: Schema.optional(Schema.String)
 });
 
+const DeleteSessionAction = Schema.TaggedStruct('delete_session', { sessionId: Schema.String });
+
 const ForwardPollAction = Schema.TaggedStruct('forward_poll', { sessionId: Schema.String, chatId: Schema.String });
 
 const PublishTeamsAction = Schema.TaggedStruct('publish_teams', { sessionId: Schema.String, teams: Schema.Array(Team) });
@@ -91,6 +93,7 @@ export const ActionSchema = Schema.Union([
     CancelSessionAction,
     AnnounceSessionAction,
     ForwardPollAction,
+    DeleteSessionAction,
     PublishTeamsAction,
     MergePeopleAction,
     LinkAliasAction,

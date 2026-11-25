@@ -41,6 +41,8 @@ export interface NewGameData {
     readonly nowTime: string;
     readonly hasGroup: boolean;
     readonly chats: readonly { readonly id: string; readonly title: string }[];
+    readonly selfChatId: string;
+    readonly lastChatId: string | null;
 }
 
 export interface TypedInput {

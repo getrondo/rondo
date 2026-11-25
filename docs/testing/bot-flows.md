@@ -6,7 +6,8 @@ PGlite, `service` calls the domain service, `cron` runs the maintenance job, `un
 
 Only a real test group can prove what the recorder cannot: that Telegram accepts the poll description and route button,
 that a forwarded poll keeps its description, route button and votes, that stopPoll on the original closes the forwarded
-copies, pinning rights, and delivery of chat member updates.
+copies, pinning rights, delivery of chat member updates, and that votes on a copy forwarded by an admin to a group
+without the bot still arrive as poll answers with public voters.
 
 | # | Area | Flow | Trigger and steps | Group gets | Admin gets | Stored | Layer | Test |
 |---|---|---|---|---|---|---|---|---|
@@ -24,14 +25,14 @@ copies, pinning rights, and delivery of chat member updates.
 | 12 | CREATE | New place with a Google Maps link | 📍 → ➕ → name → link | Poll with route from the link coordinates | Pin prompt | Place with link and coordinates | update | `creates a new place from a Google Maps link` |
 | 13 | CREATE | New place without a pin | 🛠 → ➕ → name → ⏭ | Poll without route | — | Place without address | update | `walks the manual steps and creates a game without a poll` |
 | 14 | CREATE | Missing address hint | 📍 Адреса → typed address | Poll description with the address | Hint disappears | Place address | update | `adds the missing address from the preview hint and shows it in the poll` |
-| 15 | CREATE | No group linked | /newgame without /link | Nothing | Says how to link; only 💾 | Game without poll | update | `discards a draft with ✖️ and offers only a game without a poll when no group is linked` |
+| 15 | CREATE | No group linked | /newgame without /link | Nothing | Poll comes to the admin to forward; says how to link | Game without poll | update | `discards a draft with ✖️ and sends the poll to the admin when no group is linked` |
 | 16 | CREATE | Same day, game without a poll | /newgame when that game exists | Poll of the existing game | 📣 Опублікувати опитування | Poll ref of that game | update | `warns about a game on the same day and offers the poll of a game without one` |
 | 17 | CREATE | Same day, game with an open poll | Candidate skips the day; 📅 to it warns | — | Warning on the preview | — | update | `warns about a game on the same day and offers the poll of a game without one` |
 | 18 | CREATE | Today and the past refused | Typed past date, typed past time today | — | Reason shown, value kept | — | update | `picks another day from the list, sets no limit, types the size and refuses a time that has passed today` |
 | 19 | CREATE | Too little history | /newgame in a new community | — | Friendly text and the day list | Draft | update | `starts with the manual steps when there is too little history` |
 | 20 | CREATE | Draft expiry | Tap ✅ after 31 minutes | Nothing | Toast: screen is outdated | No game | update | `keeps two admins apart, consumes ✅ once and refuses an expired or revoked draft` |
 | 21 | CREATE | Back and Home | ⬅️ on every list, 🏠 on cards | — | Same message edited | — | update | `edits one message through games, card, Back and Home, and ignores an unchanged message` |
-| 22 | CREATE | Cancel | ✖️ | Nothing | Home screen | Draft removed | update | `discards a draft with ✖️ and offers only a game without a poll when no group is linked` |
+| 22 | CREATE | Cancel | ✖️ | Nothing | Home screen | Draft removed | update | `discards a draft with ✖️ and sends the poll to the admin when no group is linked` |
 | 23 | CREATE | Two admins at once | Two drafts, both ✅ | Two polls | Each sees their own draft | Two games | update | `keeps two admins apart, consumes ✅ once and refuses an expired or revoked draft` |
 | 24 | CREATE | Double tap on ✅ | Same ✅ twice | One poll | Second tap: outdated | One game | update | `keeps two admins apart, consumes ✅ once and refuses an expired or revoked draft` |
 | 25 | CREATE | Revoked admin mid-flow | Role ends, then ✅ | Nothing | No longer an admin | No game | update | `keeps two admins apart, consumes ✅ once and refuses an expired or revoked draft` |
@@ -41,7 +42,7 @@ copies, pinning rights, and delivery of chat member updates.
 | 29 | CREATE | Pin refused | ✅ without the right to pin | Poll, not pinned | Game card | Game | update | `reports an uncertain poll when Telegram does not answer and keeps the game when pinning is refused` |
 | 30 | CREATE | Ukrainian and Russian | uk and ru admins | Group language | Admin language | — | update | `posts the poll of a game without one, cancels with a notice and publishes teams without levels` |
 | 31 | CREATE | Preview equals the poll | Preview vs sendPoll | Question, answers, description, route | Same text in the preview | — | update | `shows the same question, description and route in the preview as in the poll` |
-| 32 | AUDIENCE | One linked chat | /newgame | Poll in that chat | No audience button | — | update | `posts the usual Friday game with two taps and shows its card` |
+| 32 | AUDIENCE | One linked chat | /newgame | Poll in that chat | ✅ names the group; 🔁 switches to the admin | — | update | `posts the usual Friday game with two taps and shows its card` |
 | 33 | AUDIENCE | Second chat | /newgame on Tuesday → ✅ | Poll in the second group only | ➡️ Second beside ✅ | Poll ref in the second chat | update | `posts the usual Wednesday to the second group in two taps` |
 | 34 | AUDIENCE | Both chats | /newgame → ✅ | Poll in one, forward in the other | ➡️ Games + Second | Two poll refs, one poll | update | `posts the Friday to both groups as one poll and one forward, and counts a vote from the copy once` |
 | 35 | AUDIENCE | Open later from the card | Card → 📣 Відкрити ще для → ✅ | Forward of the open poll | Free places on the card | Poll ref in the new chat | update | `opens a full game to the second group later, reports a refused forward and mentions the promoted player in both` |
@@ -96,7 +97,14 @@ copies, pinning rights, and delivery of chat member updates.
 | 84 | SECURITY | Wrong webhook secret | Request without the secret | — | — | 401 | unit | `rejects a missing or different secret` |
 | 85 | SECURITY | HTML escaping | Names and places with <, & and quotes | Escaped in poll description, notices, line-ups, mentions | — | — | update | `escapes names and places in every text posted to the group` |
 | 86 | SECURITY | Levels never in group text | Teams posted | No level or strength | Strength only in the private preview | — | service | `publishes line-ups with names, colours and the place, never levels, and mentions a promoted player` |
-| 87 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 88 | PLANNED | Who has not answered | — | — | — | — | — | planned (issue to file) |
-| 89 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 90 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 87 | AUDIENCE | Post to myself without a group | /newgame → ✅ Надіслати мені | Nothing | Poll in the private chat, hint to forward it, no pin | Poll ref in the private chat | update | `posts to myself without a group, counts votes from a forwarded copy and sends notices to my private chat` |
+| 88 | AUDIENCE | Remembered audience per admin | Next /newgame after posting to myself | — | ✅ Надіслати мені preselected; other admins unchanged | Last confirmed poll action | update | `remembers posting to myself for the next game and keeps two admins apart` |
+| 89 | VOTES | Vote on a copy the admin forwarded | New user answers the forwarded poll | — | — | Player, membership, sign-up | update | `posts to myself without a group, counts votes from a forwarded copy and sends notices to my private chat` |
+| 90 | VOTES | Full game posted to myself | Votes over the limit, then a withdrawal | — | Promotion mention in the private chat | Waitlisted, then promoted | update | `posts to myself without a group, counts votes from a forwarded copy and sends notices to my private chat` |
+| 91 | ADMIN AFTER | Notices of a game posted to myself | Card → ✖️ → ✅ notify | Nothing | Cancellation with the hint to forward it | Game cancelled | update | `posts to myself without a group, counts votes from a forwarded copy and sends notices to my private chat` |
+| 92 | ADMIN AFTER | Delete a test game | Card → 🗑 → ✅ Видалити (twice) | Nothing; the poll is stopped | Games list: game deleted | Game, polls, votes, sign-ups, refs gone; audit without names | update | `deletes a future test game without player votes once and refuses one with them` |
+| 93 | ADMIN AFTER | Delete refused after a player voted | Card of a game with a player vote | — | Only ✖️ cancel offered | Nothing | update | `deletes a future test game without player votes once and refuses one with them` |
+| 94 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 95 | PLANNED | Who has not answered | — | — | — | — | — | planned (issue to file) |
+| 96 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 97 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |

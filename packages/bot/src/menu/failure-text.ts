@@ -8,12 +8,12 @@ export const failureText = (locale: Locale, reason: string, slug: string): strin
     const known: [RegExp, () => string][] = [
         [/no group is linked/u, () => menuText(locale, 'reasonNoGroup', { slug })],
         [/already has an open poll/u, () => menuText(locale, 'reasonOpenPoll')],
-        [refused, () => menuText(locale, 'reasonRefused', { detail: refused.exec(reason)?.[1] ?? reason })],
+        [refused, () => menuText(locale, 'reasonRefused')],
         [/uncertain/u, () => menuText(locale, 'reasonUncertain')],
         [/changed after the preview/u, () => menuText(locale, 'reasonChanged')],
         [/already over or cancelled/u, () => menuText(locale, 'reasonOver')]
     ];
     const match = known.find(([pattern]) => pattern.test(reason));
 
-    return menuText(locale, 'failed', { reason: match?.[1]() ?? reason });
+    return menuText(locale, 'failed', { reason: match?.[1]() ?? menuText(locale, 'reasonOther') });
 };

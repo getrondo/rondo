@@ -126,9 +126,11 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
             )
         );
 
-    yield* telegram
-        .call('pinChatMessage', api => api.pinChatMessage(Number(chatId), result.messageId, { disable_notification: true }))
-        .pipe(Effect.catch(error => Effect.logInfo('[poll] not pinned', error)));
+    if (chatId < 0n) {
+        yield* telegram
+            .call('pinChatMessage', api => api.pinChatMessage(Number(chatId), result.messageId, { disable_notification: true }))
+            .pipe(Effect.catch(error => Effect.logInfo('[poll] not pinned', error)));
+    }
 
     return result;
 });

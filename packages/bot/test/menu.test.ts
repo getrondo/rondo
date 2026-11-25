@@ -34,12 +34,17 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/newgame');
             yield* admin.tap('✅ Опублікувати');
             yield* admin.type('/start');
+            const start = admin.screen();
+            yield* admin.type('/menu');
             const home = admin.screen();
             yield* stranger.type('/start');
             const commands = recorder.calls.findLast(call => call.method === 'setMyCommands')?.payload;
 
             expect(home.text).toContain('Наступна гра: <b>Пт 27.11 19:00 · North Arena</b>, записались 0 з 22');
             expect(home.buttons.flat()).toHaveLength(3);
+            expect(start.text.split('\n')).toHaveLength(2);
+            expect(start.text).toContain('Привіт, Admin 301.');
+            expect(start.buttons.map(row => row.map(button => button.text))).toEqual([['➕ Нова гра']]);
             expect(stranger.screen().text).toContain('Пока я работаю с администраторами');
             expect(commands).toMatchObject({ scope: { type: 'chat', chat_id: 301 } });
         })

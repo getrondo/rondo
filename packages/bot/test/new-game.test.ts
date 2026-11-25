@@ -54,7 +54,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             expect(main.text).toContain('⚽ Пʼятниця, 27 листопада, 19.00 North Arena');
             expect(main.text).toContain('1 поле, 22 місця');
             expect(main.buttons.map(row => row.map(button => button.text))).toEqual([
-                ['✅ Опублікувати'],
+                ['✅ Опублікувати в «Games»', '🔁 Куди надіслати'],
                 ['Пн 30.11 18:30 · Park Field'],
                 ['👥 −', '👥 22', '👥 +'],
                 ['🕖 19:00', '📍 North Arena', '📅 Пт 27.11'],
@@ -160,7 +160,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
         })
     );
 
-    it.effect('discards a draft with ✖️ and offers only a game without a poll when no group is linked', () =>
+    it.effect('discards a draft with ✖️ and sends the poll to the admin when no group is linked', () =>
         Effect.gen(function* () {
             const { communityId } = yield* seedSeason('ng-nogroup', { groupChatId: null, adminId: 105 });
             const owner = adminNumbered(105);
@@ -170,12 +170,13 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             const home = admin.screen().text;
             yield* admin.type('/newgame');
             const main = admin.screen();
-            yield* admin.tap('💾 Створити без опитування');
+            yield* admin.tap('✅ Надіслати мені');
             const [game] = yield* gamesOn(communityId, '2026-11-27');
 
             expect(home).toContain('Rondo');
             expect(main.text).toContain('Групу не підключено');
-            expect(main.buttons[0]?.map(button => button.text)).toEqual(['💾 Створити без опитування']);
+            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати мені', '🔁 Куди надіслати']);
+            expect(main.text).toContain('У групу нічого не надіслано.');
             expect(game?.status).toBe('open');
         })
     );

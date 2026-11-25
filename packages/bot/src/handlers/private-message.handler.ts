@@ -17,7 +17,7 @@ import { sendProposal } from '../context/send-proposal';
 import { toTelegramUser } from '../context/telegram-user.mapper';
 import { handleGameInput } from '../menu/game-actions/game-actions.handler';
 import { gamesScreen } from '../menu/games.screen';
-import { homeScreen } from '../menu/home.screen';
+import { homeScreen, startScreen } from '../menu/home.screen';
 import { menuUserOf } from '../menu/menu-user';
 import { DraftSchema } from '../menu/new-game/draft';
 import { handleNewGameInput, openNewGame } from '../menu/new-game/new-game.handler';
@@ -30,7 +30,15 @@ const telegramMessageLimit = 4000;
 const commandPattern = /^\/(\w+)(?:@\w+)?/u;
 const decodeDraft = Schema.decodeUnknownOption(DraftSchema);
 
-const runCommand = Effect.fn('Bot.runCommand')(function* (user: MenuUser, command: string) {
+const commandScreen = (user: MenuUser, command: string, firstName: string) => {
+    if (command === 'games') {
+        return gamesScreen(user);
+    }
+
+    return command === 'start' || command === 'help' ? startScreen(user, firstName) : homeScreen(user);
+};
+
+const runCommand = Effect.fn('Bot.runCommand')(function* (user: MenuUser, command: string, firstName: string) {
     const telegram = yield* Telegram;
 
     if (command === 'newgame') {
@@ -48,7 +56,7 @@ const runCommand = Effect.fn('Bot.runCommand')(function* (user: MenuUser, comman
         return;
     }
 
-    const shown = command === 'games' ? yield* gamesScreen(user) : yield* homeScreen(user);
+    const shown = yield* commandScreen(user, command, firstName);
     yield* showScreen(user.chatId, null, shown);
     yield* telegram
         .call('setMyCommands', api => api.setMyCommands([...adminCommands[user.locale]], { scope: { type: 'chat', chat_id: user.chatId } }))
@@ -130,7 +138,7 @@ export const handlePrivateMessage = Effect.fn('Bot.handlePrivateMessage')(functi
     const command = commandPattern.exec(body)?.[1];
 
     if (isDefined(command)) {
-        yield* runCommand(user.value, command);
+        yield* runCommand(user.value, command, sender.first_name);
 
         return noFollowUp;
     }

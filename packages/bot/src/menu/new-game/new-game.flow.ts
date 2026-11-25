@@ -30,7 +30,8 @@ export const awaitingOf = (draft: Draft): string | null => awaitingByView[draft.
 export const candidatesOf = (data: NewGameData): GameCandidate[] => predictGames(data.history, data.planned, data.today);
 
 const fromCandidate = (candidate: GameCandidate, data: NewGameData): Draft => {
-    const audience = candidate.audience.filter(chatId => data.chats.some(chat => chat.id === chatId));
+    const linked = candidate.audience.filter(chatId => data.chats.some(chat => chat.id === chatId));
+    const audience = data.lastChatId === data.selfChatId ? [data.selfChatId] : linked;
 
     return candidate._tag === 'new'
         ? {
@@ -46,11 +47,32 @@ const fromCandidate = (candidate: GameCandidate, data: NewGameData): Draft => {
         : { ...emptyDraft, localDate: candidate.localDate, sessionId: candidate.sessionId, audience };
 };
 
-const audienceChoices = (data: NewGameData): string[][] =>
-    data.chats.length > 1 ? [...data.chats.map(chat => [chat.id]), data.chats.map(chat => chat.id)] : [];
+const audienceChoices = (data: NewGameData): string[][] => [
+    ...data.chats.map(chat => [chat.id]),
+    ...(data.chats.length > 1 ? [data.chats.map(chat => chat.id)] : []),
+    [data.selfChatId]
+];
 
-export const audienceOfDraft = (draft: Draft, data: NewGameData): readonly string[] =>
-    isNotEmptyArray(draft.audience) ? draft.audience : data.chats.slice(0, 1).map(chat => chat.id);
+export const audienceOfDraft = (draft: Draft, data: NewGameData): readonly string[] => {
+    if (isNotEmptyArray(draft.audience)) {
+        return draft.audience;
+    }
+
+    const [first] = data.chats;
+
+    return isDefined(first) ? [first.id] : [data.selfChatId];
+};
+
+export const destinationOf = (draft: Draft, data: NewGameData): string => {
+    const audience = audienceOfDraft(draft, data);
+
+    return data.chats
+        .filter(chat => audience.includes(chat.id))
+        .map(chat => chat.title.slice(0, 14))
+        .join(' + ');
+};
+
+export const isSelfAudience = (draft: Draft, data: NewGameData): boolean => audienceOfDraft(draft, data)[0] === data.selfChatId;
 
 const nextAudience = (draft: Draft, data: NewGameData): Draft => {
     const choices = audienceChoices(data);

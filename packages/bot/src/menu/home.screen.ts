@@ -32,6 +32,22 @@ export const signedUpLine = Effect.fn('Bot.signedUpLine')(function* (user: MenuU
         : menuText(user.locale, 'signedUp', { count });
 });
 
+const nextGameLine = Effect.fn('Bot.nextGameLine')(function* (user: MenuUser, next: SessionView | undefined) {
+    return isDefined(next)
+        ? `${menuText(user.locale, 'nextGame')}: <b>${escapeHtml(formatSessionLabel(user.locale, next))}</b>, ${yield* signedUpLine(user, next)}`
+        : menuText(user.locale, 'noGames');
+});
+
+export const startScreen = Effect.fn('Bot.startScreen')(function* (user: MenuUser, firstName: string) {
+    const [next] = yield* upcomingGames(user);
+    const nextLine = yield* nextGameLine(user, next);
+
+    return {
+        text: [menuText(user.locale, 'startHello', { name: escapeHtml(firstName) }), nextLine].join('\n'),
+        keyboard: [[{ text: menuText(user.locale, 'newGame'), callback_data: 'm:ng' }]]
+    } satisfies Screen;
+});
+
 export const homeScreen = Effect.fn('Bot.homeScreen')(function* (user: MenuUser) {
     const profile = yield* communityProfile(user.communityId);
     const [next] = yield* upcomingGames(user);

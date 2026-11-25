@@ -66,18 +66,6 @@ export const displayOfVenue = Effect.fn('Core.displayOfVenue')(function* (venueI
     return row ?? noVenue;
 });
 
-const chatTitle = Effect.fn('Core.chatTitle')(function* (chatId: string) {
-    const db = yield* Db;
-    const [row] = /^-?\d+$/u.test(chatId)
-        ? yield* db
-              .select({ title: telegramChat.title })
-              .from(telegramChat)
-              .where(eq(telegramChat.chatId, BigInt(chatId)))
-        : [];
-
-    return row?.title ?? chatId;
-});
-
 const sessionLabel = Effect.fn('Core.sessionLabel')(function* (locale: Locale, sessionId: string) {
     const found = yield* getSession(sessionId);
 
@@ -93,6 +81,8 @@ const words = {
         notify: 'з повідомленням у групі',
         publishPoll: '📣 Опублікувати опитування',
         forward: '📣 Відкрити опитування для',
+        remove: '🗑 Видалити гру',
+        self: 'тобі в особисті',
         teams: '👥 Опублікувати склади',
         merge: '🔗 Обʼєднати гравців',
         link: '🔗 Привʼязати прізвисько',
@@ -115,6 +105,8 @@ const words = {
         notify: 'с уведомлением в группе',
         publishPoll: '📣 Опубликовать опрос',
         forward: '📣 Открыть опрос для',
+        remove: '🗑 Удалить игру',
+        self: 'тебе в личку',
         teams: '👥 Опубликовать составы',
         merge: '🔗 Объединить игроков',
         link: '🔗 Привязать прозвище',
@@ -130,6 +122,23 @@ const words = {
         alias: 'также'
     }
 } as const;
+
+const chatTitle = Effect.fn('Core.chatTitle')(function* (chatId: string, locale: Locale) {
+    const db = yield* Db;
+
+    if (/^\d+$/u.test(chatId)) {
+        return words[locale].self;
+    }
+
+    const [row] = /^-?\d+$/u.test(chatId)
+        ? yield* db
+              .select({ title: telegramChat.title })
+              .from(telegramChat)
+              .where(eq(telegramChat.chatId, BigInt(chatId)))
+        : [];
+
+    return row?.title ?? chatId;
+});
 
 const sizeOf = (
     locale: Locale,
@@ -155,7 +164,7 @@ const describeCreate = Effect.fn('Core.describeCreate')(function* (
     const game = { ...action, ...display, fieldsPlanned: action.fieldsPlanned ?? null };
     const poll = yield* pollFor(communityId, game, action.note);
 
-    const where = isDefined(action.chatId) ? ` «${yield* chatTitle(action.chatId)}»` : '';
+    const where = isDefined(action.chatId) ? ` «${yield* chatTitle(action.chatId, locale)}»` : '';
 
     return `${summary} ${word.announce}${where}:\n\n${previewOf(poll)}`;
 });
@@ -197,8 +206,11 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
 
             return `${word.publishPoll}: ${formatSessionLabel(locale, target)}\n\n${previewOf(poll)}`;
         }
+        case 'delete_session': {
+            return `${word.remove}: ${yield* sessionLabel(locale, action.sessionId)}`;
+        }
         case 'forward_poll': {
-            return `${word.forward} «${yield* chatTitle(action.chatId)}»: ${yield* sessionLabel(locale, action.sessionId)}`;
+            return `${word.forward} «${yield* chatTitle(action.chatId, locale)}»: ${yield* sessionLabel(locale, action.sessionId)}`;
         }
         case 'publish_teams': {
             const lines = action.teams.map(

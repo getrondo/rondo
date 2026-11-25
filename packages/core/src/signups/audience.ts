@@ -13,11 +13,13 @@ export const audienceOf = Effect.fn('Core.audienceOf')(function* (sessionId: str
     const rows = yield* db
         .select({ chatId: messageRef.chatId, topicId: telegramChat.topicId })
         .from(messageRef)
-        .innerJoin(telegramChat, eq(telegramChat.chatId, messageRef.chatId))
+        .leftJoin(telegramChat, eq(telegramChat.chatId, messageRef.chatId))
         .where(and(eq(messageRef.entityId, sessionId), eq(messageRef.purpose, 'poll')))
         .orderBy(asc(messageRef.createdAt), asc(messageRef.messageId));
 
-    return [...new Map(rows.map((row): [bigint, GroupTarget] => [row.chatId, row])).values()];
+    return [
+        ...new Map(rows.map((row): [bigint, GroupTarget] => [row.chatId, { chatId: row.chatId, topicId: row.topicId ?? null }])).values()
+    ];
 });
 
 export const noticeTargets = Effect.fn('Core.noticeTargets')(function* (sessionId: string, fallback: Option.Option<GroupTarget>) {

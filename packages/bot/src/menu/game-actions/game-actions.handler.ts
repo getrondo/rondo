@@ -1,7 +1,8 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { ActionSchema, type Action } from '@rondo/core/actions/action.model';
 import { consumeAdminState, loadAdminState, moveAdminMessage, saveAdminState, takeAwaiting } from '@rondo/core/menu/admin-state.repository';
 import { requireSession } from '@rondo/core/sessions/session.service';
+import { audienceOf } from '@rondo/core/signups/audience';
 import { proposeTeams } from '@rondo/core/teams/team.service';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -9,7 +10,7 @@ import * as Schema from 'effect/Schema';
 
 import { fromShortId } from '../../utils/from-short-id.util';
 import { parseTime } from '../../utils/parse-time.util';
-import { gameCardScreen } from '../games.screen';
+import { gameCardScreen, gamesScreen } from '../games.screen';
 import { menuText } from '../menu-text';
 import { loadNewGameData } from '../new-game/new-game.data';
 import { runConfirmed } from '../run-confirmed';
@@ -39,7 +40,8 @@ const showConfirm = Effect.fn('Bot.showGameConfirm')(function* (user: MenuUser, 
         draft,
         now: user.now
     });
-    const screen = yield* confirmScreen(user, action, { revision: saved.revision, hasGroup: data.hasGroup });
+    const audience = yield* audienceOf(sessionId);
+    const screen = yield* confirmScreen(user, action, { revision: saved.revision, hasGroup: data.hasGroup || isNotEmptyArray(audience) });
     const shownId = yield* showScreen(user.chatId, messageId, screen);
 
     if (shownId !== messageId) {
@@ -51,6 +53,9 @@ const changeOf = (sessionId: string, op: string, arg: string): Action | null => 
     switch (op) {
         case 'p': {
             return { _tag: 'announce_session', sessionId };
+        }
+        case 'd': {
+            return { _tag: 'delete_session', sessionId };
         }
         case 'f': {
             return /^-?\d+$/u.test(arg) ? { _tag: 'forward_poll', sessionId, chatId: arg } : null;
@@ -102,6 +107,13 @@ const confirmTap = Effect.fn('Bot.confirmGameTap')(function* (user: MenuUser, re
     const chosen = 'notify' in action.value ? { ...action.value, notify } : action.value;
     const outcome = yield* runConfirmed(user, chosen, null);
     const sessionId = sessionOf(chosen);
+    if (chosen._tag === 'delete_session' && outcome._tag === 'done') {
+        const games = yield* gamesScreen(user);
+        yield* showScreen(user.chatId, messageId, { ...games, text: `${menuText(user.locale, 'deleted')}\n\n${games.text}` });
+
+        return Option.none<string>();
+    }
+
     const header = outcome._tag === 'done' ? menuText(user.locale, 'changedDone') : outcome.text;
     const card = yield* gameCardScreen(user, sessionId, header);
     yield* showScreen(user.chatId, messageId, card);

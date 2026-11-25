@@ -1,6 +1,6 @@
 import { isNotEmptyArray } from '@rnw-community/shared';
 import { activity, community } from '@rondo/db/schema/org.schema';
-import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { messageRef, pendingAction, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -118,4 +118,22 @@ export const hasOpenPoll = Effect.fn('Core.hasOpenPoll')(function* (sessionId: s
         .limit(1);
 
     return isNotEmptyArray(rows);
+});
+
+export const lastPollChatOf = Effect.fn('Core.lastPollChatOf')(function* (tgUserId: bigint) {
+    const db = yield* Db;
+    const [row] = yield* db
+        .select({ chatId: sql<string | null>`${pendingAction.payload} ->> 'chatId'` })
+        .from(pendingAction)
+        .where(
+            and(
+                eq(pendingAction.requestedByTgUserId, tgUserId),
+                inArray(pendingAction.kind, ['create_session', 'announce_session']),
+                eq(pendingAction.status, 'confirmed')
+            )
+        )
+        .orderBy(desc(pendingAction.decidedAt))
+        .limit(1);
+
+    return row?.chatId ?? null;
 });
