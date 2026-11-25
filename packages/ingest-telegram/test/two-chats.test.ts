@@ -69,11 +69,14 @@ const load = Effect.fn('test.load')(function* (slug: string, second?: Second, ma
         slug,
         ...(isDefined(second) ? { otherChats: [{ chatId: secondChat, exportDir: 'second', matchPatterns: ['cup'] }] } : {})
     };
+    const mainPollIds = new Map(main.filter(({ poll }) => isDefined(poll)).map(({ id }) => [id, `${slug}-m-${(id - 1) / 10}`]));
     const stats = yield* importMessages({
         config,
         messages: main.map(post => ({ ...post })),
         fileSha256: 'sha',
-        snapshot: Option.fromNullishOr(snapshotOf(`${slug}-m`, pollIdsOf(`${slug}-m`, mondays), () => [ids.org, ids.striker])),
+        snapshot: Option.fromNullishOr(
+            snapshotOf(`${slug}-m`, mainPollIds, index => (index % 2 === 0 ? [ids.org, ids.striker] : [ids.striker]))
+        ),
         allowRemoval: true,
         otherChats: isDefined(second)
             ? [
@@ -113,6 +116,16 @@ const load = Effect.fn('test.load')(function* (slug: string, second?: Second, ma
 const wednesdayPosts = (slug: string, names = 'Олег, Марк'): Second => ({
     messages: postsOn(wednesdays, names),
     pollIds: pollIdsOf(`${slug}-s`, wednesdays)
+});
+
+const withMention = (second: Second): Second => ({
+    ...second,
+    messages: second.messages.map(post => {
+        const before = `${post.text}, `;
+        const mentions = [{ offset: before.length, text: 'U42', userId: ids.striker }];
+
+        return post.id === 2 ? Object.assign(post, { text: `${before}U42`, mentions }) : post;
+    })
 });
 
 const gonzoOn = (entries: Effect.Success<ReturnType<typeof load>>['entries']) =>
@@ -215,7 +228,12 @@ layer(testDbLayer, { timeout: 60_000 })('a community with two chats', it => {
             yield* approve(slug, ['2025-05-19', '2025-05-26'], ids.other);
             const other = yield* accountPerson(ids.other);
             const far: Second = {
-                messages: [...postsOn(wednesdays, 'Олег, Марк'), pollOn(91, '2025-12-03'), squadOn(92, '2025-12-03', 'Олег, Марк')],
+                messages: [
+                    ...postsOn(wednesdays, 'Олег, Марк'),
+                    pollOn(91, '2025-12-03'),
+                    squadOn(92, '2025-12-03', 'Олег, Марк'),
+                    squadOn(82, '2024-10-02', 'Олег, Марк')
+                ],
                 pollIds: new Map([...pollIdsOf(`${slug}-s`, wednesdays), [91, `${slug}-s-9`]])
             };
             const { entries, stats } = yield* load(slug, far);
@@ -227,6 +245,7 @@ layer(testDbLayer, { timeout: 60_000 })('a community with two chats', it => {
             const ofSecond = gonzoOn(entries.filter(({ chatId }) => isDefined(chatId)));
 
             expect(ofSecond.map(([date, by, personId]) => [date, by, nameOf.get(personId ?? '') ?? 'nobody'])).toEqual([
+                ['2024-10-02', 'guest', 'nobody'],
                 ['2025-05-07', 'alias', 'striker'],
                 ['2025-05-14', 'guest', 'nobody'],
                 ['2025-05-21', 'alias', 'other'],
@@ -257,16 +276,7 @@ layer(testDbLayer, { timeout: 60_000 })('a community with two chats', it => {
                 status: 'rejected'
             });
             const second = wednesdayPosts(slug);
-            const mentioned = second.messages.map(post =>
-                post.id === 2
-                    ? {
-                          ...post,
-                          text: `${post.text}, U42`,
-                          mentions: [{ offset: `${post.text}, `.length, text: 'U42', userId: ids.striker }]
-                      }
-                    : post
-            );
-            const { entries } = yield* load(slug, { ...second, messages: mentioned });
+            const { entries } = yield* load(slug, withMention(second));
 
             expect(gonzoOn(entries).map(([date, by]) => [date, by])).toEqual([
                 ['2025-05-05', 'alias'],
@@ -304,9 +314,10 @@ layer(testDbLayer, { timeout: 60_000 })('a community with two chats', it => {
                 pollIds: pollIdsOf(`${slug}-s`, regular),
                 votersOf: index => (index % 3 === 0 ? [ids.org] : [ids.org, ids.late])
             };
-            const alone = yield* load(slug);
+            const main = [...postsOn(mondays.slice(0, 1), 'Олег, Тим'), ...postsOn(mondays, 'Олег, Семён').slice(2)];
+            const alone = yield* load(slug, Option.getOrUndefined(Option.none<Second>()), main);
             const db = yield* Db;
-            const { entries, communityId, stats } = yield* load(slug, second);
+            const { entries, communityId, stats } = yield* load(slug, second, main);
             const late = yield* accountPerson(ids.late);
             const [repeated] = yield* db
                 .select()
@@ -364,6 +375,26 @@ layer(testDbLayer, { timeout: 60_000 })('a community with two chats', it => {
             expect(namesOn('2025-05-05')).toContain('Павел');
             expect(namesOn('2025-05-07')).toContain('Марк');
             expect(namesOn('2025-05-14')).toContain('Павел');
+        })
+    );
+
+    it.effect('does not name a player twice whose nickname the votes of the first chat linked', () =>
+        Effect.gen(function* () {
+            const slug = 'two-twice-fc';
+            const dates = Array.from({ length: 12 }, (_, index) => new Date(Date.UTC(2025, 4, 5 + index * 7)).toISOString().slice(0, 10));
+            const main = dates.flatMap((date, index) => [
+                pollOn(index * 10 + 1, date),
+                squadOn(index * 10 + 2, date, index % 2 === 0 ? 'Олег' : 'Семён')
+            ]);
+            const second = wednesdayPosts(slug);
+            const { entries } = yield* load(slug, withMention(second), main);
+            const striker = yield* accountPerson(ids.striker);
+            const namesOn = (date: string) =>
+                entries.filter(entry => entry.date === date && entry.personId === striker).map(({ raw }) => raw);
+
+            expect(namesOn('2025-05-05')).toEqual(['Гонзо']);
+            expect(namesOn('2025-05-07')).toEqual(['U42']);
+            expect(namesOn('2025-05-14')).toEqual(['Гонзо']);
         })
     );
 });

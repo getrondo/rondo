@@ -78,7 +78,8 @@ describe('posts of several chats', () => {
                 pollOf(104, '2025-05-10T10:00:00Z', 'Воскресенье, 18.00 North'),
                 pollOf(105, '2025-05-28T08:00:00Z', 'Четверг, 29 мая, 19.00 North'),
                 pollOf(106, '2025-05-13T08:00:00Z', 'Среда, 19.00 North, friendly'),
-                pollOf(107, '2025-05-20T08:00:00Z', 'Среда, 19.00 Stadium')
+                pollOf(107, '2025-05-20T08:00:00Z', 'Среда, 19.00 Stadium'),
+                message(108, '2025-05-18T12:00:00Z', squadText)
             ],
             {}
         );
