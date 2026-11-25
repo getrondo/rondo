@@ -1,4 +1,5 @@
 import { isDefined } from '@rnw-community/shared';
+import * as Option from 'effect/Option';
 
 import { extractLineup } from './extract-lineup';
 import { extractPoll, isReservePoll, makeVenueMatcher } from './extract-poll';
@@ -7,6 +8,7 @@ import { extractCancellation, extractPrice, makeFixtureExtractor } from './extra
 import type { CommunityConfig } from '../config/community-config';
 import type { TelegramMessage } from '../model/telegram-message.model';
 import type { AccountFact, AuthorFact, ExtractedFacts, GuestRequestFact, PollFact, PollPostFact } from './fact.model';
+import type { originalPolls } from './original-polls';
 
 const collectAuthors = (messages: readonly TelegramMessage[]): AuthorFact[] => {
     const authors = new Map<string, AuthorFact>();
@@ -70,17 +72,26 @@ const collectGuestRequests = (messages: readonly TelegramMessage[]): GuestReques
 interface ExtractOptions {
     readonly isGamePost?: (messageId: number) => boolean;
     readonly pollIdByMessage?: ReadonlyMap<number, string>;
+    readonly originals?: ReturnType<typeof originalPolls>;
 }
 
-const asFirstPost = (polls: readonly PollFact[], pollIdByMessage: ReadonlyMap<number, string>): PollFact[] => {
+const asFirstPost = (
+    polls: readonly PollFact[],
+    pollIdByMessage: ReadonlyMap<number, string>,
+    originals: ReturnType<typeof originalPolls>
+): PollFact[] => {
     const firstById = new Map<string, PollFact>();
 
-    return polls.map(poll => {
+    return polls.flatMap(poll => {
         const pollId = pollIdByMessage.get(poll.messageId) ?? `message ${poll.messageId}`;
         const first = firstById.get(pollId) ?? poll;
+        const original = originals.get(pollId)?.fact ?? Option.fromNullishOr(first);
         firstById.set(pollId, first);
 
-        return { ...first, messageId: poll.messageId, yesVoters: poll.yesVoters };
+        return Option.match(original, {
+            onNone: () => [],
+            onSome: fact => [{ ...fact, messageId: poll.messageId, yesVoters: poll.yesVoters, postedAt: first.postedAt }]
+        });
     });
 };
 
@@ -92,7 +103,7 @@ const pollPostOf = ({ id, poll, sentAt }: TelegramMessage): PollPostFact[] =>
 export const extractAll = (
     messages: readonly TelegramMessage[],
     config: CommunityConfig,
-    { isGamePost, pollIdByMessage }: ExtractOptions = {}
+    { isGamePost, pollIdByMessage, originals }: ExtractOptions = {}
 ): ExtractedFacts => {
     const organizers = new Set(config.organizers);
     const venueOf = makeVenueMatcher(config);
@@ -102,10 +113,10 @@ export const extractAll = (
     const polls = gamePosts.map(message => extractPoll(message, config, venueOf)).filter(fact => isDefined(fact));
 
     return {
-        polls: asFirstPost(polls, pollIdByMessage ?? new Map()),
+        polls: asFirstPost(polls, pollIdByMessage ?? new Map(), originals ?? new Map()),
         lineups: gamePosts.map(message => extractLineup(message, config, venueOf)).filter(fact => isDefined(fact)),
         prices: own.map(message => extractPrice(message, config, organizers, venueOf)).filter(fact => isDefined(fact)),
-        cancellations: gamePosts.map(message => extractCancellation(message, config, organizers)).filter(fact => isDefined(fact)),
+        cancellations: gamePosts.map(message => extractCancellation(message, config, organizers, venueOf)).filter(fact => isDefined(fact)),
         fixtures: own.flatMap(message => fixtureOf(message)),
         authors: collectAuthors(own),
         accounts: collectAccounts(own),

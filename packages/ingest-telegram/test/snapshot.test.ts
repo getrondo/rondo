@@ -24,7 +24,7 @@ import { importMessages } from '../src/ingest.effect';
 import { loadPlan } from '../src/load/load-plan';
 import { parseSnapshot } from '../src/parse/parse-snapshot';
 
-import { message, testConfig } from './fixture';
+import { accountPerson, message, testConfig } from './fixture';
 
 type TelegramMessage = ReturnType<typeof message>;
 
@@ -142,16 +142,6 @@ const load = Effect.fn('test.load')(function* (
     const aliases = yield* db.select().from(personAlias).where(eq(personAlias.communityId, communityId));
 
     return { communityId, stats, entries, aliases, alias: (norm: string) => aliases.find(alias => alias.aliasNorm === norm) };
-});
-
-const accountPerson = Effect.fn('test.accountPerson')(function* (id: number) {
-    const db = yield* Db;
-    const [row] = yield* db
-        .select()
-        .from(telegramAccount)
-        .where(eq(telegramAccount.tgUserId, BigInt(id)));
-
-    return row?.personId ?? '';
 });
 
 const namedOn = Effect.fn('test.namedOn')(function* (communityId: string, date: string, personIds: readonly string[]) {

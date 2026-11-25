@@ -2,7 +2,7 @@ import { isDefined } from '@rnw-community/shared';
 import { person, personAlias } from '@rondo/db/schema/identity.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq, isNotNull, ne } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, ne } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { alignGuests } from '../roster/align-guests';
@@ -28,7 +28,7 @@ export const assignAlias = Effect.fn('IngestTelegram.assignAlias')(function* ({
     const db = yield* Db;
     const placed = [
         ...(alias.kind === 'placeholder' ? [] : [isNotNull(lineupEntry.personId)]),
-        ...(resolvedBy === 'vote' ? [ne(lineupEntry.resolvedBy, 'alias')] : [])
+        ...(resolvedBy === 'vote' ? [ne(lineupEntry.resolvedBy, 'alias'), isNull(lineupEntry.chatId)] : [])
     ];
 
     const former = yield* db.selectDistinct({ personId: lineupEntry.personId }).from(lineupEntry).where(eq(lineupEntry.aliasId, alias.id));

@@ -10,6 +10,8 @@ import * as Schema from 'effect/Schema';
 
 import { resolveLocale, type Locale } from '../i18n/locale';
 
+import { moveImportedChat } from './move-imported-chat';
+
 import type { GroupTarget } from '../interface/group-target.interface';
 
 export interface CommunityProfile {
@@ -96,6 +98,7 @@ export const moveChat = Effect.fn('Core.moveChat')(function* (from: bigint, to: 
                 delete from comms.message_ref old
                 where old.chat_id = ${from}
                   and exists (select 1 from comms.message_ref kept where kept.chat_id = ${to} and kept.message_id = old.message_id)`);
+            yield* moveImportedChat(Number(from), Number(to));
             yield* db.update(messageRef).set({ chatId: to }).where(eq(messageRef.chatId, from));
             yield* db.update(telegramPoll).set({ chatId: to }).where(eq(telegramPoll.chatId, from));
             yield* db.execute(sql`

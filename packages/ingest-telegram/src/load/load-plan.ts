@@ -1,3 +1,4 @@
+import { isDefined } from '@rnw-community/shared';
 import { Db } from '@rondo/db/service/db.service';
 import * as Effect from 'effect/Effect';
 
@@ -52,7 +53,7 @@ export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
             const votes = yield* insertVotes(context, directory, sessions.sessionIds);
             yield* countOccurrences(communityId);
             const approved = yield* applyApproved(communityId);
-            const links = yield* linkByVotes(communityId);
+            const links = yield* linkByVotes(communityId, isDefined(config.otherChats));
             yield* markUndecidedTeams(communityId);
             yield* alignGuests(communityId);
             yield* removeUnusedNicknames(context);
@@ -70,6 +71,8 @@ export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
                 aliasLinks: links.aliases,
                 segmentLinks: links.segments,
                 sharedEntries: links.sharedEntries,
+                extendedEntries: links.extended,
+                otherChatLinks: links.others,
                 aliases,
                 authors: plan.facts.authors.length,
                 priceRules: plan.prices.length,

@@ -15,6 +15,17 @@ type VenueKind = (typeof venue.kind.enumValues)[number];
 
 const historyLimit = 600;
 
+const importedChatIds = sql`array(
+    select poll.chat_id::text from (
+        select distinct ref.chat_id is not null as is_other, coalesce(ref.chat_id, (
+            select chat.chat_id from org.telegram_chat chat
+            where chat.community_id = ref.community_id and chat.purpose = 'main' order by chat.created_at, chat.chat_id limit 1
+        )) as chat_id
+        from ingest.extraction found join ingest.source_ref ref on ref.id = found.source_ref_id and ref.kind = 'poll'
+        where found.entity_type = 'scheduling.session' and found.entity_id = ${session.id}
+    ) poll where poll.chat_id is not null order by poll.is_other, poll.chat_id
+)`;
+
 export const footballHistory = Effect.fn('Core.footballHistory')(function* (
     communityId: string,
     since: string,
@@ -32,7 +43,7 @@ export const footballHistory = Effect.fn('Core.footballHistory')(function* (
             status: session.status,
             chatIds: sql<
                 string[]
-            >`array(select ${messageRef.chatId}::text from ${messageRef} where ${messageRef.entityId} = ${session.id} and ${messageRef.purpose} = 'poll' order by ${messageRef.createdAt}, ${messageRef.messageId})`
+            >`array(select ${messageRef.chatId}::text from ${messageRef} where ${messageRef.entityId} = ${session.id} and ${messageRef.purpose} = 'poll' order by ${messageRef.createdAt}, ${messageRef.messageId}) || ${importedChatIds}`
         })
         .from(session)
         .innerJoin(activity, eq(activity.id, session.activityId))
@@ -56,7 +67,7 @@ export const footballHistory = Effect.fn('Core.footballHistory')(function* (
         fieldsPlanned: row.fieldsPlanned,
         capacityMax: row.capacityMax,
         status: row.status,
-        chatIds: row.chatIds
+        chatIds: [...new Set(row.chatIds)]
     }));
 });
 
@@ -66,7 +77,8 @@ export const plannedFootball = Effect.fn('Core.plannedFootball')(function* (comm
         .select({
             sessionId: session.id,
             localDate: session.localDate,
-            hasPoll: sql<boolean>`exists (select 1 from ${messageRef} where ${messageRef.entityId} = ${session.id} and ${messageRef.purpose} = 'poll')`
+            hasPoll: sql<boolean>`exists (select 1 from ${messageRef} where ${messageRef.entityId} = ${session.id} and ${messageRef.purpose} = 'poll')
+                or exists (select 1 from comms.imported_poll poll where poll.session_id = ${session.id} and poll.kind = 'participation')`
         })
         .from(session)
         .innerJoin(activity, eq(activity.id, session.activityId))

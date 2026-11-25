@@ -7,9 +7,9 @@ import { importSettings } from './import-settings';
 import { ingest } from './ingest.effect';
 
 const program = Effect.gen(function* () {
-    const { exportDir, configPath, allowRemoval } = yield* importSettings;
+    const settings = yield* importSettings;
 
-    return yield* ingest(exportDir, configPath, allowRemoval);
+    return yield* ingest(settings);
 });
 
 NodeRuntime.runMain(program.pipe(Effect.provide([NodeServices.layer, Db.layer])));

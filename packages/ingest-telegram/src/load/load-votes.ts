@@ -6,6 +6,7 @@ import * as Effect from 'effect/Effect';
 
 import { ForeignPollError } from '../error/foreign-poll.error';
 import { TooManyRemovedGamesError } from '../error/too-many-removed-games.error';
+import { sourceOf } from '../extract/post-id';
 import { insertMany } from '../utils/insert-many.util';
 
 import { maxRemovedShare } from './delete-stale-sessions';
@@ -17,7 +18,9 @@ import type { LoadContext } from '../interface/load-context.interface';
 const firstPosts = (posts: readonly PollPostFact[], pollIdByMessage: ReadonlyMap<number, string>): Map<string, PollPostFact> => {
     const first = new Map<string, PollPostFact>();
 
-    for (const post of posts.toSorted((left, right) => left.messageId - right.messageId)) {
+    for (const post of posts.toSorted(
+        (left, right) => left.postedAt.getTime() - right.postedAt.getTime() || left.messageId - right.messageId
+    )) {
         const pollId = pollIdByMessage.get(post.messageId);
 
         if (isDefined(pollId) && !first.has(pollId)) {
@@ -29,7 +32,7 @@ const firstPosts = (posts: readonly PollPostFact[], pollIdByMessage: ReadonlyMap
 };
 
 export const insertVotes = Effect.fn('IngestTelegram.insertVotes')(function* (
-    { transaction, communityId, plan, snapshot, allowRemoval }: LoadContext,
+    { transaction, communityId, config, plan, snapshot, allowRemoval }: LoadContext,
     directory: Directory,
     sessionIds: readonly string[]
 ) {
@@ -52,15 +55,14 @@ export const insertVotes = Effect.fn('IngestTelegram.insertVotes')(function* (
     const polls = [...firstPosts(plan.facts.pollPosts, snapshot.pollIdByMessage)].map(([pollId, post]) => {
         const otherKind = post.isReserve ? ('reserve' as const) : ('other' as const);
 
-        return {
+        return Object.assign(sourceOf(config.otherChats, post.messageId), {
             pollId,
             communityId,
             sessionId: participation.get(pollId) ?? reserve.get(pollId) ?? null,
-            messageId: post.messageId,
             postedAt: post.postedAt,
             kind: participation.has(pollId) ? ('participation' as const) : otherKind,
             answers: post.answers
-        };
+        });
     });
     const known = new Set(polls.map(({ pollId }) => pollId));
     const rows = snapshot.votes.flatMap(({ pollId, userId, choice, votedAt }) => {

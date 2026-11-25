@@ -1,3 +1,8 @@
+import { telegramAccount } from '@rondo/db/schema/identity.schema';
+import { Db } from '@rondo/db/service/db.service';
+import { eq } from 'drizzle-orm';
+import * as Effect from 'effect/Effect';
+
 import type { CommunityConfig } from '../src/config/community-config';
 import type { TelegramMessage } from '../src/model/telegram-message.model';
 
@@ -30,4 +35,14 @@ export const message = (id: number, sentAt: string, text: string, overrides: Par
     text,
     media: [],
     ...overrides
+});
+
+export const accountPerson = Effect.fn('test.accountPerson')(function* (id: number) {
+    const db = yield* Db;
+    const [row] = yield* db
+        .select()
+        .from(telegramAccount)
+        .where(eq(telegramAccount.tgUserId, BigInt(id)));
+
+    return row?.personId ?? '';
 });

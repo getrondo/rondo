@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
+import { sourceOf } from '../extract/post-id';
 import { chunks } from '../utils/chunks.util';
 import { insertMany } from '../utils/insert-many.util';
 
@@ -32,7 +33,7 @@ const referencesOf = (planned: PlannedSession, sessionId: string) => [
 ];
 
 export const recordProvenance = Effect.fn('IngestTelegram.recordProvenance')(function* (
-    { transaction, communityId, plan }: LoadContext,
+    { transaction, communityId, plan, config }: LoadContext,
     { fileSha256, sessionIds, stats }: ProvenanceInput
 ) {
     yield* transaction.delete(ingestRun).where(eq(ingestRun.communityId, communityId));
@@ -52,6 +53,7 @@ export const recordProvenance = Effect.fn('IngestTelegram.recordProvenance')(fun
     const refs = plan.sessions.flatMap((planned, index) => referencesOf(planned, sessionIds[index] ?? ''));
     const unique = [...new Map(refs.map(ref => [`${ref.messageId}|${ref.kind}`, ref])).values()];
     const sentAtById = new Map([
+        ...plan.facts.pollPosts.map(post => [post.messageId, post.postedAt] as const),
         ...plan.facts.polls.map(poll => [poll.messageId, poll.postedAt] as const),
         ...plan.facts.lineups.map(lineup => [lineup.messageId, lineup.postedAt] as const),
         ...plan.facts.cancellations.map(cancellation => [cancellation.messageId, cancellation.postedAt] as const)
@@ -62,13 +64,14 @@ export const recordProvenance = Effect.fn('IngestTelegram.recordProvenance')(fun
         const rows = yield* transaction
             .insert(sourceRef)
             .values(
-                batch.map(ref => ({
-                    runId,
-                    communityId,
-                    messageId: ref.messageId,
-                    sentAt: sentAtById.get(ref.messageId) ?? new Date(0),
-                    kind: ref.kind
-                }))
+                batch.map(ref =>
+                    Object.assign(sourceOf(config.otherChats, ref.messageId), {
+                        runId,
+                        communityId,
+                        sentAt: sentAtById.get(ref.messageId) ?? new Date(0),
+                        kind: ref.kind
+                    })
+                )
             )
             .returning({ id: sourceRef.id });
         sourceRefIds.push(...rows.map(row => row.id));

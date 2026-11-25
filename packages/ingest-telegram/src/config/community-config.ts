@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import * as Schema from 'effect/Schema';
 
 const VenueConfigSchema = Schema.Struct({
@@ -29,6 +31,20 @@ export const defaultGuestPatterns: readonly string[] = [
     '^\\+\\.?\\s*(?<count>\\d{1,2})\\s+(?:с|из|from)\\s'
 ];
 
+const OtherChatConfigSchema = Schema.Struct({
+    chatId: Schema.Int,
+    exportDir: Schema.String,
+    matchPatterns: Schema.Array(Schema.String),
+    matchDates: Schema.optional(Schema.Array(Schema.String)),
+    ownGameDates: Schema.optional(Schema.Array(Schema.String))
+});
+
+const uniqueChats = Schema.makeFilter(
+    (chats: readonly (typeof OtherChatConfigSchema.Type)[]) =>
+        new Set(chats.map(({ chatId }) => chatId)).size === chats.length &&
+        new Set(chats.map(({ exportDir }) => path.resolve(exportDir))).size === chats.length
+);
+
 export const CommunityConfigSchema = Schema.Struct({
     slug: Schema.String,
     name: Schema.String,
@@ -39,7 +55,10 @@ export const CommunityConfigSchema = Schema.Struct({
     teamColors: Schema.Array(TeamColorConfigSchema),
     squads: Schema.Array(SquadConfigSchema),
     guestPatterns: Schema.optional(Schema.Array(Schema.String)),
-    gamesTopicId: Schema.optional(Schema.Int)
+    gamesTopicId: Schema.optional(Schema.Int),
+    otherChats: Schema.optional(Schema.Array(OtherChatConfigSchema).check(uniqueChats))
 });
+
+export type OtherChatConfig = typeof OtherChatConfigSchema.Type;
 
 export type CommunityConfig = typeof CommunityConfigSchema.Type;

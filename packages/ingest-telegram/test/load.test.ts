@@ -110,6 +110,10 @@ layer(testDbLayer, { timeout: 60_000 })('loading an import plan', it => {
                 .set({ resolution: 'confirmed', personId: curatedId })
                 .where(and(eq(personAlias.communityId, communityId), eq(personAlias.aliasNorm, 'иван')));
             yield* db.insert(venue).values({ communityId, name: 'Manual Pitch' });
+            yield* db
+                .update(venue)
+                .set({ district: 5, address: 'Edited' })
+                .where(and(eq(venue.communityId, communityId), eq(venue.name, 'North Arena')));
             const [activityRow] = yield* db.select().from(activity).where(eq(activity.communityId, communityId));
             yield* db.insert(session).values({
                 communityId,
@@ -133,6 +137,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading an import plan', it => {
 
             expect(alias).toMatchObject({ resolution: 'confirmed', personId: curatedId });
             expect(venues.map(row => row.name).toSorted()).toEqual(['Manual Pitch', 'North Arena', 'Park Field']);
+            expect(venues.find(row => row.name === 'North Arena')).toMatchObject({ district: 5, address: 'Edited' });
             expect(botSessions.map(row => [row.venueId, row.localDate])).toEqual([[null, '2025-07-01']]);
             expect(yield* countsOf(communityId)).toEqual(before);
         })

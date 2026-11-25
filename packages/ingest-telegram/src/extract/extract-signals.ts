@@ -69,7 +69,8 @@ const cancelDate = (text: string, sentences: readonly string[], postedDate: stri
 export const extractCancellation = (
     message: TelegramMessage,
     config: CommunityConfig,
-    organizers: ReadonlySet<string>
+    organizers: ReadonlySet<string>,
+    venueOf: (text: string) => string | undefined
 ): CancellationFact | undefined =>
     organizerPost(message, organizers).pipe(
         Option.filter(({ text }) => text.length <= maxMessageLength),
@@ -85,7 +86,9 @@ export const extractCancellation = (
                       postedAt: sentAt,
                       localDate: cancelDate(text, explicit, instantToLocalDate(sentAt, config.timeZone)),
                       reason: reasons.find(([, regex]) => regex.test(text))?.[0] ?? 'organizer',
-                      isExplicit: isNotEmptyArray(explicit)
+                      isExplicit: isNotEmptyArray(explicit),
+                      title: text,
+                      venueKey: venueOf(text)
                   })
                 : Option.none();
         }),

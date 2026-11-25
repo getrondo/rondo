@@ -158,6 +158,7 @@ export const compareApprovals = Effect.fn('Approvals.compareApprovals')(function
             aliasNorm: personAlias.aliasNorm,
             date: session.localDate,
             messageId: lineupEntry.messageId,
+            chatId: lineupEntry.chatId,
             tgUserId: telegramAccount.tgUserId
         })
         .from(lineupEntry)
@@ -166,17 +167,18 @@ export const compareApprovals = Effect.fn('Approvals.compareApprovals')(function
         .innerJoin(personAlias, eq(personAlias.id, lineupEntry.aliasId))
         .leftJoin(telegramAccount, eq(telegramAccount.personId, lineupEntry.personId))
         .where(and(eq(community.slug, slug), eq(lineupEntry.isGuest, false), ne(lineupEntry.teamOrdinal, 0)));
-    const linked = new Set(stored.map(({ aliasNorm, date, tgUserId }) => `${aliasNorm}|${date}|${tgUserId}`));
-    const named = new Set(stored.map(({ aliasNorm, date }) => `${aliasNorm}|${date}`));
-    const messages = new Set(stored.map(({ date, messageId }) => `${date}|${messageId}`));
-    const changed = rows.filter(({ aliasNorm, date, tgUserId }) => !linked.has(`${aliasNorm}|${date}|${tgUserId}`));
+    const dayOf = ({ date, chatId }: { readonly date: string; readonly chatId?: number | null }): string => `${date}|${chatId ?? 'main'}`;
+    const linked = new Set(stored.map(row => `${row.aliasNorm}|${dayOf(row)}|${row.tgUserId}`));
+    const named = new Set(stored.map(row => `${row.aliasNorm}|${dayOf(row)}`));
+    const messages = new Set(stored.map(row => `${dayOf(row)}|${row.messageId}`));
+    const changed = rows.filter(row => !linked.has(`${row.aliasNorm}|${dayOf(row)}|${row.tgUserId}`));
 
     return {
         rows: rows.length,
         kept: rows.length - changed.length,
-        linkedToOther: changed.filter(({ aliasNorm, date }) => named.has(`${aliasNorm}|${date}`)).length,
-        nicknameGone: changed.filter(({ aliasNorm, date }) => !named.has(`${aliasNorm}|${date}`)).length,
-        otherMessage: rows.filter(({ date, messageId }) => !messages.has(`${date}|${messageId}`)).length,
+        linkedToOther: changed.filter(row => named.has(`${row.aliasNorm}|${dayOf(row)}`)).length,
+        nicknameGone: changed.filter(row => !named.has(`${row.aliasNorm}|${dayOf(row)}`)).length,
+        otherMessage: rows.filter(row => !messages.has(`${dayOf(row)}|${row.messageId}`)).length,
         changedMessageIds: [...new Set(changed.map(({ messageId }) => messageId))]
     };
 });

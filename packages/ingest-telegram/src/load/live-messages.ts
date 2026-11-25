@@ -1,17 +1,27 @@
+import { isDefined } from '@rnw-community/shared';
 import { community, telegramChat } from '@rondo/db/schema/org.schema';
-import { messageRef } from '@rondo/db/schema/platform.schema';
+import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, teamMember } from '@rondo/db/schema/play.schema';
+import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, eq, exists, gt, or, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 
-import type { TelegramMessage } from '../model/telegram-message.model';
+import { postIdIn } from '../extract/post-id';
 
-export const liveMessages = Effect.fn('IngestTelegram.liveMessages')(function* (communitySlug: string) {
+import { mainChatId } from './main-chat-id';
+
+import type { CommunityConfig } from '../config/community-config';
+import type { ChatContent } from '../interface/chat-content.interface';
+
+export const liveMessages = Effect.fn('IngestTelegram.liveMessages')(function* (config: CommunityConfig) {
     const db = yield* Db;
-
-    return yield* db
+    const { slug, otherChats } = config;
+    const mainId = yield* mainChatId(config);
+    const rows = yield* db
         .select({
+            chatId: sql<number>`${messageRef.chatId}`.mapWith(Number),
             messageId: messageRef.messageId,
             isLineup: sql<boolean>`${messageRef.purpose} = 'lineup'`,
             isStored: sql<boolean>`${or(
@@ -19,7 +29,14 @@ export const liveMessages = Effect.fn('IngestTelegram.liveMessages')(function* (
                     db
                         .select()
                         .from(lineupEntry)
-                        .where(and(eq(lineupEntry.sessionId, messageRef.entityId), gt(lineupEntry.teamOrdinal, 0)))
+                        .where(
+                            and(
+                                eq(lineupEntry.sessionId, messageRef.entityId),
+                                gt(lineupEntry.teamOrdinal, 0),
+                                eq(lineupEntry.messageId, messageRef.messageId),
+                                sql`coalesce(${lineupEntry.chatId}, ${Option.getOrNull(mainId)}::bigint) = ${messageRef.chatId}`
+                            )
+                        )
                 ),
                 exists(
                     db
@@ -33,15 +50,63 @@ export const liveMessages = Effect.fn('IngestTelegram.liveMessages')(function* (
         .from(messageRef)
         .innerJoin(telegramChat, eq(telegramChat.chatId, messageRef.chatId))
         .innerJoin(community, eq(community.id, telegramChat.communityId))
-        .where(and(eq(community.slug, communitySlug), eq(messageRef.entityType, 'session')));
+        .where(and(eq(community.slug, slug), eq(messageRef.entityType, 'session')));
+
+    return rows.map(({ chatId, messageId, ...row }) =>
+        Object.assign(row, {
+            postId: postIdIn({ mainChatId: mainId, otherChats }, { chatId, messageId }),
+            isOtherChat: (otherChats ?? []).some(chat => chat.chatId === chatId)
+        })
+    );
 });
 
-export const withoutLiveMessages = Effect.fn('IngestTelegram.withoutLiveMessages')(function* (
-    communitySlug: string,
-    messages: readonly TelegramMessage[]
-) {
-    const live = yield* liveMessages(communitySlug);
-    const handled = new Set(live.filter(({ isLineup, isStored }) => !isLineup || isStored).map(({ messageId }) => messageId));
+const storedBotPolls = Effect.fn('IngestTelegram.storedBotPolls')(function* (communitySlug: string) {
+    const db = yield* Db;
+    const rows = yield* db
+        .select({ pollId: telegramPoll.pollId })
+        .from(telegramPoll)
+        .innerJoin(session, eq(session.id, telegramPoll.sessionId))
+        .innerJoin(community, eq(community.id, session.communityId))
+        .where(eq(community.slug, communitySlug));
 
-    return messages.filter(({ id }) => !handled.has(id));
+    return rows.map(({ pollId }) => pollId);
+});
+
+const pollIdOf = (snapshot: ChatContent['snapshot'], messageId: number): string =>
+    snapshot.pipe(
+        Option.flatMapNullishOr(({ pollIdByMessage }) => pollIdByMessage.get(messageId)),
+        Option.getOrElse(() => `message ${messageId}`)
+    );
+
+// A bot is the author or the origin of its poll in some chat, also when the game and its stored poll are gone
+const botPollsIn = (chats: readonly ChatContent[]): string[] => {
+    const bots = new Set(
+        chats.flatMap(({ snapshot }) =>
+            Option.match(snapshot, {
+                onNone: () => [],
+                onSome: ({ users }) => [...users.values()].filter(({ bot }) => bot).map(({ id }) => id)
+            })
+        )
+    );
+
+    return chats.flatMap(({ messages, snapshot }) =>
+        messages
+            .filter(({ poll, authorId, forwardedFromId }) => isDefined(poll) && (bots.has(authorId ?? 0) || bots.has(forwardedFromId ?? 0)))
+            .map(({ id }) => pollIdOf(snapshot, id))
+    );
+};
+
+// Leaves out posts the bot handled live and every copy of a bot's poll
+export const withoutBotPosts = Effect.fn('IngestTelegram.withoutBotPosts')(function* (
+    config: CommunityConfig,
+    chats: readonly ChatContent[]
+) {
+    const live = yield* liveMessages(config);
+    const botPolls = new Set([...(yield* storedBotPolls(config.slug)), ...botPollsIn(chats)]);
+    const handled = new Set(live.filter(({ isLineup, isStored }) => !isLineup || isStored).flatMap(({ postId }) => Option.toArray(postId)));
+
+    return chats.map(({ messages, snapshot }): ChatContent => ({
+        messages: messages.filter(({ id }) => !handled.has(id) && !botPolls.has(pollIdOf(snapshot, id))),
+        snapshot
+    }));
 });

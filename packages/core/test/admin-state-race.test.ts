@@ -1,13 +1,10 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined, isEmptyString } from '@rnw-community/shared';
-import { runMigrations } from '@rondo/db/migration/migrate.effect';
 import { pendingAction, pollForward, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { assertLocal } from '@rondo/ingest-telegram/rehearsal/assert-local';
 import { makeRecorder, recordingTelegramLayer } from '@rondo/telegram/testing/recording-telegram.layer';
 import { eq } from 'drizzle-orm';
-import * as ConfigProvider from 'effect/ConfigProvider';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Option from 'effect/Option';
@@ -21,6 +18,7 @@ import { deleteSession } from '../src/sessions/delete-session';
 import { createSession } from '../src/sessions/session.service';
 import { forwardPoll } from '../src/signups/forward-poll';
 import { applyPollAnswer } from '../src/signups/signup.service';
+import { localPostgresLayer } from '../src/testing/local-postgres.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
 import type { Action } from '../src/actions/action.model';
@@ -71,11 +69,7 @@ const forwardRace = Effect.fn('test.forwardRace')(function* (
 });
 const unique = () => `${Math.floor(performance.now() * 1000)}-${Math.random().toString(36).slice(2, 8)}`;
 
-const postgresLayer = Layer.mergeAll(
-    Layer.effectDiscard(assertLocal(databaseUrl).pipe(Effect.andThen(runMigrations()))).pipe(Layer.provideMerge(Db.layer)),
-    recordingTelegramLayer(raceRecorder),
-    Access.layerFor([42n])
-).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ DATABASE_URL: databaseUrl }))));
+const postgresLayer = Layer.mergeAll(localPostgresLayer(databaseUrl), recordingTelegramLayer(raceRecorder), Access.layerFor([42n]));
 
 layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin state races on a real Postgres', it => {
     it.effect.skipIf(isEmptyString(databaseUrl))('hands typed input and a confirmation to exactly one of many racers', () =>

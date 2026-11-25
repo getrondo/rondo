@@ -21,7 +21,7 @@ interface SnapshotFiles {
 
 type Answers = NonNullable<(typeof SnapshotMessageSchema.Type)['poll']>['answers'];
 
-const voteChoice = (answers: Answers, options: readonly string[]): VoteChoice => {
+export const voteChoice = (answers: Answers, options: readonly string[]): VoteChoice => {
     const choices = new Set(
         options.map(option =>
             answerChoice(
@@ -38,11 +38,11 @@ const voteChoice = (answers: Answers, options: readonly string[]): VoteChoice =>
     return choices.has('other') ? 'other' : 'no';
 };
 
-const linesOf = (file: string): string[] => file.split('\n').filter(line => isNotEmptyString(line.trim()));
+export const linesOf = (file: string): string[] => file.split('\n').filter(line => isNotEmptyString(line.trim()));
 
 const quotePollId = (line: string): string => line.replace(/"poll"\s*:\s*\{\s*"id"\s*:\s*(\d+)/u, '"poll":{"id":"$1"');
 
-const mergeUsers = (users: readonly SnapshotUser[]): Map<number, SnapshotUser> => {
+export const mergeUsers = (users: readonly SnapshotUser[]): Map<number, SnapshotUser> => {
     const merged = new Map<number, SnapshotUser>();
 
     for (const user of users) {
@@ -65,7 +65,7 @@ const mergeUsers = (users: readonly SnapshotUser[]): Map<number, SnapshotUser> =
     return merged;
 };
 
-const decodeUsers = Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SnapshotUserSchema)));
+export const decodeUsers = Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SnapshotUserSchema)));
 const decodeMessage = Schema.decodeEffect(Schema.fromJsonString(SnapshotMessageSchema));
 const decodeVotes = Schema.decodeEffect(Schema.fromJsonString(SnapshotVotesSchema));
 

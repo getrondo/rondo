@@ -52,6 +52,7 @@ export interface LineupFact {
     readonly localDate: string;
     readonly localTime?: string;
     readonly venueKey?: string;
+    readonly title: string;
     readonly teams: readonly LineupTeam[];
     readonly priceCents?: number;
 }
@@ -70,6 +71,8 @@ export interface CancellationFact {
     readonly localDate: string;
     readonly reason: 'weather' | 'low_turnout' | 'venue' | 'holiday' | 'organizer' | 'other';
     readonly isExplicit: boolean;
+    readonly title: string;
+    readonly venueKey?: string;
 }
 
 export interface FixtureFact {

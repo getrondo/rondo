@@ -83,6 +83,7 @@ export const lineupEntry = play.table(
     {
         id: id(),
         sessionId: requiredRef('session_id', () => session.id),
+        chatId: bigint('chat_id', { mode: 'number' }),
         messageId: bigint('message_id', { mode: 'number' }).notNull(),
         teamOrdinal: smallint('team_ordinal').notNull(),
         position: smallint('position').notNull(),

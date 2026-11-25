@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
     bigint,
     boolean,
@@ -105,6 +106,7 @@ export const importedPoll = comms.table(
         pollId: text('poll_id').primaryKey(),
         communityId: requiredRef('community_id', () => community.id),
         sessionId: ref('session_id').references(() => session.id, { onDelete: 'set null' }),
+        chatId: bigint('chat_id', { mode: 'number' }),
         messageId: bigint('message_id', { mode: 'number' }).notNull(),
         postedAt: instant('posted_at').notNull(),
         kind: importedPollKindEnum('kind').notNull(),
@@ -191,11 +193,12 @@ export const sourceRef = ingest.table(
         id: id(),
         runId: requiredRef('run_id', () => ingestRun.id),
         communityId: requiredRef('community_id', () => community.id),
+        chatId: bigint('chat_id', { mode: 'number' }),
         messageId: bigint('message_id', { mode: 'number' }).notNull(),
         sentAt: instant('sent_at').notNull(),
         kind: sourceRefKindEnum('kind').notNull()
     },
-    t => [uniqueIndex('source_ref_message_kind_uq').on(t.communityId, t.messageId, t.kind)]
+    t => [uniqueIndex('source_ref_message_kind_uq').on(t.communityId, sql`coalesce(${t.chatId}, 0)`, t.messageId, t.kind)]
 );
 
 export const extraction = ingest.table(

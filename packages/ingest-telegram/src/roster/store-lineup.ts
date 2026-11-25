@@ -22,9 +22,16 @@ interface LiveLineup {
     readonly sessionId: string;
     readonly lineup: LineupFact;
     readonly senderName: string;
+    readonly chatId?: number;
 }
 
-export const storeLineup = Effect.fn('IngestTelegram.storeLineup')(function* ({ communityId, sessionId, lineup, senderName }: LiveLineup) {
+export const storeLineup = Effect.fn('IngestTelegram.storeLineup')(function* ({
+    communityId,
+    sessionId,
+    lineup,
+    senderName,
+    chatId
+}: LiveLineup) {
     const db = yield* Db;
     const known = yield* loadDirectory(communityId);
 
@@ -33,7 +40,11 @@ export const storeLineup = Effect.fn('IngestTelegram.storeLineup')(function* ({ 
     const previous = yield* db.delete(lineupEntry).where(eq(lineupEntry.sessionId, sessionId)).returning();
     const manual = previous.filter(entry => entry.resolvedBy === 'manual');
 
-    yield* db.insert(lineupEntry).values(entriesOf(sessionId, lineup, directory, manual));
+    const entries = entriesOf(sessionId, lineup, directory, manual).map(entry =>
+        entry.messageId === lineup.messageId ? Object.assign(entry, { chatId }) : entry
+    );
+
+    yield* db.insert(lineupEntry).values(entries);
     yield* countOccurrences(communityId);
     yield* markShared(communityId);
     yield* applyApproved(communityId);

@@ -9,6 +9,7 @@ import * as Option from 'effect/Option';
 import { syncSessionRoster } from '../roster/sync-session-roster';
 
 import { assignAlias } from './assign-alias';
+import { extendLinks } from './extend-links';
 import { loadDecisions, type LinkDecisions } from './load-decisions';
 import { loadEvidence, withLinks, type EvidenceEntry, type LinkEvidence } from './load-evidence';
 import { isCertainSet, matchSet } from './match-set';
@@ -111,10 +112,16 @@ const entriesIn = (evidence: LinkEvidence, aliasId: string, sessionIds: readonly
     return evidence.entries.filter(entry => entry.aliasId === aliasId && isOpen(entry) && sessions.has(entry.sessionId));
 };
 
+const withoutMain = (evidence: LinkEvidence): LinkEvidence => ({
+    ...evidence,
+    entries: evidence.entries.map(entry => (entry.isMain ? Object.assign(entry, { resolvedBy: 'alias' as const }) : entry))
+});
+
 const linkNicknames = Effect.fn('IngestTelegram.linkNicknames')(function* (
     communityId: string,
     evidence: LinkEvidence,
-    decisions: LinkDecisions
+    decisions: LinkDecisions,
+    isMain: boolean
 ) {
     const db = yield* Db;
     const open = yield* openAliases(communityId);
@@ -153,6 +160,7 @@ const linkNicknames = Effect.fn('IngestTelegram.linkNicknames')(function* (
             )
         );
         const agreed =
+            isMain &&
             kept.length === segments &&
             evidence.entries
                 .filter(entry => entry.aliasId === aliasId && entry.resolvedBy !== 'manual' && isDefined(entry.personId))
@@ -239,10 +247,11 @@ const linkSharedNickname = Effect.fn('IngestTelegram.linkSharedNickname')(functi
     return new Map(assignments.map(({ entry, personId }) => [entry.id, personId]));
 });
 
-export const linkByVotes = Effect.fn('IngestTelegram.linkByVotes')(function* (communityId: string) {
-    const loaded = yield* loadEvidence(communityId);
+const linkChats = Effect.fn('IngestTelegram.linkChats')(function* (communityId: string, isMain: boolean) {
+    const everything = yield* loadEvidence(communityId, isMain);
+    const loaded = isMain ? everything : withoutMain(everything);
     const decisions = yield* loadDecisions(communityId);
-    const { aliases, segments, linked } = yield* linkNicknames(communityId, loaded, decisions);
+    const { aliases, segments, linked } = yield* linkNicknames(communityId, loaded, decisions, isMain);
     const open = yield* openAliases(communityId);
     const shared = [...open.values()]
         .filter(({ kind }) => kind === 'placeholder')
@@ -257,4 +266,17 @@ export const linkByVotes = Effect.fn('IngestTelegram.linkByVotes')(function* (co
     }
 
     return { aliases, segments, sharedEntries };
+});
+
+export const linkByVotes = Effect.fn('IngestTelegram.linkByVotes')(function* (communityId: string, hasOtherChats: boolean) {
+    const main = yield* linkChats(communityId, true);
+
+    if (!hasOtherChats) {
+        return { ...main, extended: 0, others: 0 };
+    }
+
+    const extended = yield* extendLinks(communityId);
+    const others = yield* linkChats(communityId, false);
+
+    return { ...main, extended, others: others.segments + others.sharedEntries };
 });
