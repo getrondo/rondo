@@ -154,7 +154,7 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
             const { communityId } = yield* seedCommunity(seedConfig('e2e-fc'));
 
             yield* handleUpdate(message(owner, groupChat, '/link e2e-fc'));
-            yield* handleUpdate(
+            yield* deliver(
                 message(owner, { id: owner.id, type: 'private' }, 'створи гру в пʼятницю 4 грудня о 19:30 на 14 людей і оголоси')
             );
             const proposal = recorder.calls.find(call => call.method === 'sendMessage' && isDefined(call.payload.reply_markup));

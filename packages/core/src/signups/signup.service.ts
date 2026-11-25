@@ -11,6 +11,7 @@ import * as Option from 'effect/Option';
 
 import { primaryAccount } from '../identity/primary-account';
 import { syncMember, type TelegramUser } from '../identity/telegram-user';
+import { isSettledPoll } from '../utils/is-settled-poll.util';
 
 import type { SessionStatus } from '../sessions/session.model';
 
@@ -203,6 +204,12 @@ export const applyPollAnswer = Effect.fn('Core.applyPollAnswer')(function* (inpu
 
     return yield* db.transaction(() =>
         Effect.gen(function* () {
+            const [game] = yield* db.select({ id: session.id }).from(session).where(eq(session.id, poll.sessionId)).for('update');
+
+            if (!isDefined(game)) {
+                return Option.none<PollAnswerOutcome>();
+            }
+
             yield* storeBallot({
                 pollId: input.pollId,
                 tgUserId: input.user.id,
@@ -226,8 +233,6 @@ export const rosterOf = Effect.fn('Core.rosterOf')(function* (sessionId: string)
         .orderBy(asc(signup.createdAt));
 });
 
-const settledPoll = /poll has already been closed|to stop not found/iu;
-
 export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId: string) {
     const db = yield* Db;
     const telegram = yield* Telegram;
@@ -241,7 +246,7 @@ export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId:
             .call('stopPoll', api => api.stopPoll(Number(poll.chatId), poll.messageId))
             .pipe(
                 Effect.as(true),
-                Effect.catch(error => Effect.logWarning('[poll] not closed', error).pipe(Effect.as(settledPoll.test(error.description))))
+                Effect.catch(error => Effect.logWarning('[poll] not closed', error).pipe(Effect.as(isSettledPoll(error.description))))
             );
 
         if (isSettled) {

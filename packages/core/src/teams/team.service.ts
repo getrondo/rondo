@@ -1,4 +1,4 @@
-import { isNotEmptyArray } from '@rnw-community/shared';
+import { isEmptyString, isNotEmptyArray } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
 import { messageRef } from '@rondo/db/schema/platform.schema';
 import { rating, team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
@@ -17,6 +17,7 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { formatSessionLabel, text } from '../i18n/messages';
 import { arePeopleOf } from '../people/people.service';
 import { footballActivity, requireSession } from '../sessions/session.service';
+import { placeHtml, placeOf } from '../signups/place-block';
 import { topicOptions } from '../utils/topic-options.util';
 
 import { balanceTeams, type BalancedTeam, type BalancePlayer } from './balance-teams';
@@ -99,13 +100,39 @@ const lineupText = (locale: Locale, target: SessionView, teams: readonly Balance
         return `${emojis[index] ?? `${entry.ordinal}.`} ${names}`;
     });
 
-    return [`<b>${text(locale, 'lineups')}: ${escapeHtml(formatSessionLabel(locale, target))}</b>`, ...lines].join('\n');
+    const place = placeHtml(placeOf(target));
+
+    return [
+        `<b>${text(locale, 'lineups')}: ${escapeHtml(formatSessionLabel(locale, target))}</b>`,
+        ...(isEmptyString(place) ? [] : [place]),
+        ...lines
+    ].join('\n');
 };
+
+const teamColorsOf = Effect.fn('Core.teamColorsOf')(function* (communityId: string) {
+    const db = yield* Db;
+
+    return yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId)).orderBy(asc(teamColor.name));
+});
+
+export const lineupHtml = Effect.fn('Core.lineupHtml')(function* (locale: Locale, target: SessionView, teams: readonly BalancedTeam[]) {
+    const colors = yield* teamColorsOf(target.communityId);
+
+    return lineupText(
+        locale,
+        target,
+        teams,
+        colors.map(color => color.emoji ?? '')
+    );
+});
+
+const withForwardHint = (html: string, group: GroupTarget, locale: Locale): string =>
+    group.chatId > 0n ? `${html}\n\n${text(locale, 'forwardHint')}` : html;
 
 interface PublishInput {
     readonly target: SessionView;
     readonly teams: readonly BalancedTeam[];
-    readonly group: GroupTarget;
+    readonly groups: readonly GroupTarget[];
     readonly locale: Locale;
     readonly actorPersonId: string | null;
 }
@@ -161,7 +188,7 @@ export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: Pub
     const { communityId } = input.target;
     const isSent = yield* Ref.make(false);
     const publish = Effect.gen(function* () {
-        const colors = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId)).orderBy(asc(teamColor.name));
+        const colors = yield* teamColorsOf(communityId);
         yield* storeTeams(
             input,
             colors.map(color => color.id)
@@ -174,23 +201,29 @@ export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: Pub
             entityId: input.target.id
         });
         const emojis = colors.map(color => color.emoji ?? '');
-        const sent = yield* telegram.call('sendMessage', api =>
-            api.sendMessage(Number(input.group.chatId), lineupText(input.locale, input.target, input.teams, emojis), {
-                parse_mode: 'HTML',
-                ...topicOptions(input.group)
-            })
-        );
-        yield* Ref.set(isSent, true);
-        yield* db
-            .insert(messageRef)
-            .values({
-                chatId: input.group.chatId,
-                messageId: sent.message_id,
-                purpose: 'lineup',
-                entityType: 'session',
-                entityId: input.target.id
-            })
-            .onConflictDoNothing();
+        for (const group of input.groups) {
+            const sent = yield* telegram.call('sendMessage', api =>
+                api.sendMessage(
+                    Number(group.chatId),
+                    withForwardHint(lineupText(input.locale, input.target, input.teams, emojis), group, input.locale),
+                    {
+                        parse_mode: 'HTML',
+                        ...topicOptions(group)
+                    }
+                )
+            );
+            yield* Ref.set(isSent, true);
+            yield* db
+                .insert(messageRef)
+                .values({
+                    chatId: group.chatId,
+                    messageId: sent.message_id,
+                    purpose: 'lineup',
+                    entityType: 'session',
+                    entityId: input.target.id
+                })
+                .onConflictDoNothing();
+        }
     });
 
     yield* withCommunityLock({ id: communityId }, publish).pipe(

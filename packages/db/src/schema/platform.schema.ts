@@ -1,4 +1,17 @@
-import { bigint, boolean, index, integer, jsonb, numeric, pgSchema, primaryKey, smallint, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+    bigint,
+    boolean,
+    index,
+    integer,
+    jsonb,
+    numeric,
+    pgSchema,
+    primaryKey,
+    smallint,
+    text,
+    uniqueIndex,
+    uuid
+} from 'drizzle-orm/pg-core';
 
 import { createdAt, id, instant, ref, requiredRef } from './columns';
 import { person, telegramAccount } from './identity.schema';
@@ -71,6 +84,21 @@ export const telegramPoll = comms.table(
     t => [index('telegram_poll_session_idx').on(t.sessionId)]
 );
 
+export const pollForward = comms.table(
+    'poll_forward',
+    {
+        pollId: text('poll_id')
+            .notNull()
+            .references(() => telegramPoll.pollId, { onDelete: 'cascade' }),
+        chatId: bigint('chat_id', { mode: 'bigint' }).notNull(),
+        messageId: bigint('message_id', { mode: 'number' }),
+        topicId: bigint('topic_id', { mode: 'number' }),
+        token: uuid('token').notNull().defaultRandom(),
+        claimedAt: instant('claimed_at').notNull().defaultNow()
+    },
+    t => [primaryKey({ columns: [t.pollId, t.chatId] })]
+);
+
 export const importedPoll = comms.table(
     'imported_poll',
     {
@@ -135,6 +163,16 @@ export const pendingAction = comms.table(
     },
     t => [index('pending_action_status_idx').on(t.status, t.expiresAt)]
 );
+
+export const adminState = comms.table('admin_state', {
+    tgUserId: bigint('tg_user_id', { mode: 'bigint' }).primaryKey(),
+    communityId: requiredRef('community_id', () => community.id),
+    messageId: bigint('message_id', { mode: 'number' }),
+    revision: integer('revision').notNull().default(0),
+    awaiting: text('awaiting'),
+    draft: jsonb('draft').notNull().default({}),
+    expiresAt: instant('expires_at').notNull()
+});
 
 export const ingestRun = ingest.table('run', {
     id: id(),

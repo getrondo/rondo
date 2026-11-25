@@ -1,9 +1,9 @@
-import { isNotEmptyArray } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { activity, community } from '@rondo/db/schema/org.schema';
 import { attendance, session, sessionChange } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db, type Database } from '@rondo/db/service/db.service';
-import { and, asc, between, eq, isNotNull, notInArray } from 'drizzle-orm';
+import { and, asc, between, eq, isNotNull, isNull, ne, notInArray } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Predicate from 'effect/Predicate';
@@ -29,6 +29,10 @@ const selection = {
     venueName: venue.name,
     venueShortName: venue.shortName,
     venueStation: venue.station,
+    venueAddress: venue.address,
+    venueLat: venue.lat,
+    venueLng: venue.lng,
+    venueMapUrl: venue.mapUrl,
     fieldsPlanned: session.fieldsPlanned,
     capacityMax: session.capacityMax,
     gkSlots: session.gkSlots,
@@ -84,6 +88,33 @@ export const footballActivity = Effect.fn('Core.footballActivity')(function* (co
         .where(and(eq(activity.communityId, communityId), eq(activity.sport, 'football')));
 
     return row?.id ?? '';
+});
+
+export const findSameGame = Effect.fn('Core.findSameGame')(function* (input: {
+    readonly communityId: string;
+    readonly timezone: string;
+    readonly localDate: string;
+    readonly localTime: string;
+    readonly venueId: string | null;
+}) {
+    const db = yield* Db;
+    const activityId = yield* footballActivity(input.communityId);
+    const [found] = yield* db
+        .select({ id: session.id })
+        .from(session)
+        .where(
+            and(
+                eq(session.communityId, input.communityId),
+                eq(session.activityId, activityId),
+                eq(session.localDate, input.localDate),
+                eq(session.startsAt, instantOf(input.localDate, input.localTime, input.timezone)),
+                isDefined(input.venueId) ? eq(session.venueId, input.venueId) : isNull(session.venueId),
+                ne(session.status, 'cancelled')
+            )
+        )
+        .limit(1);
+
+    return Option.fromNullishOr(found?.id);
 });
 
 export interface CreateSessionInput {

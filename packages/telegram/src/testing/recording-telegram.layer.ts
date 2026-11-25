@@ -8,6 +8,7 @@ import { Telegram, makeTelegramClient } from '../service/telegram.service';
 interface RecordedCall {
     readonly method: string;
     readonly payload: Readonly<Record<string, unknown>>;
+    readonly result?: unknown;
 }
 
 export interface TelegramRecorder {
@@ -30,7 +31,13 @@ const defaultReply = (method: string, payload: Readonly<Record<string, unknown>>
         };
     }
 
-    return method.startsWith('send') ? { message_id: nextMessageId, date: 0, chat: { id: payload.chat_id, type: 'private' } } : true;
+    if (method === 'stopPoll') {
+        return { id: `stopped-${nextMessageId}`, total_voter_count: 0, is_closed: true };
+    }
+
+    return method.startsWith('send') || method === 'forwardMessage'
+        ? { message_id: nextMessageId, date: 0, chat: { id: payload.chat_id, type: 'private' } }
+        : true;
 };
 
 export const makeRecorder = (reply: TelegramRecorder['reply'] = defaultReply): TelegramRecorder => ({
@@ -49,15 +56,18 @@ export const recordingTelegramLayer = (recorder: TelegramRecorder): Layer.Layer<
             const api = new Api('0:test');
             api.config.use(async (_previous, method, payload) => {
                 const recorded = { ...(payload as Record<string, unknown>) };
-                recorder.calls.push({ method, payload: recorded });
-
                 const failure = recorder.failures.get(method);
 
                 if (isDefined(failure)) {
+                    recorder.calls.push({ method, payload: recorded });
+
                     return await Promise.reject(failure);
                 }
 
-                return await Promise.resolve({ ok: true as const, result: recorder.reply(method, recorded) as never });
+                const result = recorder.reply(method, recorded);
+                recorder.calls.push({ method, payload: recorded, result });
+
+                return await Promise.resolve({ ok: true as const, result: result as never });
             });
 
             return makeTelegramClient(api);

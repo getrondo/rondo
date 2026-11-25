@@ -14,6 +14,10 @@ export interface SessionView {
     readonly venueName: string | null;
     readonly venueShortName: string | null;
     readonly venueStation: string | null;
+    readonly venueAddress: string | null;
+    readonly venueLat: number | null;
+    readonly venueLng: number | null;
+    readonly venueMapUrl: string | null;
     readonly fieldsPlanned: number | null;
     readonly capacityMax: number | null;
     readonly gkSlots: number;

@@ -38,6 +38,7 @@ export const venue = venueSchema.table(
         district: smallint('district'),
         lat: doublePrecision('lat'),
         lng: doublePrecision('lng'),
+        mapUrl: text('map_url'),
         transit: text('transit'),
         indoor: boolean('indoor'),
         parking: text('parking'),

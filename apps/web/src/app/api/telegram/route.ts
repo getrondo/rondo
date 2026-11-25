@@ -15,19 +15,13 @@ const accept = (request: Request) =>
         const secret = yield* Config.Redacted('TELEGRAM_WEBHOOK_SECRET');
         yield* verifyWebhookSecret(request.headers.get(webhookSecretHeader), secret);
         const update = yield* Effect.tryPromise(async () => (await request.json()) as Update);
-        // The model is slow, so admin chats and venue proposals run after the reply. Everything else runs first: a failure answers 500 and Telegram retries in order.
-        if (update.message?.chat.type === 'private') {
-            after(async () => {
-                await serverRuntime.runPromise(handleUpdate(update));
-            });
-        } else {
-            const followUp = yield* handleUpdate(update);
+        // The model is slow, so the assistant and venue proposals run after the reply. Commands, menu taps and typed menu input run first: a failure answers 500 and Telegram retries in order.
+        const followUp = yield* handleUpdate(update);
 
-            if (Option.isSome(followUp)) {
-                after(async () => {
-                    await serverRuntime.runPromise(followUp.value);
-                });
-            }
+        if (Option.isSome(followUp)) {
+            after(async () => {
+                await serverRuntime.runPromise(followUp.value);
+            });
         }
 
         return new Response(null, { status: 200 });

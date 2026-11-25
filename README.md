@@ -17,8 +17,9 @@ Telegram group the community already lives in.
 (Jun 2023 to Nov 2026) of history from a ~200-member Vienna group, covering about 18,000 messages,
 559 game polls and 210 posted line-ups. The relational core and the history importer are built;
 the first bot release runs on Vercel: it keeps the database current from the group, runs sign-up
-polls with a waitlist, and gives admins a private AI assistant (with confirmations) for questions,
-rescheduling, cancellations, balanced line-ups and player clean-up.
+polls with a waitlist, and gives admins a private chat to run games by taps: `/newgame` opens the
+most likely next game as the exact poll, one tap on ✅ posts it, and `/games` changes, cancels or
+balances a game. An AI assistant (with confirmations) answers questions and handles anything typed.
 
 | Doc | What's inside |
 |---|---|

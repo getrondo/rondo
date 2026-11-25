@@ -2,6 +2,7 @@ import { isDefined, isEmptyArray } from '@rnw-community/shared';
 import { groupLocaleOf, mainGroupOf } from '@rondo/core/community/community.repository';
 import { notifyPromoted } from '@rondo/core/notify/notifier';
 import { getSession } from '@rondo/core/sessions/session.service';
+import { noticeTargets } from '@rondo/core/signups/audience';
 import { applyPollAnswer } from '@rondo/core/signups/signup.service';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -27,11 +28,12 @@ export const handlePollAnswer = Effect.fn('Bot.handlePollAnswer')(function* (ans
         return;
     }
 
-    const group = yield* mainGroupOf(target.value.communityId);
+    const fallback = yield* mainGroupOf(target.value.communityId);
+    const groups = yield* noticeTargets(target.value.id, Option.toArray(fallback));
+    const locale = yield* groupLocaleOf(target.value.communityId);
 
-    if (Option.isSome(group)) {
-        const locale = yield* groupLocaleOf(target.value.communityId);
-        yield* notifyPromoted({ target: target.value, promoted: outcome.value.promoted, group: group.value, locale }).pipe(
+    for (const group of groups) {
+        yield* notifyPromoted({ target: target.value, promoted: outcome.value.promoted, group, locale }).pipe(
             Effect.tapCause(Effect.logWarning),
             Effect.ignore
         );

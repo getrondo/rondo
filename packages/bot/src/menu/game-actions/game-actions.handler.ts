@@ -1,0 +1,283 @@
+import { isDefined } from '@rnw-community/shared';
+import { ActionSchema, type Action } from '@rondo/core/actions/action.model';
+import { consumeAdminState, loadAdminState } from '@rondo/core/menu/admin-state.repository';
+import { isNoticeAction } from '@rondo/core/notify/notice-preview';
+import { requireSession } from '@rondo/core/sessions/session.service';
+import { claimOfToken } from '@rondo/core/signups/forward-poll';
+import { escapeHtml } from '@rondo/telegram/format/html';
+import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
+import * as Schema from 'effect/Schema';
+
+import { fromShortId } from '../../utils/from-short-id.util';
+import { gameCardScreen, gamesScreen, type RetryTarget } from '../games.screen';
+import { menuText } from '../menu-text';
+import { loadNewGameData } from '../new-game/new-game.data';
+import { showSelfReceipt } from '../new-game/self-receipt';
+import { runConfirmed } from '../run-confirmed';
+import { showScreen } from '../show-screen';
+import { plainReceipt, rememberDone, replyStale, showAfterSuccess } from '../stale-reply';
+
+import { changeOf, ownVenue, teamsOf } from './card-changes';
+import { GameDraftSchema, listViews, sessionOf } from './game-draft';
+import { targetOfAction, type GameTarget } from './game-target';
+import { confirmRetry } from './retry-confirm';
+import { showConfirm, showGameList } from './show-confirm';
+
+import type { MenuUser } from '../screen.interface';
+import type { SessionView } from '@rondo/core/sessions/session.model';
+
+const decodeGameDraft = Schema.decodeUnknownOption(GameDraftSchema);
+const decodeAction = Schema.decodeUnknownOption(ActionSchema);
+const isToMe = (user: MenuUser, action: Action): boolean =>
+    (action._tag === 'announce_session' || action._tag === 'forward_poll') && action.chatId === String(user.tgUserId);
+
+const afterDone = Effect.fn('Bot.afterGameDone')(function* (user: MenuUser, action: Action, messageId: number, target: GameTarget) {
+    const { where } = target;
+    const sessionId = sessionOf(action);
+
+    if (action._tag === 'delete_session') {
+        const games = yield* gamesScreen(user);
+        yield* showScreen(user.chatId, messageId, { ...games, text: `${menuText(user.locale, 'deleted')}\n\n${games.text}` });
+
+        return;
+    }
+
+    if (isToMe(user, action)) {
+        yield* showSelfReceipt(user, messageId, { sessionId, status: 'sentMe' });
+
+        return;
+    }
+
+    if (action._tag === 'update_session' || action._tag === 'cancel_session') {
+        const prefix = action._tag === 'update_session' ? 'changed' : 'cancelled';
+        const loud = action.notify && !target.silent;
+        const toMe = loud && target.me;
+        const audience = toMe ? 'Me' : 'To';
+        const key = `${prefix}${loud ? audience : 'Quiet'}` as const;
+        const listed = loud && !toMe ? target.reached : null;
+        const text = isDefined(listed)
+            ? menuText(user.locale, `${prefix}ToList`, { where: escapeHtml(listed.told) })
+            : menuText(user.locale, key, { where: escapeHtml(where) });
+        const card = yield* gameCardScreen(user, sessionId, {
+            text,
+            saysPoll: false
+        });
+
+        if (toMe) {
+            yield* showScreen(user.chatId, messageId, { text: menuText(user.locale, 'noticeBelow'), keyboard: [] });
+        }
+
+        yield* showScreen(user.chatId, toMe ? null : messageId, card);
+
+        return;
+    }
+
+    const isPost = action._tag === 'forward_poll' || action._tag === 'announce_session';
+    const header = isPost
+        ? menuText(user.locale, action._tag === 'forward_poll' ? 'forwardedTo' : 'announced', { where: escapeHtml(where) })
+        : menuText(user.locale, 'changedDone');
+    const card = yield* gameCardScreen(user, sessionId, { text: header, saysPoll: isPost });
+    yield* showScreen(user.chatId, messageId, card);
+});
+
+const withoutTopic = (action: Action): Action => {
+    if (action._tag === 'forward_poll') {
+        return {
+            _tag: 'forward_poll',
+            sessionId: action.sessionId,
+            chatId: action.chatId,
+            ...(isDefined(action.resend) ? { resend: action.resend } : {})
+        };
+    }
+
+    if (action._tag === 'announce_session') {
+        return { _tag: 'announce_session', sessionId: action.sessionId, ...(isDefined(action.chatId) ? { chatId: action.chatId } : {}) };
+    }
+
+    return action;
+};
+
+const retryOf = (user: MenuUser, action: Extract<Action, { _tag: 'announce_session' }>): RetryTarget =>
+    isToMe(user, action) ? 'me' : { chatId: action.chatId ?? '', topicId: action.topicId ?? null };
+
+const runGameAction = Effect.fn('Bot.runGameAction')(function* (
+    user: MenuUser,
+    action: Action,
+    tap: { readonly messageId: number; readonly revision: string; readonly expected: number | null; readonly summary?: string | null }
+) {
+    const target = yield* targetOfAction(user, action, sessionOf(action));
+    const outcome = yield* runConfirmed(user, action, {
+        summary: tap.summary ?? null,
+        target: { where: target.where, isPrivate: target.me }
+    });
+
+    if (outcome._tag === 'done') {
+        if (isDefined(tap.expected)) {
+            yield* rememberDone(
+                user,
+                { messageId: tap.messageId, expected: tap.expected },
+                { sessionId: sessionOf(action), created: false, self: isToMe(user, action), revision: tap.revision }
+            );
+        }
+
+        yield* showAfterSuccess(
+            user,
+            tap.messageId,
+            afterDone(user, action, tap.messageId, target),
+            plainReceipt(user, sessionOf(action), 'changedDone')
+        );
+
+        return Option.none<string>();
+    }
+
+    const previewed = isNoticeAction(action) || action._tag === 'announce_session' || action._tag === 'forward_poll';
+
+    if (/changed after the preview|link changed/u.test(outcome.reason) && previewed) {
+        yield* showConfirm(user, withoutTopic(action), { messageId: tap.messageId, expected: tap.expected }, outcome.text);
+
+        return Option.none<string>();
+    }
+
+    const unknownForward = action._tag === 'forward_poll' && /forward result is uncertain/u.test(outcome.reason);
+    const retry = action._tag === 'announce_session' && outcome.uncertain ? { retry: retryOf(user, action) } : {};
+    const card = yield* gameCardScreen(user, sessionOf(action), unknownForward ? null : { text: outcome.text, saysPoll: false, ...retry });
+    yield* showScreen(user.chatId, tap.messageId, card);
+
+    return Option.none<string>();
+});
+
+const confirmTap = Effect.fn('Bot.confirmGameTap')(function* (user: MenuUser, revision: string, notify: boolean, messageId: number) {
+    const state = yield* loadAdminState(user.tgUserId, user.now);
+    const draft = state.pipe(
+        Option.filter(row => row.messageId === messageId),
+        Option.flatMap(row => decodeGameDraft(row.draft))
+    );
+    const action = draft.pipe(Option.flatMap(value => decodeAction(value.action)));
+
+    if (Option.isNone(state) || Option.isNone(action)) {
+        return yield* replyStale(user, messageId, revision);
+    }
+
+    if (String(state.value.revision) !== revision) {
+        yield* showConfirm(user, action.value, { messageId, expected: state.value.revision });
+
+        return Option.none<string>();
+    }
+
+    const consumed = yield* consumeAdminState(user.tgUserId, state.value.revision, user.now);
+
+    if (Option.isNone(consumed)) {
+        return yield* replyStale(user, messageId, revision);
+    }
+
+    const chosen = 'notify' in action.value ? { ...action.value, notify } : action.value;
+
+    const summary = draft.pipe(
+        Option.map(value => value.summary),
+        Option.getOrNull
+    );
+
+    return yield* runGameAction(user, chosen, { messageId, revision, expected: consumed.value.revision, summary });
+});
+
+const listTap = Effect.fn('Bot.gameListTap')(function* (
+    user: MenuUser,
+    game: SessionView,
+    tap: { readonly op: string; readonly arg: string; readonly messageId: number }
+) {
+    const view = listViews[tap.op];
+
+    if (!isDefined(view)) {
+        return false;
+    }
+
+    const data = yield* loadNewGameData(user);
+    yield* showGameList(user, game, data, {
+        view,
+        page: Number(tap.arg) || 0,
+        notice: null,
+        at: { messageId: tap.messageId, expected: null }
+    });
+
+    return true;
+});
+
+const resendForward = Effect.fn('Bot.resendForward')(function* (
+    user: MenuUser,
+    game: SessionView,
+    { arg, messageId }: { readonly arg: string; readonly messageId: number }
+) {
+    const token = fromShortId(arg);
+    const claim = isDefined(token) ? yield* claimOfToken(game.id, token) : Option.none();
+
+    if (Option.isNone(claim) || !isDefined(token)) {
+        return Option.some(menuText(user.locale, 'stale'));
+    }
+
+    return yield* runGameAction(
+        user,
+        {
+            _tag: 'forward_poll',
+            sessionId: game.id,
+            chatId: String(claim.value.chatId),
+            topicId: claim.value.topicId,
+            resend: token
+        },
+        { messageId, revision: '', expected: null }
+    );
+});
+
+export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: MenuUser, parts: readonly string[], messageId: number) {
+    const [, op = '', id = '', arg = ''] = parts;
+
+    if (op === 'ok') {
+        return yield* confirmTap(user, id, arg === '1', messageId);
+    }
+
+    const sessionId = fromShortId(id);
+    const game = isDefined(sessionId) ? yield* requireSession(user.communityId, sessionId).pipe(Effect.option) : Option.none();
+
+    if (Option.isNone(game)) {
+        return Option.some(menuText(user.locale, 'unknownGame'));
+    }
+
+    if (yield* listTap(user, game.value, { op, arg, messageId })) {
+        return Option.none<string>();
+    }
+
+    if (op === 'fr') {
+        return yield* resendForward(user, game.value, { arg, messageId });
+    }
+
+    if (op === 'pa' || op === 'pam') {
+        yield* confirmRetry(user, game.value, parts, messageId);
+
+        return Option.none<string>();
+    }
+
+    if (op === 'pr') {
+        return yield* runGameAction(
+            user,
+            { _tag: 'forward_poll', sessionId: game.value.id, chatId: String(user.tgUserId) },
+            { messageId, revision: '', expected: null }
+        );
+    }
+
+    const teams = op === 'kn' ? yield* teamsOf(game.value.id, Number(arg)) : Option.none<Action>();
+    const action = Option.getOrNull(teams) ?? changeOf(user, game.value.id, { op, arg });
+
+    if (!isDefined(action)) {
+        return Option.some(menuText(user.locale, op === 'kn' ? 'noTeams' : 'stale'));
+    }
+
+    const venue = action._tag === 'update_session' && isDefined(action.venueId) ? yield* ownVenue(user, action.venueId) : Option.some(null);
+
+    if (Option.isNone(venue)) {
+        return Option.some(menuText(user.locale, 'placeGone'));
+    }
+
+    yield* showConfirm(user, action, { messageId, expected: null });
+
+    return Option.none<string>();
+});

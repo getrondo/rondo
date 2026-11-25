@@ -11,6 +11,7 @@ import * as Predicate from 'effect/Predicate';
 
 import { describeAction } from '../src/actions/describe-action';
 import { decideAction, proposeAction } from '../src/actions/pending-action.service';
+import { noticeOf } from '../src/notify/notice-preview';
 import { createSession } from '../src/sessions/session.service';
 import { publishPoll } from '../src/signups/publish-poll';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
@@ -159,6 +160,59 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
         })
     );
 
+    it.effect('sends a card notice only to the previewed audience with the previewed text', () =>
+        Effect.gen(function* () {
+            const { communityId } = yield* seedCommunity(seedConfig('publish-notice-fc'));
+            const sessionId = yield* createSession(gameOf(communityId));
+            const context = {
+                communityId,
+                timezone: 'Europe/Vienna',
+                group: Option.some({ chatId: group.chatId, topicId: group.topicId }),
+                groupLocale: 'uk' as const,
+                actorPersonId: null
+            };
+            const change: Action = { _tag: 'update_session', sessionId, localTime: '11:30', notify: true };
+            const preview = yield* noticeOf(change, context);
+            const before = countOfCalls('sendMessage');
+            const elsewhere = yield* confirm(communityId, {
+                ...change,
+                preview: { ...preview, targets: [{ chatId: '-555', topicId: null }] }
+            });
+            const otherTopic = yield* confirm(communityId, {
+                ...change,
+                preview: { ...preview, targets: preview.targets.map(target => ({ ...target, topicId: 9 })) }
+            });
+            const reworded = yield* confirm(communityId, { ...change, preview: { ...preview, html: `${preview.html} ` } });
+            const refusedCount = countOfCalls('sendMessage') - before;
+            const exact = yield* confirm(communityId, { ...change, preview });
+
+            expect(reasonIn(elsewhere.outcome)).toContain('changed after the preview');
+            expect(reasonIn(otherTopic.outcome)).toContain('changed after the preview');
+            expect(reasonIn(reworded.outcome)).toContain('changed after the preview');
+            expect(refusedCount).toBe(0);
+            expect(exact.outcome._tag).toBe('done');
+            expect(recorder.calls.findLast(call => call.method === 'sendMessage')?.payload.text).toBe(preview.html);
+        })
+    );
+
+    it.effect('checks the kickoff under the game lock right before the poll is sent', () =>
+        Effect.gen(function* () {
+            const { communityId } = yield* seedCommunity(seedConfig('publish-kickoff-fc'));
+            const before = countOfCalls('sendPoll');
+            const late = yield* publishPoll({
+                communityId,
+                group,
+                note: null,
+                approvedSummary: null,
+                prepare: createSession({ ...gameOf(communityId), localDate: '1969-12-30' }),
+                settle: () => Effect.void
+            }).pipe(Effect.flip);
+
+            expect(reasonIn(late)).toBe('the game time has already passed');
+            expect(countOfCalls('sendPoll')).toBe(before);
+        })
+    );
+
     it.effect('posts one poll per game and only the poll the admin saw', () =>
         Effect.gen(function* () {
             const db = yield* Db;
@@ -196,7 +250,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             const { communityId } = yield* seedCommunity(seedConfig('publish-commit-fc'));
             const sessionId = yield* createSession(gameOf(communityId));
             const before = countOfCalls('stopPoll');
-            const last = yield* confirm(communityId, createAction);
+            const last = yield* confirm(communityId, { ...createAction, localTime: '11:00' });
             const messageId = Predicate.hasProperty(last.result, 'messageId') ? Number(last.result.messageId) + 2 : 0;
             yield* db.insert(telegramPoll).values({
                 pollId: 'committed',

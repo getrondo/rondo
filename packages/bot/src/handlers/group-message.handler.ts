@@ -1,10 +1,18 @@
 import { isDefined } from '@rnw-community/shared';
 import { adminCommunityIds, isAdminOf } from '@rondo/core/access/admin-access';
-import { bindChat, communityProfile, findCommunityBySlug, findLinkedChat, groupLocaleOf } from '@rondo/core/community/community.repository';
+import {
+    bindChat,
+    communityProfile,
+    findCommunityBySlug,
+    findLinkedChat,
+    groupLocaleOf,
+    moveChat
+} from '@rondo/core/community/community.repository';
 import { resolveLocale } from '@rondo/core/i18n/locale';
 import { text } from '@rondo/core/i18n/messages';
 import { displayNameOf, syncMember } from '@rondo/core/identity/telegram-user';
 import { ingestGroupMessage } from '@rondo/core/live/live-ingest';
+import { recordPollCopy } from '@rondo/core/signups/record-poll-copy';
 import { topicOptions } from '@rondo/core/utils/topic-options.util';
 import { learnVenuePin } from '@rondo/core/venues/venue.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
@@ -12,6 +20,7 @@ import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
+import { noFollowUp, type FollowUp } from '../context/follow-up';
 import { proposeToAdmin } from '../context/propose-to-admin';
 import { toTelegramUser } from '../context/telegram-user.mapper';
 import { topicOf } from '../context/topic-of';
@@ -20,8 +29,6 @@ import { syncGroupUsers } from './chat-member.handler';
 import { proposeUnknownPlace } from './unknown-place.handler';
 
 import type { Message } from 'grammy/types';
-
-export const noFollowUp = Option.none<ReturnType<typeof proposeUnknownPlace>>();
 
 const linkCommand = /^\/link(?:@\w+)?\s+(\S+)/u;
 
@@ -64,6 +71,12 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
     const sender = message.from;
     const body = message.text ?? message.caption;
 
+    if (isDefined(message.migrate_to_chat_id)) {
+        yield* moveChat(BigInt(message.chat.id), BigInt(message.migrate_to_chat_id));
+
+        return noFollowUp;
+    }
+
     if (!isDefined(sender) || sender.is_bot) {
         return noFollowUp;
     }
@@ -101,6 +114,14 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
         });
     }
 
+    const isBotPoll = isDefined(message.poll)
+        ? yield* recordPollCopy({ communityId, pollId: message.poll.id, chatId: BigInt(message.chat.id), messageId: message.message_id })
+        : false;
+
+    if (isBotPoll) {
+        return noFollowUp;
+    }
+
     const profile = yield* communityProfile(communityId);
     const config = profile.pipe(Option.flatMap(value => value.config));
 
@@ -133,5 +154,9 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
         yield* Effect.logInfo('[group] extracted', result);
     }
 
-    return Option.fromNullishOr(result.unknownPlace).pipe(Option.map(place => proposeUnknownPlace(communityId, user, place)));
+    const followUp: FollowUp = Option.fromNullishOr(result.unknownPlace).pipe(
+        Option.map(place => proposeUnknownPlace(communityId, user, place))
+    );
+
+    return followUp;
 });

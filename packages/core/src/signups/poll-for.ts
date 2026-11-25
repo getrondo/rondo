@@ -9,6 +9,8 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { resolveLocale, type Locale } from '../i18n/locale';
 import { countOf, text } from '../i18n/messages';
 
+import { descriptionHtml, descriptionText, placeOf, routeOf } from './place-block';
+
 import type { PollGame, PollText } from '../interface/poll.interface';
 
 const questionLimit = 300;
@@ -61,10 +63,18 @@ export const pollFor = Effect.fn('Core.pollFor')(function* (communityId: string,
         Effect.mapError(() => ActionFailedError.make({ reason: 'the poll template in the community settings is not valid' }))
     );
     const template = settings.poll ?? defaultTemplate(locale);
-    const lastLine = note?.trim().replaceAll(/\s+/gu, ' ');
+    const lastLine = note
+        ?.split('\n')
+        .map(line => line.trim().replaceAll(/\s+/gu, ' '))
+        .filter(line => isNotEmptyString(line))
+        .join('\n');
     const question = [fillQuestion(template.question, valuesOf(locale, game)), lastLine].filter(part => isNotEmptyString(part)).join('\n');
 
-    if (!isNotEmptyString(question) || question.length > questionLimit) {
+    if (!isNotEmptyString(question)) {
+        return yield* ActionFailedError.make({ reason: 'the poll question is empty' });
+    }
+
+    if (question.length > questionLimit) {
         return yield* ActionFailedError.make({
             reason: `the poll question has ${question.length} characters, 1 to ${questionLimit} are allowed`
         });
@@ -74,7 +84,23 @@ export const pollFor = Effect.fn('Core.pollFor')(function* (communityId: string,
         return yield* ActionFailedError.make({ reason: `a poll answer is longer than ${answerLimit} characters` });
     }
 
-    return { question, answers: template.answers } satisfies PollText;
+    const place = placeOf(game);
+
+    return {
+        question,
+        answers: template.answers,
+        place,
+        route: routeOf(place),
+        description: descriptionHtml(place, question),
+        descriptionText: descriptionText(place, question)
+    } satisfies PollText;
 });
 
-export const previewOf = ({ question, answers }: PollText): string => [question, '', ...answers.map(answer => `▫️ ${answer}`)].join('\n');
+export const previewOf = ({ question, answers, descriptionText: description, route }: PollText): string =>
+    [
+        question,
+        '',
+        ...answers.map(answer => `▫️ ${answer}`),
+        ...(isDefined(description) ? ['', description] : []),
+        ...(isDefined(route) ? [`${route.label}: ${route.url}`] : [])
+    ].join('\n');

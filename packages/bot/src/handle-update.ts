@@ -6,10 +6,11 @@ import { and, eq, gt, isNull, lt, lte, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
+import { noFollowUp } from './context/follow-up';
 import { UpdateInProgressError } from './error/update-in-progress.error';
 import { handleCallbackQuery } from './handlers/callback-query.handler';
 import { handleChatMember } from './handlers/chat-member.handler';
-import { handleGroupMessage, noFollowUp } from './handlers/group-message.handler';
+import { handleGroupMessage } from './handlers/group-message.handler';
 import { handlePollAnswer } from './handlers/poll-answer.handler';
 import { handlePrivateMessage } from './handlers/private-message.handler';
 
@@ -70,8 +71,10 @@ const route = Effect.fn('Bot.route')(function* (update: Update) {
     }
 
     if (isDefined(update.message)) {
-        yield* handlePrivateMessage(update.message);
-    } else if (isDefined(update.poll_answer)) {
+        return yield* handlePrivateMessage(update.message);
+    }
+
+    if (isDefined(update.poll_answer)) {
         yield* handlePollAnswer(update.poll_answer);
     } else if (isDefined(update.chat_member)) {
         yield* handleChatMember(update.chat_member);

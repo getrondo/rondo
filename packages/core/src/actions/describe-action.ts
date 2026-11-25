@@ -1,12 +1,14 @@
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
+import { telegramChat } from '@rondo/db/schema/org.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Predicate from 'effect/Predicate';
 
+import { ActionFailedError } from '../error/action-failed.error';
 import { cancelReasonText, countOf, formatSessionLabel } from '../i18n/messages';
 import { getSession, requireSession } from '../sessions/session.service';
 import { pollFor, previewOf } from '../signups/poll-for';
@@ -32,9 +34,17 @@ const nickname = Effect.fn('Core.nickname')(function* (aliasId: string) {
     return row?.alias ?? aliasId;
 });
 
-const noVenue = { venueName: null, venueShortName: null, venueStation: null };
+const noVenue = {
+    venueName: null,
+    venueShortName: null,
+    venueStation: null,
+    venueAddress: null,
+    venueLat: null,
+    venueLng: null,
+    venueMapUrl: null
+};
 
-const displayOfVenue = Effect.fn('Core.displayOfVenue')(function* (venueId: string | null | undefined) {
+export const displayOfVenue = Effect.fn('Core.displayOfVenue')(function* (venueId: string | null | undefined, communityId: string) {
     const db = yield* Db;
 
     if (!isDefined(venueId)) {
@@ -42,11 +52,27 @@ const displayOfVenue = Effect.fn('Core.displayOfVenue')(function* (venueId: stri
     }
 
     const [row] = yield* db
-        .select({ venueName: venue.name, venueShortName: venue.shortName, venueStation: venue.station })
+        .select({
+            venueName: venue.name,
+            venueShortName: venue.shortName,
+            venueStation: venue.station,
+            venueAddress: venue.address,
+            venueLat: venue.lat,
+            venueLng: venue.lng,
+            venueMapUrl: venue.mapUrl
+        })
         .from(venue)
-        .where(eq(venue.id, venueId));
+        .where(and(eq(venue.id, venueId), eq(venue.communityId, communityId)));
 
     return row ?? noVenue;
+});
+
+const requireDisplay = Effect.fn('Core.requireDisplay')(function* (venueId: string | null | undefined, communityId: string) {
+    const display = yield* displayOfVenue(venueId, communityId);
+
+    return isDefined(venueId) && !isDefined(display.venueName)
+        ? yield* ActionFailedError.make({ reason: 'this place is no longer available' })
+        : display;
 });
 
 const sessionLabel = Effect.fn('Core.sessionLabel')(function* (locale: Locale, sessionId: string) {
@@ -63,6 +89,9 @@ const words = {
         cancel: '❌ Скасувати гру',
         notify: 'з повідомленням у групі',
         publishPoll: '📣 Опублікувати опитування',
+        forward: '📣 Відкрити опитування для',
+        remove: '🗑 Видалити гру',
+        self: 'тобі в особисті',
         teams: '👥 Опублікувати склади',
         merge: '🔗 Обʼєднати гравців',
         link: '🔗 Привʼязати прізвисько',
@@ -84,6 +113,9 @@ const words = {
         cancel: '❌ Отменить игру',
         notify: 'с уведомлением в группе',
         publishPoll: '📣 Опубликовать опрос',
+        forward: '📣 Открыть опрос для',
+        remove: '🗑 Удалить игру',
+        self: 'тебе в личку',
         teams: '👥 Опубликовать составы',
         merge: '🔗 Объединить игроков',
         link: '🔗 Привязать прозвище',
@@ -100,6 +132,23 @@ const words = {
     }
 } as const;
 
+const chatTitle = Effect.fn('Core.chatTitle')(function* (chatId: string, locale: Locale) {
+    const db = yield* Db;
+
+    if (/^\d+$/u.test(chatId)) {
+        return words[locale].self;
+    }
+
+    const [row] = /^-?\d+$/u.test(chatId)
+        ? yield* db
+              .select({ title: telegramChat.title })
+              .from(telegramChat)
+              .where(eq(telegramChat.chatId, BigInt(chatId)))
+        : [];
+
+    return row?.title ?? chatId;
+});
+
 const sizeOf = (
     locale: Locale,
     { fieldsPlanned, capacityMax }: { readonly fieldsPlanned?: number | null; readonly capacityMax?: number | null }
@@ -108,22 +157,33 @@ const sizeOf = (
     ...(isDefined(capacityMax) ? [countOf(locale, 'place', capacityMax)] : [])
 ];
 
+const describeCreate = Effect.fn('Core.describeCreate')(function* (
+    action: Extract<Action, { _tag: 'create_session' }>,
+    locale: Locale,
+    communityId: string
+) {
+    const word = words[locale];
+    const display = yield* requireDisplay(action.venueId, communityId);
+    const summary = `${word.create}: ${[formatSessionLabel(locale, { ...action, ...display }), ...sizeOf(locale, action)].join(', ')}`;
+
+    if (!action.announce) {
+        return summary;
+    }
+
+    const game = { ...action, ...display, fieldsPlanned: action.fieldsPlanned ?? null };
+    const poll = yield* pollFor(communityId, game, action.note);
+
+    const where = isDefined(action.chatId) ? ` «${yield* chatTitle(action.chatId, locale)}»` : '';
+
+    return `${summary} ${word.announce}${where}:\n\n${previewOf(poll)}`;
+});
+
 export const describeAction = Effect.fn('Core.describeAction')(function* (action: Action, locale: Locale, communityId: string) {
     const word = words[locale];
 
     switch (action._tag) {
         case 'create_session': {
-            const display = yield* displayOfVenue(action.venueId);
-            const summary = `${word.create}: ${[formatSessionLabel(locale, { ...action, ...display }), ...sizeOf(locale, action)].join(', ')}`;
-
-            if (!action.announce) {
-                return summary;
-            }
-
-            const game = { ...action, ...display, fieldsPlanned: action.fieldsPlanned ?? null };
-            const poll = yield* pollFor(communityId, game, action.note);
-
-            return `${summary} ${word.announce}:\n\n${previewOf(poll)}`;
+            return yield* describeCreate(action, locale, communityId);
         }
         case 'update_session': {
             const before = yield* getSession(action.sessionId);
@@ -132,7 +192,7 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
                       Option.map(value => value.venueName),
                       Option.getOrNull
                   )
-                : (yield* displayOfVenue(action.venueId)).venueName;
+                : (yield* requireDisplay(action.venueId, communityId)).venueName;
             const after = before.pipe(
                 Option.map(value =>
                     formatSessionLabel(locale, {
@@ -154,6 +214,12 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
             const poll = yield* pollFor(communityId, target, action.note);
 
             return `${word.publishPoll}: ${formatSessionLabel(locale, target)}\n\n${previewOf(poll)}`;
+        }
+        case 'delete_session': {
+            return `${word.remove}: ${yield* sessionLabel(locale, action.sessionId)}`;
+        }
+        case 'forward_poll': {
+            return `${word.forward} «${yield* chatTitle(action.chatId, locale)}»: ${yield* sessionLabel(locale, action.sessionId)}`;
         }
         case 'publish_teams': {
             const lines = action.teams.map(
@@ -190,7 +256,7 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
             return `${word.venue}: ${[action.name, action.shortName, action.station, action.address].filter(part => isNotEmptyString(part)).join(', ')}${game}`;
         }
         case 'update_venue': {
-            const { venueName } = yield* displayOfVenue(action.venueId);
+            const { venueName } = yield* displayOfVenue(action.venueId, communityId);
             const active = isDefined(action.active) ? [action.active ? word.venueOn : word.venueOff] : [];
             const alias = isDefined(action.alias) ? [`${word.alias} «${action.alias}»`] : [];
             const details = [action.name, action.shortName, action.station, action.address, action.district, action.indoor].filter(part =>
