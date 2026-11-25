@@ -3,9 +3,12 @@ import { isEmptyString, isNotEmptyArray } from '@rnw-community/shared';
 import { syncMember, upsertTelegramUser } from '@rondo/core/identity/telegram-user';
 import { ingestGroupMessage } from '@rondo/core/live/live-ingest';
 import { erasePerson } from '@rondo/core/people/erase-person';
+import { addGuests } from '@rondo/core/signups/roster.service';
 import { localPostgresLayer, raceDatabaseUrl } from '@rondo/core/testing/local-postgres.layer';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
+import { seedGame } from '@rondo/core/testing/seed-game';
 import { person, telegramAccount, telegramAuthor } from '@rondo/db/schema/identity.schema';
+import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { eq, sql } from 'drizzle-orm';
 import * as Deferred from 'effect/Deferred';
@@ -151,6 +154,30 @@ layer(localPostgresLayer(raceDatabaseUrl), { timeout: 60_000, excludeTestService
                 yield* isImportFirst ? whileHeld(importing, erasing) : whileHeld(erasing, importing);
 
                 expect(isClean(yield* namesOf(id, communityId))).toBe(true);
+            }
+        })
+    );
+
+    it.effect.skipIf(isEmptyString(raceDatabaseUrl))('scrubs guests that are added meanwhile, whichever comes first', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+
+            for (const isGuestFirst of [true, false]) {
+                const { communityId, sessionId } = yield* seedGame(`erase-race-guests-${performance.now()}`);
+                const personId = yield* syncMember(communityId, { id: uniqueId(), firstName: oldName }, 'active');
+                yield* db.insert(signup).values({ sessionId, personId, status: 'in' });
+                const adding = addGuests(
+                    { communityId, sessionId, actorPersonId: null },
+                    { hostPersonId: personId, count: 1, name: null }
+                ).pipe(Effect.asVoid);
+                const erasing = erasePerson({ communityId, personId }).pipe(Effect.asVoid);
+                yield* isGuestFirst ? whileHeld(adding, erasing) : whileHeld(erasing, adding);
+                const guests = yield* db
+                    .select({ name: person.displayName })
+                    .from(person)
+                    .where(sql`${person.id} in (select person_id from scheduling.signup where guest_of_person_id = ${personId}::uuid)`);
+
+                expect(guests).toEqual([{ name: 'Former player +1' }]);
             }
         })
     );

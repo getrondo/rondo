@@ -2,7 +2,7 @@ import { isDefined, isEmptyArray, isNotEmptyString } from '@rnw-community/shared
 import { person, personAlias, telegramAccount, telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { membership, roleGrant } from '@rondo/db/schema/org.schema';
 import { adminState, assistantMessage, pendingAction } from '@rondo/db/schema/platform.schema';
-import { lineupDelivery, lineupEntry } from '@rondo/db/schema/play.schema';
+import { lineupDelivery, lineupEntry, teamDraft } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import { and, eq, inArray, isNotNull, isNull, ne, not, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
@@ -110,13 +110,62 @@ const eraseAuthors = Effect.fn('Core.eraseAuthors')(function* (
         );
 
     for (const { id, communityId, displayName } of authors) {
+        const key = erasedKey(communityId, displayName);
+        const [earlier] = yield* db
+            .delete(telegramAuthor)
+            .where(and(eq(telegramAuthor.communityId, communityId), eq(telegramAuthor.displayName, key)))
+            .returning();
         yield* db
             .update(telegramAuthor)
-            .set({ displayName: erasedKey(communityId, displayName), tgUserId: null, personId: null })
+            .set({
+                displayName: key,
+                tgUserId: null,
+                personId: null,
+                ...(isDefined(earlier)
+                    ? {
+                          messageCount: sql`${telegramAuthor.messageCount} + ${earlier.messageCount}`,
+                          firstSeenAt: sql`least(${telegramAuthor.firstSeenAt}, ${earlier.firstSeenAt.toISOString()}::timestamptz)`,
+                          lastSeenAt: sql`greatest(${telegramAuthor.lastSeenAt}, ${earlier.lastSeenAt.toISOString()}::timestamptz)`
+                      }
+                    : {})
+            })
             .where(eq(telegramAuthor.id, id));
     }
 
     return authors.map(({ displayName }) => displayName);
+});
+
+// A running publish was planned with the old names: it stops before its next send and stores no receipt
+const stopPublishing = Effect.fn('Core.stopPublishing')(function* (communityId: string) {
+    const db = yield* Db;
+    const games = sql`(select game.id from scheduling.session game where game.community_id = ${communityId}::uuid)`;
+
+    yield* db
+        .update(teamDraft)
+        .set({ publishToken: null, publishAt: null })
+        .where(and(eq(teamDraft.communityId, communityId), isNotNull(teamDraft.publishToken)));
+    yield* db
+        .update(lineupDelivery)
+        .set({ status: 'uncertain', token: sql`gen_random_uuid()` })
+        .where(and(eq(lineupDelivery.status, 'claimed'), sql`${lineupDelivery.sessionId} in ${games}`));
+});
+
+// A guest without a typed name is called by the host's name of that day: "<host> +N"
+const eraseGuests = Effect.fn('Core.eraseGuests')(function* (hostIds: readonly string[]) {
+    const db = yield* Db;
+    const numbered = String.raw`^.+ (\+[0-9]+)$`;
+    const guests = and(
+        sql`${person.displayName} ~ ${numbered}`,
+        sql`${person.id} in (select guest.person_id from scheduling.signup guest where guest.is_guest
+            and guest.guest_of_person_id = any(${sql.param([...hostIds])}::uuid[]))`
+    );
+    const names = yield* db.select({ displayName: person.displayName }).from(person).where(guests);
+    yield* db
+        .update(person)
+        .set({ displayName: sql`regexp_replace(${person.displayName}, ${numbered}, ${String.raw`${erasedName} \1`})` })
+        .where(guests);
+
+    return names.map(({ displayName }) => displayName).filter(name => !name.startsWith(erasedName));
 });
 
 const eraseTexts = Effect.fn('Core.eraseTexts')(function* (
@@ -168,6 +217,7 @@ const eraseInLock = Effect.fn('Core.eraseInLock')(function* ({ communityId, pers
         return yield* ActionFailedError.make({ failure: { code: 'person_not_found' } });
     }
 
+    yield* stopPublishing(communityId);
     // Accounts before people, the order in which a live update locks them
     const accounts = yield* db
         .select()
@@ -207,9 +257,16 @@ const eraseInLock = Effect.fn('Core.eraseInLock')(function* ({ communityId, pers
         .set({ username: null, firstName: erasedName, lastName: null, languageCode: null })
         .where(inArray(telegramAccount.personId, personIds));
     yield* scrubErasedEntries(communityId);
+    const guestNames = yield* eraseGuests(personIds);
     const names = [...people.map(({ displayName }) => displayName), ...fullNames];
     const authors = yield* eraseAuthors(personIds, tgUserIds, names);
-    const texts = yield* eraseTexts(personIds, tgUserIds, [...names, ...usernames, ...authors, ...nicknames.map(({ alias }) => alias)]);
+    const texts = yield* eraseTexts(personIds, tgUserIds, [
+        ...names,
+        ...guestNames,
+        ...usernames,
+        ...authors,
+        ...nicknames.map(({ alias }) => alias)
+    ]);
     yield* db.delete(roleGrant).where(inArray(roleGrant.personId, personIds));
     yield* db
         .update(membership)

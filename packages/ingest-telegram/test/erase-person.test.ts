@@ -4,15 +4,18 @@ import { personIdOfTelegramUser, syncMember, upsertTelegramUser } from '@rondo/c
 import { ingestGroupMessage } from '@rondo/core/live/live-ingest';
 import { linkAlias, linkEntry } from '@rondo/core/people/alias-links.service';
 import { erasePerson, previewErasure } from '@rondo/core/people/erase-person';
+import { mergePeople, renamePerson } from '@rondo/core/people/people.service';
+import { addGuests } from '@rondo/core/signups/roster.service';
 import { recordedTelegramDbLayer } from '@rondo/core/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
+import { seedGame } from '@rondo/core/testing/seed-game';
 import { person, personAlias, telegramAccount, telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { community } from '@rondo/db/schema/org.schema';
 import { adminState, auditLog, pendingAction, pollVote } from '@rondo/db/schema/platform.schema';
 import { lineupDelivery, lineupEntry } from '@rondo/db/schema/play.schema';
-import { attendance, session } from '@rondo/db/schema/scheduling.schema';
+import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -282,6 +285,112 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('erasing a person', it => {
             const [account] = yield* db.select().from(telegramAccount).where(eq(telegramAccount.tgUserId, 991n));
             expect(kept?.displayName).toBe('Шурик');
             expect(account).toMatchObject({ personId, firstName: 'Former player', username: null });
+        })
+    );
+
+    it.effect('refuses to rename or merge an erased person and leaves other people alone', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig('erase-rename-fc'));
+            const personId = yield* syncMember(communityId, { id: 981n, firstName: 'Erased' }, 'active');
+            const neighbourId = yield* syncMember(communityId, { id: 982n, firstName: 'Kept' }, 'active');
+            yield* erasePerson({ communityId, personId });
+            const rename = (id: string) => renamePerson({ communityId, personId: id, displayName: 'Again', actorPersonId: null });
+            const refused = { failure: { code: 'person_not_found' } };
+
+            expect(yield* Effect.flip(rename(personId))).toMatchObject(refused);
+            for (const [fromPersonId, intoPersonId] of [
+                [personId, neighbourId],
+                [neighbourId, personId]
+            ] as const) {
+                expect(yield* Effect.flip(mergePeople({ communityId, fromPersonId, intoPersonId, actorPersonId: null }))).toMatchObject(
+                    refused
+                );
+            }
+            yield* rename(neighbourId);
+
+            const people = yield* db
+                .select({ id: person.id, displayName: person.displayName })
+                .from(person)
+                .where(inArray(person.id, [personId, neighbourId]));
+            expect(new Map(people.map(row => [row.id, row.displayName]))).toEqual(
+                new Map([
+                    [personId, 'Former player'],
+                    [neighbourId, 'Again']
+                ])
+            );
+            expect(yield* db.$count(auditLog, and(eq(auditLog.action, 'person.rename'), eq(auditLog.entityId, personId)))).toBe(0);
+        })
+    );
+
+    it.effect('unites the author rows of two erased people with one name', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig('erase-authors-fc'));
+
+            for (const [id, seen] of [
+                [971n, '2025-01-02'],
+                [972n, '2025-01-01']
+            ] as const) {
+                const personId = yield* syncMember(communityId, { id, firstName: 'Same Author' }, 'active');
+                yield* db.insert(telegramAuthor).values({
+                    communityId,
+                    displayName: 'Same Author',
+                    tgUserId: id,
+                    personId,
+                    messageCount: 2,
+                    firstSeenAt: new Date(seen),
+                    lastSeenAt: new Date(seen)
+                });
+                yield* erasePerson({ communityId, personId });
+            }
+
+            const authors = yield* db.select().from(telegramAuthor).where(eq(telegramAuthor.communityId, communityId));
+            expect(authors).toHaveLength(1);
+            expect(authors[0]).toMatchObject({
+                tgUserId: null,
+                personId: null,
+                messageCount: 4,
+                firstSeenAt: new Date('2025-01-01'),
+                lastSeenAt: new Date('2025-01-02')
+            });
+            expect(authors[0]?.displayName).toMatch(/^erased /u);
+        })
+    );
+
+    it.effect('scrubs the guests that carry the name of their host, and keeps typed names and other guests', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* seedGame('erase-guests-fc');
+            const personId = yield* syncMember(communityId, { id: 961n, firstName: 'Hostess' }, 'active');
+            const neighbourId = yield* syncMember(communityId, { id: 962n, firstName: 'Neighbour' }, 'active');
+            yield* db.insert(signup).values([personId, neighbourId].map(id => ({ sessionId, personId: id, status: 'in' as const })));
+            const change = { communityId, sessionId, actorPersonId: null };
+            yield* addGuests(change, { hostPersonId: personId, count: 1, name: null });
+            yield* renamePerson({ communityId, personId, displayName: 'Interim', actorPersonId: null });
+            yield* addGuests(change, { hostPersonId: personId, count: 1, name: null });
+            yield* renamePerson({ communityId, personId, displayName: 'Renamed', actorPersonId: null });
+            yield* addGuests(change, { hostPersonId: personId, count: 1, name: 'Typed' });
+            yield* addGuests(change, { hostPersonId: neighbourId, count: 1, name: null });
+            yield* db.insert(pendingAction).values({
+                communityId,
+                requestedByTgUserId: 5n,
+                kind: 'x',
+                payload: {},
+                summary: 'remove Interim +2',
+                expiresAt: new Date('2030-01-01T00:00:00Z')
+            });
+
+            yield* erasePerson({ communityId, personId });
+
+            const guests = yield* db
+                .select({ name: person.displayName })
+                .from(signup)
+                .innerJoin(person, eq(person.id, signup.personId))
+                .where(and(eq(signup.sessionId, sessionId), eq(signup.isGuest, true)));
+            const actions = yield* db.select().from(pendingAction).where(eq(pendingAction.communityId, communityId));
+            expect(guests.map(({ name }) => name).toSorted()).toEqual(['Former player +1', 'Former player +2', 'Neighbour +1', 'Typed']);
+            expect(actions.map(({ summary }) => summary)).toEqual(['']);
         })
     );
 
