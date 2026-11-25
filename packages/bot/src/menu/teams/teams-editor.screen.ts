@@ -97,6 +97,7 @@ export const sendLabel = (locale: Locale, deliveries: readonly PlannedDelivery[]
 
 export const statusLines = (user: MenuUser, view: EditorView): string[] => {
     const sent = view.plan.deliveries.filter(delivery => delivery.stored === 'sent');
+    const isQuiet = view.plan.deliveries.every(delivery => !isUnsure(delivery) && delivery.stored !== 'busy');
     const where = (deliveries: readonly PlannedDelivery[]) => escapeHtml(whereOf(user.locale, deliveries, 'at'));
 
     return [
@@ -107,7 +108,8 @@ export const statusLines = (user: MenuUser, view: EditorView): string[] => {
         ...view.plan.deliveries
             .filter(delivery => delivery.stored === 'busy')
             .map(delivery => teamsText(user.locale, 'busy', { where: where([delivery]) })),
-        isNotEmptyArray(sent) ? teamsText(user.locale, 'sent', { where: where(sent) }) : teamsText(user.locale, 'quiet')
+        ...(isNotEmptyArray(sent) ? [teamsText(user.locale, 'sent', { where: where(sent) })] : []),
+        ...(!isNotEmptyArray(sent) && isQuiet ? [teamsText(user.locale, 'quiet')] : [])
     ];
 };
 

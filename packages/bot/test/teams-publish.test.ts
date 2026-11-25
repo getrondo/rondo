@@ -146,6 +146,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 expect(newest).toBe(clean[0]);
                 expect(newest?.payload.reply_markup).toBeUndefined();
                 expect(done.text).toContain('👇 Составы ниже: нажми и удерживай → Переслать → группа.');
+                expect(done.text).not.toContain('Оновлені склади');
                 expect(done.text).toContain('📨 Составы уже у тебя.');
                 expect(unchanged.text).toContain('📨 Составы уже у тебя.');
                 expect(
@@ -284,6 +285,20 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 ['sendMessage', null],
                 ['editMessageText', Predicate.hasProperty(posted?.result, 'message_id') ? posted.result.message_id : 0]
             ]);
+        })
+    );
+
+    it.effect('never says nothing was sent while it does not know whether the line-up arrived', () =>
+        Effect.gen(function* () {
+            yield* teamsGame('teams-post-unknown-quiet', { groupChatId: -3210, adminId: 330, players: 8 });
+            const admin = conversation(recorder, adminNumbered(330));
+            yield* openOverview(admin);
+            recorder.failures.set('sendMessage', new Error('socket hang up'));
+            yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
+            recorder.failures.delete('sendMessage');
+
+            expect(admin.screen().text).toContain('⚠️ Не знаю, чи дійшли склади в «Games».');
+            expect(admin.screen().text).not.toContain('Поки нічого не надіслано.');
         })
     );
 

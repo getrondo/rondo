@@ -115,22 +115,23 @@ export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInp
         const isBusy = found?.status === 'claimed' && found.updatedAt.getTime() > now.getTime() - busyMs;
         const status = isBusy ? 'busy' : (found?.status ?? null);
         const isPrivate = target.chatId > 0n;
+        const isDue = isDueBy(
+            status,
+            found?.text ?? null,
+            clean,
+            isDefined(found) && isNotEmptyString(input.retryToken) && found.token.startsWith(input.retryToken)
+        );
 
         return {
             chatId: target.chatId,
             topicId: target.topicId,
             title: target.title,
-            html: isPrivate && isUpdate ? post(true) : clean,
+            html: isPrivate && isUpdate && isDue ? post(true) : clean,
             text: clean,
             messageId: isPrivate ? null : (found?.messageId ?? null),
             stored: status,
             token: found?.token ?? null,
-            isDue: isDueBy(
-                status,
-                found?.text ?? null,
-                clean,
-                isDefined(found) && isNotEmptyString(input.retryToken) && found.token.startsWith(input.retryToken)
-            )
+            isDue
         };
     });
     const clearsResult = isNotEmptyArray(results) && isSquadChanged;
