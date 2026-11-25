@@ -63,7 +63,11 @@ export const pollFor = Effect.fn('Core.pollFor')(function* (communityId: string,
         Effect.mapError(() => ActionFailedError.make({ reason: 'the poll template in the community settings is not valid' }))
     );
     const template = settings.poll ?? defaultTemplate(locale);
-    const lastLine = note?.trim().replaceAll(/\s+/gu, ' ');
+    const lastLine = note
+        ?.split('\n')
+        .map(line => line.trim().replaceAll(/\s+/gu, ' '))
+        .filter(line => isNotEmptyString(line))
+        .join('\n');
     const question = [fillQuestion(template.question, valuesOf(locale, game)), lastLine].filter(part => isNotEmptyString(part)).join('\n');
 
     if (!isNotEmptyString(question) || question.length > questionLimit) {

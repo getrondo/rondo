@@ -26,7 +26,7 @@ export const forwardPoll = Effect.fn('Core.forwardPoll')(function* (sessionId: s
 
     const audience = yield* audienceOf(sessionId);
 
-    if (audience.some(chat => chat.chatId === target.chatId)) {
+    if (target.chatId < 0n && audience.some(chat => chat.chatId === target.chatId)) {
         return yield* ActionFailedError.make({ reason: 'the poll is already in this chat' });
     }
 

@@ -6,6 +6,7 @@ import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 
 import { localTimeOf } from '../sessions/local-time';
 
@@ -98,17 +99,6 @@ export const venueChoices = Effect.fn('Core.venueChoices')(function* (communityI
         .orderBy(asc(venue.name));
 });
 
-export const hasPollFor = Effect.fn('Core.hasPollFor')(function* (sessionId: string) {
-    const db = yield* Db;
-    const rows = yield* db
-        .select({ messageId: messageRef.messageId })
-        .from(messageRef)
-        .where(and(eq(messageRef.entityId, sessionId), eq(messageRef.purpose, 'poll')))
-        .limit(1);
-
-    return isNotEmptyArray(rows);
-});
-
 export const hasOpenPoll = Effect.fn('Core.hasOpenPoll')(function* (sessionId: string) {
     const db = yield* Db;
     const rows = yield* db
@@ -136,4 +126,18 @@ export const lastPollChatOf = Effect.fn('Core.lastPollChatOf')(function* (tgUser
         .limit(1);
 
     return row?.chatId ?? null;
+});
+
+export const lastReceiptOf = Effect.fn('Core.lastReceiptOf')(function* (tgUserId: bigint, since: Date) {
+    const db = yield* Db;
+    const [row] = yield* db
+        .select({ sessionId: sql<string | null>`${pendingAction.result} ->> 'sessionId'` })
+        .from(pendingAction)
+        .where(
+            and(eq(pendingAction.requestedByTgUserId, tgUserId), eq(pendingAction.status, 'confirmed'), gte(pendingAction.decidedAt, since))
+        )
+        .orderBy(desc(pendingAction.decidedAt))
+        .limit(1);
+
+    return Option.fromNullishOr(row?.sessionId);
 });

@@ -47,7 +47,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the poll in the style of th
             const nothing = yield* pollFor(communityId, bare, null);
 
             expect(full).toMatchObject({
-                question: 'Пятница, 20 ноября, 19.00 Sport Arena, U9 Station!\n\n1 поле, 20 мест\nБез телеграма: двое',
+                question: 'Пятница, 20 ноября, 19.00 Sport Arena, U9 Station!\n\n1 поле, 20 мест\nБез телеграма:\nдвое',
                 answers: ['👍', '👎']
             });
             expect(noVenue.question).toBe('Пятница, 20 ноября, 19.00!\n\n2 поля, 21 место');

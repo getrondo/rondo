@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -29,6 +29,7 @@ export interface ActionContext {
     readonly group: Option.Option<GroupTarget>;
     readonly groupLocale: Locale;
     readonly actorPersonId: string | null;
+    readonly requester?: bigint;
 }
 
 const requireGroup = (context: ActionContext) =>
@@ -36,12 +37,19 @@ const requireGroup = (context: ActionContext) =>
         ? Effect.succeed(context.group.value)
         : Effect.fail(ActionFailedError.make({ reason: 'no group is linked to this community yet' }));
 
+const targetsOf = Effect.fn('Core.targetsOf')(function* (context: ActionContext, sessionId: string) {
+    const targets = yield* noticeTargets(sessionId, context.group);
+    const requester = isDefined(context.requester) ? [{ chatId: context.requester, topicId: null }] : [];
+
+    return isNotEmptyArray(targets) ? targets : requester;
+});
+
 const toAudience = Effect.fn('Core.toAudience')(function* <Value, Failure, Requirements>(
     context: ActionContext,
     sessionId: string,
     effect: (group: GroupTarget) => Effect.Effect<Value, Failure, Requirements>
 ) {
-    const targets = yield* noticeTargets(sessionId, context.group);
+    const targets = yield* targetsOf(context, sessionId);
 
     for (const group of targets) {
         yield* effect(group);
@@ -113,8 +121,12 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
         case 'publish_teams': {
             return yield* Effect.gen(function* () {
                 const target = yield* requireSession(communityId, action.sessionId);
-                yield* requireGroup(context);
-                const groups = yield* noticeTargets(action.sessionId, context.group);
+                const groups = yield* targetsOf(context, action.sessionId);
+
+                if (!isNotEmptyArray(groups)) {
+                    return yield* ActionFailedError.make({ reason: 'no group is linked to this community yet' });
+                }
+
                 yield* publishTeams({ target, teams: action.teams, groups, locale, actorPersonId });
 
                 return { sessionId: action.sessionId };
@@ -132,7 +144,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
         }
         case 'forward_poll': {
             return yield* Effect.gen(function* () {
-                const target = yield* linkedTarget(context, action.chatId);
+                const target = yield* linkedTarget(context, action.chatId, context.requester);
                 const forwarded = yield* forwardPoll(action.sessionId, target);
 
                 return { sessionId: action.sessionId, messageId: forwarded.messageId };

@@ -126,6 +126,9 @@ export const lineupHtml = Effect.fn('Core.lineupHtml')(function* (locale: Locale
     );
 });
 
+const withForwardHint = (html: string, group: GroupTarget, locale: Locale): string =>
+    group.chatId > 0n ? `${html}\n\n${text(locale, 'forwardHint')}` : html;
+
 interface PublishInput {
     readonly target: SessionView;
     readonly teams: readonly BalancedTeam[];
@@ -200,10 +203,14 @@ export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: Pub
         const emojis = colors.map(color => color.emoji ?? '');
         for (const group of input.groups) {
             const sent = yield* telegram.call('sendMessage', api =>
-                api.sendMessage(Number(group.chatId), lineupText(input.locale, input.target, input.teams, emojis), {
-                    parse_mode: 'HTML',
-                    ...topicOptions(group)
-                })
+                api.sendMessage(
+                    Number(group.chatId),
+                    withForwardHint(lineupText(input.locale, input.target, input.teams, emojis), group, input.locale),
+                    {
+                        parse_mode: 'HTML',
+                        ...topicOptions(group)
+                    }
+                )
             );
             yield* Ref.set(isSent, true);
             yield* db

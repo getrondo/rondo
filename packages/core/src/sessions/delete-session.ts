@@ -11,6 +11,19 @@ import { adminPersonIds } from '../access/admin-access';
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 
+export const hasOnlyAdminVotes = Effect.fn('Core.hasOnlyAdminVotes')(function* (communityId: string, sessionId: string) {
+    const db = yield* Db;
+    const admins = yield* adminPersonIds(communityId);
+    const signed = yield* db.select({ personId: signup.personId }).from(signup).where(eq(signup.sessionId, sessionId));
+    const voters = yield* db
+        .select({ personId: telegramAccount.personId })
+        .from(pollVote)
+        .leftJoin(telegramAccount, eq(telegramAccount.tgUserId, pollVote.tgUserId))
+        .where(eq(pollVote.sessionId, sessionId));
+
+    return [...signed, ...voters].every(entry => isDefined(entry.personId) && admins.has(entry.personId));
+});
+
 export const isDeletableSession = Effect.fn('Core.isDeletableSession')(function* (communityId: string, sessionId: string, today: string) {
     const db = yield* Db;
     const [row] = yield* db
@@ -22,15 +35,7 @@ export const isDeletableSession = Effect.fn('Core.isDeletableSession')(function*
         return false;
     }
 
-    const admins = yield* adminPersonIds(communityId);
-    const signed = yield* db.select({ personId: signup.personId }).from(signup).where(eq(signup.sessionId, sessionId));
-    const voters = yield* db
-        .select({ personId: telegramAccount.personId })
-        .from(pollVote)
-        .leftJoin(telegramAccount, eq(telegramAccount.tgUserId, pollVote.tgUserId))
-        .where(eq(pollVote.sessionId, sessionId));
-
-    return [...signed, ...voters].every(entry => isDefined(entry.personId) && admins.has(entry.personId));
+    return yield* hasOnlyAdminVotes(communityId, sessionId);
 });
 
 export const deleteSession = Effect.fn('Core.deleteSession')(function* (input: {
