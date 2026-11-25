@@ -92,8 +92,7 @@ const planGame = (target: SeasonGame, data: NewGameData): Effort => {
             tap('vs', toShortId(venueId));
         } else {
             tap('vn');
-            const known = isDefined(draft.localDate) && isDefined(draft.localTime) && draft.sized;
-            draft = withVenue(draft, venueId, { ...data, venues: [...data.venues, named(venueId)] }, known ? null : 'map');
+            draft = withVenue(draft, venueId, { ...data, venues: [...data.venues, named(venueId)] }, 'map');
             taps += 1;
             typed += named(venueId).name.length;
 
@@ -145,7 +144,8 @@ const simulate = () => {
             hasGroup: true,
             chats: [{ id: '-1', title: 'Main' }],
             selfChatId: '1',
-            lastChatId: null
+            lastChatId: null,
+            typingHint: false
         };
 
         return { game, effort: planGame(game, data), warm: history.length >= 4 };
@@ -167,7 +167,7 @@ describe('a synthetic season through the /newgame screens', () => {
         const newPlace = results.filter(result => result.game.kind === 'new-place');
 
         expect(oneChange.filter(result => result.effort.taps > 4).map(result => result.game)).toEqual([]);
-        expect(newPlace.map(result => result.effort)).toEqual([{ taps: 5, typed: 14, changed: 1 }]);
+        expect(newPlace.map(result => result.effort)).toEqual([{ taps: 6, typed: 14, changed: 1 }]);
     });
 
     it('reports the effort per kind of game', () => {
@@ -190,7 +190,7 @@ describe('a synthetic season through the /newgame screens', () => {
           {
             "new-place": {
               "byTaps": {
-                "5": 1,
+                "6": 1,
               },
               "games": 1,
               "typed": 14,

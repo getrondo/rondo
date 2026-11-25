@@ -42,19 +42,15 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             );
             yield* admin.type('/games');
             yield* admin.tap('Пт 27.11 19:00');
-            yield* admin.tap('✖️ Скасувати');
-            yield* admin.tap('погода');
+            yield* admin.tap('✖️ Скасувати гру');
+            yield* admin.tap('Погода');
             yield* admin.tap('✅ Скасувати й надіслати мені');
             const cancelled = recorder.calls.findLast(
                 call => call.method === 'sendMessage' && String(call.payload.text).includes('Скасовано')
             );
 
             expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати опитування мені']);
-            expect(
-                posted.startsWith(
-                    '✅ Гру створено. Опитування поки тільки в тебе.\n👆 Утримуй опитування → Переслати → група. Голоси рахуються.'
-                )
-            ).toBe(true);
+            expect(posted).toBe('✅ Гру створено, опитування в тебе.\nНатисни й утримуй опитування → Переслати → група.');
             expect(recorder.calls.some(call => call.method === 'pinChatMessage' && call.payload.chat_id === 1101)).toBe(false);
             expect(statuses.map(row => row.status).toSorted()).toEqual(['in', 'out']);
             expect(promoted?.payload.chat_id).toBe(1101);
@@ -81,7 +77,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(recorder.calls.findLast(call => call.method === 'sendPoll')?.payload.chat_id).toBe(1102);
             expect(remembered.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати опитування мені']);
             expect(remembered.text).toContain('Понеділок, 30 листопада');
-            expect(otherMain.buttons[0]?.map(button => button.text)).toEqual(['✅ Опублікувати в «Games»']);
+            expect(otherMain.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати в «Games»']);
         })
     );
 
@@ -93,6 +89,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/newgame');
             yield* admin.tap('✅ Надіслати опитування мені');
             yield* vote(pollIdTo(1104), 1104, [0]);
+            yield* admin.tap('✏️ Змінити');
             const card = admin.screen();
             const [created] = yield* gamesOn(communityId, '2026-11-27');
             yield* admin.tap('🗑 Видалити');
@@ -104,7 +101,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const leftovers = yield* Effect.all([db.select().from(telegramPoll), db.select().from(pollVote), db.select().from(messageRef)]);
             const [audit] = yield* db.select().from(auditLog).where(eq(auditLog.action, 'session.delete'));
             yield* admin.type('/newgame');
-            yield* admin.tap('↔️ Інша');
+            yield* admin.tap('↔️ ');
             yield* admin.tap('✅ Надіслати опитування мені');
             yield* vote(pollIdTo(1104), 9821, [0]);
             yield* admin.type('/games');
@@ -121,7 +118,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(recorder.calls.some(call => call.method === 'stopPoll' && call.payload.chat_id === 1104)).toBe(true);
             expect(JSON.stringify(audit?.diff)).not.toContain('Admin');
             expect(voted.buttons.flat().map(button => button.text)).not.toContain('🗑 Видалити');
-            expect(voted.buttons.flat().map(button => button.text)).toContain('✖️ Скасувати');
+            expect(voted.buttons.flat().map(button => button.text)).toContain('✖️ Скасувати гру');
             expect(yield* db.select().from(session).where(eq(session.communityId, communityId))).toHaveLength(19);
         })
     );

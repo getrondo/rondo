@@ -1,17 +1,18 @@
 import { isDefined, isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
 import { describeAction, displayOfVenue } from '@rondo/core/actions/describe-action';
 import { requireSession } from '@rondo/core/sessions/session.service';
-import { placeHtml } from '@rondo/core/signups/place-block';
 import { pollFor } from '@rondo/core/signups/poll-for';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
+import { buttonBudget } from '../../utils/button-budget.util';
 import { dayLabel } from '../../utils/day-label.util';
+import { labelWidth } from '../../utils/label-width.util';
 import { isMenuKey, menuText, type MenuKey } from '../menu-text';
 
 import { audienceOfDraft, destinationTitles, isSelfAudience, quotedTitles } from './audience';
-import { venueLabel } from './new-game.keyboard';
+import { otherGameLabel, venueLabel } from './new-game.keyboard';
 
 import type { MenuUser } from '../screen.interface';
 import type { Draft, NewGameData } from './draft';
@@ -30,7 +31,7 @@ const prompts: Partial<Record<Draft['view'], MenuKey>> = {
 };
 
 export const actionOf = (draft: Draft, announce: boolean, data: NewGameData): Action => {
-    const [chatId] = audienceOfDraft(draft, data);
+    const [chatId] = isNotEmptyArray(draft.targets) ? draft.targets.map(target => target.id) : audienceOfDraft(draft, data);
     const target = isDefined(chatId) && (data.chats.length > 1 || chatId === data.selfChatId) ? { chatId } : {};
 
     return isDefined(draft.sessionId)
@@ -68,13 +69,9 @@ const pollOf = Effect.fn('Bot.pollOf')(function* (user: MenuUser, draft: Draft) 
 });
 
 export const pollHtml = (poll: PollText): string => {
-    const place = [
-        ...(isDefined(poll.place) ? [placeHtml(poll.place)] : []),
-        ...(isDefined(poll.route) ? [`<a href="${escapeHtml(poll.route.url)}">${poll.route.label}</a>`] : [])
-    ];
     const answers = poll.answers.map(answer => `▫️ ${escapeHtml(answer)}`).join('\n');
 
-    return `<blockquote>${[escapeHtml(poll.question), ...(isNotEmptyArray(place) ? [place.join('\n')] : []), answers].join('\n\n')}</blockquote>`;
+    return `<blockquote>${[escapeHtml(poll.question), ...(isDefined(poll.description) ? [poll.description] : []), answers].join('\n\n')}</blockquote>`;
 };
 
 export const withSummary = Effect.fn('Bot.withSummary')(function* (user: MenuUser, draft: Draft, data: NewGameData) {
@@ -104,20 +101,34 @@ const destinationLine = (user: MenuUser, draft: Draft, data: NewGameData): strin
         ? menuText(user.locale, 'selfLine')
         : menuText(user.locale, 'destLine', { where: escapeHtml(quotedTitles(destinationTitles(draft, data), user.locale)) });
 
+const otherGameLine = (user: MenuUser, draft: Draft, data: NewGameData): string[] => {
+    const other = otherGameLabel(data, draft, user.locale);
+
+    return isDefined(other) && labelWidth(other.label) > buttonBudget(1)
+        ? [menuText(user.locale, 'otherGameLine', { what: escapeHtml(other.full) })]
+        : [];
+};
+
+const lastLines = (user: MenuUser, draft: Draft): string[] => {
+    const lines = [...noticeText(user, draft.notice), ...(isDefined(draft.warning) ? [draft.warning] : [])];
+
+    return isNotEmptyArray(lines) ? lines : [`<i>${menuText(user.locale, 'nothingSent')}</i>`];
+};
+
 const mainText = Effect.fn('Bot.newGameMainText')(function* (user: MenuUser, draft: Draft, data: NewGameData) {
     const poll = yield* pollOf(user, draft).pipe(Effect.option);
     const duplicate = data.planned.some(game => game.localDate === draft.localDate && game.sessionId !== draft.sessionId);
-    const notice = noticeText(user, draft.notice);
 
     return [
-        ...(isNotEmptyArray(notice) ? [...notice, ''] : []),
         menuText(user.locale, isDefined(draft.sessionId) ? 'ngAnnounce' : 'ngTitle'),
         ...Option.match(poll, { onNone: () => [], onSome: value => [pollHtml(value)] }),
         destinationLine(user, draft, data),
         ...(duplicate && isDefined(draft.localDate)
             ? [menuText(user.locale, 'duplicate', { label: dayLabel(user.locale, draft.localDate) })]
             : []),
-        ...(draft.uncertain ? [] : [`<i>${menuText(user.locale, 'nothingSent')}</i>`])
+        ...otherGameLine(user, draft, data),
+        ...(data.typingHint && !isDefined(draft.sessionId) ? [menuText(user.locale, 'typingHint')] : []),
+        ...lastLines(user, draft)
     ].join('\n');
 });
 
@@ -135,6 +146,7 @@ export const newGameText = Effect.fn('Bot.newGameText')(function* (user: MenuUse
         : menuText(user.locale, 'newGame');
     const notice = noticeText(user, draft.notice);
     const heading = draft.notice === 'tooLittle' ? [] : [title];
+    const extra = draft.view === 'size' ? [menuText(user.locale, 'fieldsOptional')] : [];
 
-    return [...heading, ...(isNotEmptyArray(notice) ? notice : [ask])].join('\n');
+    return [...heading, ...(isNotEmptyArray(notice) ? notice : [ask, ...extra])].join('\n');
 });

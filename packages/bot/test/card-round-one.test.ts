@@ -30,7 +30,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const { communityId } = yield* seedSeason('r1-card', { groupChatId: -16_001, adminId: 1601 });
             const admin = conversation(recorder, adminNumbered(1601));
             yield* admin.type('/newgame');
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
             yield* voteIn(lastPoll(-16_001), [9601, 9602, 9603, 9604, 9605, 9606, 9607, 9608, 9609, 9610], [0]);
             yield* admin.type('/games');
             yield* admin.tap('Пт 27.11 19:00');
@@ -48,7 +48,9 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(first.text).not.toContain('9. Player 9609');
             expect(second.text).toContain('10. Player 9610');
             expect(confirmation.startsWith('Так буде в «Games»:')).toBe(true);
-            expect(confirmation).toContain('У самому опитуванні залишиться стара дата.');
+            expect(confirmation).toContain(
+                'Опитування в чаті не зміниться, там залишиться стара дата. Гравці дізнаються з цього повідомлення.'
+            );
             expect(moved).toBeDefined();
         })
     );
@@ -62,10 +64,11 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const saved = admin.screen();
             yield* admin.tap('👤 Надіслати опитування мені');
             const ask = admin.screen().text;
-            yield* admin.tap('✅ Надіслати мені');
+            yield* admin.tap('✅ Надіслати опитування мені');
+            const receipt = admin.screen();
+            yield* admin.tap('✏️ Змінити');
             const mine = admin.screen();
-            yield* admin.tap('📨 Надіслати опитування ще раз');
-            yield* admin.tap('✅ Надіслати мені');
+            yield* admin.tap('✅ Надіслати опитування ще раз');
             const resent = sentTo(1602, 'forwardMessage');
             yield* voteIn(lastPoll(1602), [9701, 9702, 9703, 9704], [0]);
             yield* admin.type('/games');
@@ -82,12 +85,13 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const notice = sentTo(1602, 'sendMessage').findLast(call => String(call.payload.text).includes('📢'));
 
             expect(saved.text).toContain('📭 Опитування ще немає');
-            expect(ask.startsWith('Надішлю тобі, у групу перешлеш сам:')).toBe(true);
+            expect(ask.startsWith('Надішлю тобі, а ти перешлеш у групу:')).toBe(true);
+            expect(receipt.text).toBe('✅ Опитування в тебе.\nНатисни й утримуй опитування → Переслати → група.');
             expect(mine.text).toContain('👤 Опитування в тебе, переслати треба самому');
             expect(resent).toHaveLength(1);
-            expect(teamsAsk.text.startsWith('Надішлю тобі, у групу перешлеш сам:')).toBe(true);
+            expect(teamsAsk.text.startsWith('Надішлю тобі, а ти перешлеш у групу:')).toBe(true);
             expect(String(lineup?.payload.text)).toContain('↪️ Перешли це в групу.');
-            expect(labelsOf(changeAsk)).toEqual(expect.arrayContaining(['✅ Змінити й надіслати мені', 'Змінити, у групу не писати']));
+            expect(labelsOf(changeAsk)).toEqual(expect.arrayContaining(['✅ Змінити й надіслати мені', 'Змінити без повідомлення']));
             expect(String(notice?.payload.text)).toContain('↪️ Перешли це в групу.');
         })
     );
@@ -117,25 +121,28 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* seedSeason('r1-ask', { groupChatId: -16_004, adminId: 1604 });
             const admin = conversation(recorder, adminNumbered(1604));
             yield* admin.type('/newgame');
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
             yield* admin.tap('🗑 Видалити');
             const remove = admin.screen();
             yield* admin.tap('⬅️ Назад');
-            yield* admin.tap('✖️ Скасувати');
-            yield* admin.tap('погода');
+            yield* admin.tap('✖️ Скасувати гру');
+            yield* admin.tap('Погода');
             const cancel = admin.screen().text;
             yield* admin.tap('⬅️ Назад');
             yield* admin.tap('👥 Ліміт');
-            yield* admin.tap('20');
+            yield* admin.type('20');
             const limit = admin.screen().text;
 
             expect(remove.text).toBe(
-                'Видалити гру назавжди? Опитування закриється, нових повідомлень не буде. Переслані копії можуть лишитися видимими.'
+                '🗑 Видалити гру: Пт 27.11 19:00 · North Arena?\nОпитування закриється. Бот нікому не напише. Повернути гру не можна.\nПереслані копії можуть лишитися видимими.'
             );
+            expect(labelsOf(remove)).not.toContain('🏠 Меню');
             expect(labelsOf(remove)).toContain('🗑 Видалити назавжди');
             expect(cancel).toContain('Опитування закриється в будь-якому разі.');
-            expect(limit).toContain('Місць: 22 → 20');
-            expect(limit).toContain('У самому опитуванні залишиться старе число місць.');
+            expect(limit).toMatch(/<blockquote>[\s\S]*👥 Місць: 22 → 20[\s\S]*<\/blockquote>/u);
+            expect(limit).toContain(
+                'Опитування в чаті не зміниться, там залишиться старе число місць. Гравці дізнаються з цього повідомлення.'
+            );
         })
     );
 });

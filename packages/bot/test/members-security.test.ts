@@ -158,7 +158,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/newgame');
             yield* admin.tap('👥 22');
             yield* admin.type('1');
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
             const poll = recorder.calls.findLast(call => call.method === 'sendPoll' && call.payload.chat_id === -8005);
             const pollId = (poll?.result as { poll?: { id?: string } } | undefined)?.poll?.id ?? '';
             const vote = (id: number, name: string, optionIds: number[]) =>

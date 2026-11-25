@@ -68,7 +68,7 @@ const nextView = (draft: Draft): DraftView => {
     return missing.find(([done]) => !done)?.[1] ?? 'main';
 };
 
-export const advance = (draft: Draft): Draft => ({ ...draft, view: nextView(draft), notice: null, summary: null, uncertain: false });
+export const advance = (draft: Draft): Draft => ({ ...draft, view: nextView(draft), notice: null, summary: null });
 
 const previousView = (draft: Draft): DraftView => {
     if (draft.view === 'venues' || draft.view === 'venue_name') {
@@ -86,6 +86,10 @@ const previousView = (draft: Draft): DraftView => {
 };
 
 const back = (draft: Draft): Draft => {
+    if (draft.view === 'map' || draft.view === 'address') {
+        return advance(draft);
+    }
+
     if (draft.manual && draft.view === 'day' && isDefined(draft.restore)) {
         return { ...draft, ...draft.restore, manual: false, restore: null, view: 'main', notice: null, summary: null };
     }
@@ -110,7 +114,7 @@ const stepPlaces = (draft: Draft, data: NewGameData, step: number): Draft => {
     const usual = sizeAt(data.history, draft.venueId, draft.localDate ?? data.today).places ?? 14;
     const places = Math.min(99, Math.max(1, (draft.places ?? usual) + step));
 
-    return { ...draft, places, sized: true, custom: true, summary: null, notice: null, uncertain: false };
+    return { ...draft, places, sized: true, custom: true, summary: null, notice: null };
 };
 
 const compact = (value: string): string => `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
@@ -163,9 +167,7 @@ const ops: Readonly<Record<string, (draft: Draft, arg: string, data: NewGameData
     to: (draft, arg, data) => {
         const choice = destinationChoices(data).find(entry => entry.key === arg);
 
-        return isDefined(choice)
-            ? { ...draft, audience: choice.audience, view: 'main', notice: null, summary: null, uncertain: false }
-            : draft;
+        return isDefined(choice) ? { ...draft, audience: choice.audience, view: 'main', notice: null, summary: null } : draft;
     },
     ad: draft => ({ ...draft, view: 'address', notice: null }),
     nt: draft => ({ ...draft, view: 'note', notice: null }),

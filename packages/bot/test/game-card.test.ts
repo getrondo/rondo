@@ -29,7 +29,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const { communityId, park } = yield* seedSeason('card-change', { groupChatId: -2001, adminId: 201 });
             const admin = conversation(recorder, adminNumbered(201));
             yield* admin.type('/newgame');
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
             const card = admin.screen();
             const before = groupPosts(-2001).length;
             yield* admin.tap('🕖 Час');
@@ -40,19 +40,22 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('Park Field');
             yield* admin.tap('Змінити, у групу не писати');
             yield* admin.tap('👥 Ліміт');
-            yield* admin.tap('20');
+            yield* admin.type('20');
             yield* admin.tap('Змінити, у групу не писати');
             const [game] = yield* gamesOn(communityId, '2026-11-27');
             const posts = groupPosts(-2001).slice(before);
 
             expect(card.buttons.map(row => row.map(button => button.text))).toEqual([
-                ['🕖 Час', '📅 День', '📍 Місце'],
-                ['👥 Ліміт'],
-                ['✖️ Скасувати', '🗑 Видалити'],
+                ['🕖 Час', '📅 День'],
+                ['📍 Місце', '👥 Ліміт'],
+                ['✖️ Скасувати гру'],
+                ['🗑 Видалити'],
                 ['⬅️ Назад', '🏠 Меню']
             ]);
             expect(confirmTime.text.startsWith('Так буде в «Games»:')).toBe(true);
-            expect(confirmTime.text).toContain('У самому опитуванні залишиться старий час.');
+            expect(confirmTime.text).toContain(
+                'Опитування в чаті не зміниться, там залишиться старий час. Гравці дізнаються з цього повідомлення.'
+            );
             expect(confirmTime.text).toContain('➡️ <b>Пт 27.11 20:15 · North Arena</b>');
             expect(posts).toHaveLength(1);
             expect(String(posts[0]?.payload.text)).toContain('📍 <b>North Arena</b>');
@@ -77,7 +80,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* signUp(communityId, game?.id ?? '', 4);
             yield* admin.type('/games');
             yield* admin.tap('Пт 27.11 19:00');
-            yield* admin.tap('📣 Опубликовать в «Games»');
+            yield* admin.tap('📣 Отправить в «Games»');
             const pollConfirm = admin.screen().text;
             yield* admin.tap('✅ Отправить в «Games»');
             yield* admin.tap('👕 Составы');
@@ -85,8 +88,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const teams = admin.screen().text;
             yield* admin.tap('✅ Отправить в «Games»');
             const lineup = groupPosts(-2002).at(-1);
-            yield* admin.tap('✖️ Отменить');
-            yield* admin.tap('погода');
+            yield* admin.tap('✖️ Отменить игру');
+            yield* admin.tap('Погода');
             yield* admin.tap('✅ Отменить и написать в «Games»');
             const cancelled = groupPosts(-2002).at(-1);
             const [after] = yield* gamesOn(communityId, '2026-11-27');

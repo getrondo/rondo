@@ -10,7 +10,7 @@ import { makeRecorder, refusal } from '@rondo/telegram/testing/recording-telegra
 import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { conversation } from './support/conversation';
+import { conversation, labelsOf } from './support/conversation';
 import { gamesOn, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
@@ -37,13 +37,13 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('08:00');
             const refused = admin.screen().text;
             yield* admin.type('21:00');
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
             const [game] = yield* gamesOn(communityId, '2026-11-26');
 
             expect(days.slice(0, 3)).toEqual(['✓ Пт 27.11', 'Сб 28.11', 'Нд 29.11']);
             expect(days).toContain('Сьогодні 26.11');
             expect(limitless.text).not.toContain('місць');
-            expect(limitless.buttons[1]?.map(button => button.text)).toEqual(['👥 −', '👥 ♾', '👥 +']);
+            expect(limitless.buttons[1]?.map(button => button.text)).toEqual(['−1', '👥 ♾', '+1', '📝']);
             expect(refused).toContain('вже минув');
             expect(game).toMatchObject({ capacityMax: 25 });
         })
@@ -58,10 +58,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('📍 North Arena');
             yield* admin.tap('➕ Нове місце');
             yield* admin.type('Lake Court');
-            yield* admin.tap('📍 Lake Court');
-            yield* admin.tap('📍 Додати адресу');
             yield* admin.type('https://www.google.com/maps/place/Lake/@48.21,16.37,17z');
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
             const [stored] = yield* db
                 .select()
                 .from(venue)
@@ -89,11 +87,11 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('📍 Додати адресу');
             yield* admin.type('Main Street 1 (gate B)');
             const preview = admin.screen();
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
 
             expect(hinted).toContain('📍 Додати адресу');
             expect(preview.text).toContain('Main Street 1 (gate B)');
-            expect(pollTo(-5003)?.payload.description).toBe('📍 <b>North Arena</b>\n<b>Main Street 1 (gate B)</b>');
+            expect(pollTo(-5003)?.payload.description).toBe('📍 <b>Main Street 1 (gate B)</b>');
         })
     );
 
@@ -113,20 +111,20 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(804));
             yield* admin.type('/newgame');
             const announce = admin.screen();
-            yield* admin.tap('↔️ Інша');
+            yield* admin.tap('↔️ ');
             yield* admin.tap('📅 Пн 30.11');
             yield* admin.tap('Пт 27.11');
             const duplicate = admin.screen().text;
-            yield* admin.tap('Закрити');
+            yield* admin.tap('🏠 Меню');
             yield* admin.type('/newgame');
-            yield* admin.tap('📣 Опублікувати');
+            yield* admin.tap('✅ Надіслати');
             const games = yield* gamesOn(communityId, '2026-11-27');
 
             expect(announce.text).toContain('Гра вже є, опитування ще немає');
             expect(announce.buttons.map(row => row.map(button => button.text))).toEqual([
-                ['📣 Опублікувати в «Games»'],
-                ['↔️ Інша: Пн 18:30 · Park Field'],
-                ['📤 Куди', '🛠 З нуля', 'Закрити']
+                ['✅ Надіслати в «Games»'],
+                ['↔️ Пн 30.11 18:30 · Park Field'],
+                ['📤 Куди', '🛠 З нуля', '🏠 Меню']
             ]);
             expect(duplicate).toContain('На цей день уже є гра: Пт 27.11');
             expect(games).toHaveLength(1);
@@ -154,21 +152,19 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(806));
             yield* admin.type('/newgame');
             recorder.failures.set('sendPoll', new Error('socket hang up'));
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
             recorder.failures.delete('sendPoll');
             const uncertain = admin.screen();
             recorder.failures.set('pinChatMessage', refusal('pinChatMessage', 'Bad Request: not enough rights to pin a message'));
-            yield* admin.tap('🔁 Перевірив, надіслати знову');
+            yield* admin.tap('✅ Опитування там немає, надіслати');
             recorder.failures.delete('pinChatMessage');
             const games = yield* gamesOn(communityId, '2026-11-27');
 
-            expect(
-                uncertain.text.startsWith(
-                    '⚠️ Не знаю, чи дійшло опитування до «Games». Перевір: якщо воно там, видали його й надішли знову.'
-                )
-            ).toBe(true);
+            expect(uncertain.text.split('\n').at(-1)).toBe(
+                '⚠️ Telegram не підтвердив надсилання в «Games». Зазирни туди. Якщо опитування немає, надішли ще раз. Якщо воно там є, видали його: голоси в ньому не порахуються.'
+            );
             expect(uncertain.text).not.toContain('нічого не надіслано');
-            expect(uncertain.buttons[0]?.map(button => button.text)).toEqual(['🔁 Перевірив, надіслати знову']);
+            expect(uncertain.buttons[0]?.map(button => button.text)).toEqual(['✅ Опитування там немає, надіслати']);
             expect(games).toHaveLength(1);
             expect(admin.screen().text).toContain('✅ Гру створено');
         })
@@ -182,7 +178,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(807));
             yield* admin.type('/newgame');
             const preview = admin.screen().text;
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
             const poll = pollTo(-5007)?.payload;
             const route = (poll?.reply_markup as { inline_keyboard: { url: string }[][] } | undefined)?.inline_keyboard[0]?.[0]?.url ?? '';
 
@@ -190,7 +186,11 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(preview).toContain('▫️ ✅ Граю\n▫️ ❌ Не граю</blockquote>');
             expect(preview).toContain(String(poll?.description));
             expect(preview).toContain(route.replace('&', '&amp;'));
-            expect(preview).toMatch(/<blockquote>[^<]*\n\n📍 <b>North Arena<\/b>[\s\S]*▫️ ✅ Граю/u);
+            expect(poll?.question).toContain('U2 Stadium');
+            expect(poll?.description).toBe(
+                '📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=48.3,16.5"><b>Arena Way 2</b></a>'
+            );
+            expect(preview).not.toContain('🗺 Маршрут');
         })
     );
 
@@ -202,10 +202,11 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('📅 Пт 27.11');
             const list = admin.screen();
             yield* admin.type('хто грав найчастіше?');
-            const reply = admin.screen();
-            yield* admin.tapOn(list, 'Пн 30.11');
+            const [reply, again] = admin.seen().slice(-2);
+            yield* admin.tap('Пн 30.11');
 
-            expect(reply.text).toContain('Не вдалося обробити запит');
+            expect(reply?.text).toBe('Не вдалося розібрати текст. Збери гру кнопками.');
+            expect(labelsOf(again ?? { buttons: [] })).toEqual(labelsOf(list));
             expect(admin.screen().text).toContain('⚽ Понеділок, 30 листопада');
         })
     );

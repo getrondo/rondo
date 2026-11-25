@@ -1,6 +1,6 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { linkedChatsOf } from '@rondo/core/community/community.repository';
-import { formatSessionLabel } from '@rondo/core/i18n/messages';
+import { countOf, formatSessionLabel } from '@rondo/core/i18n/messages';
 import { hasOpenPoll } from '@rondo/core/menu/game-history.repository';
 import { hasOnlyAdminVotes, isDeletableSession } from '@rondo/core/sessions/delete-session';
 import { listSessions, requireSession } from '@rondo/core/sessions/session.service';
@@ -102,7 +102,7 @@ const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuBu
                   ? [
                         [
                             {
-                                text: fitLabel(menuText(user.locale, 'postExistingTo', { where: `«${firstChat.title}»` }), full),
+                                text: fitLabel(menuText(user.locale, 'postCard', { where: `«${firstChat.title}»` }), full),
                                 callback_data: `c:p:${id}`
                             }
                         ]
@@ -124,9 +124,11 @@ const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuBu
         ...postRows,
         ...resend,
         ...openRows,
-        [button('time', 't'), button('day', 'dd'), button('place', 'v')],
-        [button('size', 'z'), ...(state.signed >= 2 ? [button('teams', 'k')] : [])],
-        [button('cancelGame', 'x'), ...(state.canDelete ? [button('deleteGame', 'd')] : [])],
+        [button('time', 't'), button('day', 'dd')],
+        [button('place', 'v'), button('size', 'z')],
+        ...(state.signed >= 2 ? [[button('teams', 'k')]] : []),
+        [button('cancelGame', 'x')],
+        ...(state.canDelete ? [[button('deleteGame', 'd')]] : []),
         ...(isNotEmptyArray(paging) ? [paging] : [])
     ];
 };
@@ -145,10 +147,27 @@ const pollLine = (user: MenuUser, state: CardState, audience: readonly bigint[])
     return state.hasPoll ? [] : [menuText(user.locale, 'pollNone')];
 };
 
+export interface CardHeader {
+    readonly text: string;
+    readonly saysPoll: boolean;
+}
+
+const countLine = (user: MenuUser, game: SessionView, signedLine: string, signed: number): string => {
+    if (signed === 0) {
+        const places = isDefined(game.capacityMax) ? [countOf(user.locale, 'place', game.capacityMax)] : [];
+
+        return [menuText(user.locale, 'nobodyYet'), ...places].join(' · ');
+    }
+
+    const free = isDefined(game.capacityMax) ? [menuText(user.locale, 'free', { free: Math.max(0, game.capacityMax - signed) })] : [];
+
+    return [capitalized(signedLine), ...free].join(' · ');
+};
+
 export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
     user: MenuUser,
     sessionId: string,
-    header: string | null,
+    header: CardHeader | null,
     page: number
 ) {
     const game = yield* requireSession(user.communityId, sessionId);
@@ -169,20 +188,17 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
         closedTo: isOpen ? chats.filter(chat => !audience.includes(chat.chatId)) : [],
         page
     };
-    const free = isDefined(game.capacityMax)
-        ? [menuText(user.locale, 'free', { free: Math.max(0, game.capacityMax - signed.length) })]
-        : [];
     const waiting = roster.filter(entry => entry.status === 'waitlisted');
     const keepers = roster.filter(entry => entry.status === 'in' && entry.role === 'gk');
     const closed = closedText[user.locale][game.status];
     const signedLine = yield* signedUpLine(user, game);
     const shown = signed.slice(page * namesPerPage, page * namesPerPage + namesPerPage);
     const lines = [
-        ...(isDefined(header) ? [header, ''] : []),
+        ...(isDefined(header) ? [header.text, ''] : []),
         `⚽ <b>${escapeHtml(formatSessionLabel(user.locale, game))}</b>`,
         ...(isDefined(closed) ? [closed] : []),
-        ...(isUpcoming ? pollLine(user, state, audience) : []),
-        [capitalized(signedLine), ...free].join(' · '),
+        ...(isUpcoming && header?.saysPoll !== true ? pollLine(user, state, audience) : []),
+        countLine(user, game, signedLine, signed.length),
         ...shown.map((entry, index) => `${page * namesPerPage + index + 1}. ${escapeHtml(entry.displayName)}`),
         ...(isNotEmptyArray(waiting) ? [`${menuText(user.locale, 'waiting')}: ${names(waiting)}`] : []),
         ...(isNotEmptyArray(keepers) ? [`${menuText(user.locale, 'keepers')}: ${names(keepers)}`] : [])
@@ -194,4 +210,4 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
     } satisfies Screen;
 });
 
-export const gameCardScreen = (user: MenuUser, sessionId: string, header: string | null) => gameCardPage(user, sessionId, header, 0);
+export const gameCardScreen = (user: MenuUser, sessionId: string, header: CardHeader | null) => gameCardPage(user, sessionId, header, 0);

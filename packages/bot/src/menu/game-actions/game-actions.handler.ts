@@ -1,6 +1,6 @@
 import { isDefined } from '@rnw-community/shared';
 import { ActionSchema, type Action } from '@rondo/core/actions/action.model';
-import { consumeAdminState, loadAdminState, moveAdminMessage, saveAdminState, takeAwaiting } from '@rondo/core/menu/admin-state.repository';
+import { consumeAdminState, loadAdminState } from '@rondo/core/menu/admin-state.repository';
 import { requireSession } from '@rondo/core/sessions/session.service';
 import { proposeTeams } from '@rondo/core/teams/team.service';
 import { escapeHtml } from '@rondo/telegram/format/html';
@@ -9,45 +9,24 @@ import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 
 import { fromShortId } from '../../utils/from-short-id.util';
-import { parseTime } from '../../utils/parse-time.util';
 import { gameCardScreen, gamesScreen } from '../games.screen';
 import { menuText } from '../menu-text';
 import { loadNewGameData } from '../new-game/new-game.data';
+import { showSelfReceipt } from '../new-game/self-receipt';
 import { runConfirmed } from '../run-confirmed';
-import { clearKeyboard, showScreen } from '../show-screen';
-import { replyStale } from '../stale-reply';
+import { showScreen } from '../show-screen';
+import { rememberDone, replyStale } from '../stale-reply';
 
-import { confirmScreen, gameListScreen } from './game-actions.screens';
-import { GameDraftSchema, sessionOf, type GameDraft } from './game-draft';
+import { GameDraftSchema, listViews, sessionOf } from './game-draft';
 import { targetOfAction } from './game-target';
+import { showConfirm, showGameList } from './show-confirm';
 
 import type { MenuUser } from '../screen.interface';
-import type { AdminStateRow } from '@rondo/core/menu/admin-state.interface';
+import type { SessionView } from '@rondo/core/sessions/session.model';
 
 const decodeGameDraft = Schema.decodeUnknownOption(GameDraftSchema);
 const decodeAction = Schema.decodeUnknownOption(ActionSchema);
-const encodeAction = Schema.encodeEffect(ActionSchema);
 const reasonLiterals = new Set(['weather', 'low_turnout', 'venue', 'holiday', 'organizer', 'other']);
-const listOps = new Set(['t', 'dd', 'v', 'z', 'x', 'k']);
-
-const showConfirm = Effect.fn('Bot.showGameConfirm')(function* (user: MenuUser, action: Action, messageId: number | null) {
-    const encoded = yield* encodeAction(action).pipe(Effect.orDie);
-    const draft: GameDraft = { flow: 'game', view: 'confirm', sessionId: sessionOf(action), action: encoded, summary: null };
-    const saved = yield* saveAdminState({
-        tgUserId: user.tgUserId,
-        communityId: user.communityId,
-        messageId,
-        awaiting: null,
-        draft,
-        now: user.now
-    });
-    const screen = yield* confirmScreen(user, action, saved.revision);
-    const shownId = yield* showScreen(user.chatId, messageId, screen);
-
-    if (shownId !== messageId) {
-        yield* moveAdminMessage(user.tgUserId, shownId);
-    }
-});
 
 const compact = (value: string): string => `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
 
@@ -57,7 +36,6 @@ const changeOf = (user: MenuUser, sessionId: string, tap: { readonly op: string;
     const changes: Readonly<Record<string, () => Action | null>> = {
         p: () => ({ _tag: 'announce_session', sessionId }),
         pm: () => ({ _tag: 'announce_session', sessionId, chatId: self }),
-        pr: () => ({ _tag: 'forward_poll', sessionId, chatId: self }),
         d: () => ({ _tag: 'delete_session', sessionId }),
         f: () => (/^-\d+$/u.test(tap.arg) ? { _tag: 'forward_poll', sessionId, chatId: tap.arg } : null),
         ts: () => ({ _tag: 'update_session', sessionId, localTime: `${tap.arg.slice(0, 2)}:${tap.arg.slice(2, 4)}`, notify: true }),
@@ -94,51 +72,89 @@ const afterDone = Effect.fn('Bot.afterGameDone')(function* (user: MenuUser, acti
     }
 
     if (isToMe(user, action)) {
-        const header = [menuText(user.locale, 'announcedMe'), menuText(user.locale, 'selfHint')].join('\n');
-        yield* clearKeyboard(user.chatId, messageId);
-        const card = yield* gameCardScreen(user, sessionId, header);
-        yield* showScreen(user.chatId, null, card);
+        yield* showSelfReceipt(user, messageId, { sessionId, status: 'sentMe' });
 
         return;
     }
 
-    const header =
-        action._tag === 'forward_poll' || action._tag === 'announce_session'
-            ? menuText(user.locale, action._tag === 'forward_poll' ? 'forwardedTo' : 'announced', { where: escapeHtml(where) })
-            : menuText(user.locale, 'changedDone');
-    const card = yield* gameCardScreen(user, sessionId, header);
+    const isPost = action._tag === 'forward_poll' || action._tag === 'announce_session';
+    const header = isPost
+        ? menuText(user.locale, action._tag === 'forward_poll' ? 'forwardedTo' : 'announced', { where: escapeHtml(where) })
+        : menuText(user.locale, 'changedDone');
+    const card = yield* gameCardScreen(user, sessionId, { text: header, saysPoll: isPost });
     yield* showScreen(user.chatId, messageId, card);
+});
+
+const runGameAction = Effect.fn('Bot.runGameAction')(function* (
+    user: MenuUser,
+    action: Action,
+    tap: { readonly messageId: number; readonly revision: string }
+) {
+    const target = yield* targetOfAction(user, action, sessionOf(action));
+    const outcome = yield* runConfirmed(user, action, { summary: null, target: { where: target.where, isPrivate: target.me } });
+
+    if (outcome._tag === 'done') {
+        yield* afterDone(user, action, tap.messageId, target.where);
+        yield* rememberDone(user, tap.messageId, {
+            sessionId: sessionOf(action),
+            created: false,
+            self: isToMe(user, action),
+            revision: tap.revision
+        });
+
+        return Option.none<string>();
+    }
+
+    const card = yield* gameCardScreen(user, sessionOf(action), { text: outcome.text, saysPoll: false });
+    yield* showScreen(user.chatId, tap.messageId, card);
+
+    return Option.none<string>();
 });
 
 const confirmTap = Effect.fn('Bot.confirmGameTap')(function* (user: MenuUser, revision: string, notify: boolean, messageId: number) {
     const state = yield* loadAdminState(user.tgUserId, user.now);
-    const draft = state.pipe(Option.flatMap(row => decodeGameDraft(row.draft)));
+    const draft = state.pipe(
+        Option.filter(row => row.messageId === messageId),
+        Option.flatMap(row => decodeGameDraft(row.draft))
+    );
     const action = draft.pipe(Option.flatMap(value => decodeAction(value.action)));
 
-    if (Option.isNone(state) || Option.isNone(action) || String(state.value.revision) !== revision || state.value.messageId !== messageId) {
-        return yield* replyStale(user, messageId, true);
+    if (Option.isNone(state) || Option.isNone(action)) {
+        return yield* replyStale(user, messageId, revision);
+    }
+
+    if (String(state.value.revision) !== revision) {
+        yield* showConfirm(user, action.value, messageId);
+
+        return Option.none<string>();
     }
 
     const consumed = yield* consumeAdminState(user.tgUserId, state.value.revision, user.now);
 
     if (Option.isNone(consumed)) {
-        return yield* replyStale(user, messageId, true);
+        return yield* replyStale(user, messageId, revision);
     }
 
     const chosen = 'notify' in action.value ? { ...action.value, notify } : action.value;
-    const target = yield* targetOfAction(user, chosen, sessionOf(chosen));
-    const outcome = yield* runConfirmed(user, chosen, { summary: null, target: { where: target.where, isPrivate: target.me } });
 
-    if (outcome._tag === 'done') {
-        yield* afterDone(user, chosen, messageId, target.where);
+    return yield* runGameAction(user, chosen, { messageId, revision });
+});
 
-        return Option.none<string>();
+const listTap = Effect.fn('Bot.gameListTap')(function* (
+    user: MenuUser,
+    game: SessionView,
+    tap: { readonly op: string; readonly arg: string; readonly messageId: number }
+) {
+    const view = listViews[tap.op];
+
+    if (!isDefined(view)) {
+        return false;
     }
 
-    const card = yield* gameCardScreen(user, sessionOf(chosen), outcome.text);
-    yield* showScreen(user.chatId, messageId, card);
+    const data = yield* loadNewGameData(user);
+    yield* showGameList(user, game, data, { view, page: Number(tap.arg) || 0, notice: null, messageId: tap.messageId });
 
-    return Option.none<string>();
+    return true;
 });
 
 export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: MenuUser, parts: readonly string[], messageId: number) {
@@ -155,15 +171,16 @@ export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: Men
         return Option.some(menuText(user.locale, 'unknownGame'));
     }
 
-    if (listOps.has(op)) {
-        const data = yield* loadNewGameData(user);
-        const view = op === 't' ? 'time' : 'size';
-        const draft: GameDraft = { flow: 'game', view, sessionId: game.value.id, action: null, summary: null };
-        const awaiting = op === 't' || op === 'z' ? view : null;
-        yield* saveAdminState({ tgUserId: user.tgUserId, communityId: user.communityId, messageId, awaiting, draft, now: user.now });
-        yield* showScreen(user.chatId, messageId, gameListScreen(user, game.value, data, op));
-
+    if (yield* listTap(user, game.value, { op, arg, messageId })) {
         return Option.none<string>();
+    }
+
+    if (op === 'pr') {
+        return yield* runGameAction(
+            user,
+            { _tag: 'forward_poll', sessionId: game.value.id, chatId: String(user.tgUserId) },
+            { messageId, revision: '' }
+        );
     }
 
     const teams = op === 'kn' ? yield* teamsOf(game.value.id, Number(arg)) : Option.none<Action>();
@@ -176,41 +193,4 @@ export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: Men
     yield* showConfirm(user, action, messageId);
 
     return Option.none<string>();
-});
-
-const typedChange = (draft: GameDraft, text: string): Action | null => {
-    const time = parseTime(text);
-    const places = /^\d{1,2}$/u.test(text.trim()) ? Number(text.trim()) : 0;
-
-    if (draft.view === 'time' && time._tag === 'time') {
-        return { _tag: 'update_session', sessionId: draft.sessionId, localTime: time.value, notify: true };
-    }
-
-    return draft.view === 'size' && places >= 1
-        ? { _tag: 'update_session', sessionId: draft.sessionId, capacityMax: places, notify: true }
-        : null;
-};
-
-export const handleGameInput = Effect.fn('Bot.handleGameInput')(function* (user: MenuUser, row: AdminStateRow, text: string) {
-    const draft = decodeGameDraft(row.draft);
-
-    if (Option.isNone(draft)) {
-        return false;
-    }
-
-    const action = typedChange(draft.value, text);
-
-    if (!isDefined(action)) {
-        return false;
-    }
-
-    const taken = yield* takeAwaiting(user.tgUserId, row.revision, user.now);
-
-    if (Option.isNone(taken)) {
-        return false;
-    }
-
-    yield* showConfirm(user, action, null);
-
-    return true;
 });

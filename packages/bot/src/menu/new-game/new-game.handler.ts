@@ -2,6 +2,7 @@ import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import {
     clearAdminState,
     consumeAdminState,
+    loadAdminState,
     moveAdminMessage,
     restoreAdminState,
     saveAdminState,
@@ -10,25 +11,32 @@ import {
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
+import * as Schema from 'effect/Schema';
 
 import { gameCardScreen } from '../games.screen';
 import { homeScreen } from '../home.screen';
 import { menuText } from '../menu-text';
 import { runConfirmed } from '../run-confirmed';
 import { clearKeyboard, showScreen } from '../show-screen';
-import { replyStale } from '../stale-reply';
+import { rememberDone, replyStale } from '../stale-reply';
 
-import { audienceOfDraft, destinationTitles, isSelfAudience } from './audience';
+import { audienceOfDraft } from './audience';
+import { DraftSchema, type Draft, type NewGameData, type TypedInput } from './draft';
 import { loadNewGameData } from './new-game.data';
 import { applyOp, awaitingOf, startDraft } from './new-game.flow';
 import { newGameKeyboard } from './new-game.keyboard';
 import { actionOf, newGameText, withSummary } from './new-game.screen';
 import { applyPlaceInput } from './place-input';
+import { showSelfReceipt } from './self-receipt';
 import { applyText } from './typed-input';
 
 import type { MenuUser } from '../screen.interface';
-import type { Draft, NewGameData, TypedInput } from './draft';
 import type { AdminStateRow } from '@rondo/core/menu/admin-state.interface';
+
+const decodeDraft = Schema.decodeUnknownOption(DraftSchema);
+
+const targetsOf = (draft: Draft, data: NewGameData): Draft['targets'] =>
+    audienceOfDraft(draft, data).map(id => ({ id, title: data.chats.find(chat => chat.id === id)?.title ?? '' }));
 
 const presentNewGame = Effect.fn('Bot.presentNewGame')(function* (
     user: MenuUser,
@@ -36,7 +44,7 @@ const presentNewGame = Effect.fn('Bot.presentNewGame')(function* (
     data: NewGameData,
     messageId: number | null
 ) {
-    const prepared = yield* withSummary(user, draft, data);
+    const prepared = yield* withSummary(user, { ...draft, targets: targetsOf(draft, data) }, data);
     const saved = yield* saveAdminState({
         tgUserId: user.tgUserId,
         communityId: user.communityId,
@@ -62,24 +70,67 @@ export const openNewGame = Effect.fn('Bot.openNewGame')(function* (user: MenuUse
     yield* presentNewGame(user, startDraft(data), data, messageId);
 });
 
-const resultLines = Effect.fn('Bot.resultLines')(function* (user: MenuUser, draft: Draft, data: NewGameData, sessionId: string) {
-    const titles = destinationTitles(draft, data);
-    const [firstTitle = ''] = titles;
-    const lines = [menuText(user.locale, isDefined(draft.sessionId) ? 'announced' : 'created', { where: escapeHtml(`«${firstTitle}»`) })];
-    const forwards = data.chats.filter(chat => audienceOfDraft(draft, data).slice(1).includes(chat.id));
+const clearOld = (user: MenuUser, messageId: number | null) => (isDefined(messageId) ? clearKeyboard(user.chatId, messageId) : Effect.void);
+
+const reopenNewGame = Effect.fn('Bot.reopenNewGame')(function* (user: MenuUser) {
+    const state = yield* loadAdminState(user.tgUserId, user.now);
+    const draft = state.pipe(Option.flatMap(row => decodeDraft(row.draft)));
+
+    if (Option.isSome(draft)) {
+        const data = yield* loadNewGameData(user);
+        yield* clearOld(user, Option.getOrNull(state)?.messageId ?? null);
+        yield* presentNewGame(user, draft.value, data, null);
+    }
+});
+
+export const showNotUnderstood = Effect.fn('Bot.showNotUnderstood')(function* (user: MenuUser) {
+    yield* showScreen(user.chatId, null, {
+        text: menuText(user.locale, 'notUnderstood'),
+        keyboard: [
+            [
+                { text: menuText(user.locale, 'newGame'), callback_data: 'm:ng' },
+                { text: menuText(user.locale, 'games'), callback_data: 'm:gl' }
+            ]
+        ]
+    });
+    yield* reopenNewGame(user);
+});
+
+const forwardLine = (
+    user: MenuUser,
+    where: string,
+    forwarded: { readonly _tag: 'done' } | { readonly _tag: 'failed'; readonly text: string; readonly uncertain: boolean }
+): string => {
+    if (forwarded._tag === 'done') {
+        return menuText(user.locale, 'forwardedTo', { where: escapeHtml(where) });
+    }
+
+    return forwarded.uncertain
+        ? forwarded.text
+        : menuText(user.locale, 'forwardFailed', { where: escapeHtml(where), reason: forwarded.text.replace(/^⚠️ /u, '') });
+};
+
+const failureOf = (
+    outcome: { readonly _tag: 'done' } | { readonly _tag: 'failed'; readonly text: string; readonly uncertain: boolean }
+) => {
+    if (outcome._tag === 'done') {
+        return {};
+    }
+
+    return outcome.uncertain ? { warning: outcome.text, uncertain: true, notice: null } : { notice: outcome.text };
+};
+
+const resultLines = Effect.fn('Bot.resultLines')(function* (user: MenuUser, draft: Draft, sessionId: string) {
+    const [first, ...forwards] = draft.targets;
+    const lines = [
+        menuText(user.locale, isDefined(draft.sessionId) ? 'announced' : 'created', { where: escapeHtml(`«${first?.title ?? ''}»`) })
+    ];
 
     for (const chat of forwards) {
         const where = `«${chat.title}»`;
-        const forwarded = yield* runConfirmed(
-            user,
-            { _tag: 'forward_poll', sessionId, chatId: chat.id },
-            { summary: null, target: { where, isPrivate: false } }
-        );
-        lines.push(
-            forwarded._tag === 'done'
-                ? menuText(user.locale, 'forwardedTo', { where: escapeHtml(where) })
-                : menuText(user.locale, 'forwardFailed', { where: escapeHtml(where), reason: forwarded.text.replace(/^⚠️ /u, '') })
-        );
+        const target = { where, isPrivate: false };
+        const forwarded = yield* runConfirmed(user, { _tag: 'forward_poll', sessionId, chatId: chat.id }, { summary: null, target });
+        lines.push(forwardLine(user, where, forwarded));
     }
 
     return lines;
@@ -94,36 +145,36 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
     const consumed = yield* consumeAdminState(user.tgUserId, row.revision, user.now);
 
     if (Option.isNone(consumed)) {
-        return yield* replyStale(user, tap.messageId, true);
+        return yield* replyStale(user, tap.messageId, String(row.revision));
     }
 
     const data = yield* loadNewGameData(user);
     const { messageId, withPoll } = tap;
-    const self = withPoll && isSelfAudience(draft, data);
-    const [firstTitle = ''] = destinationTitles(draft, data);
-    const target = { where: `«${firstTitle}»`, isPrivate: self };
+    const [first] = draft.targets;
+    const self = withPoll && (first?.id ?? data.selfChatId) === data.selfChatId;
+    const target = { where: `«${first?.title ?? ''}»`, isPrivate: self };
     const outcome = yield* runConfirmed(user, actionOf(draft, withPoll, data), { summary: withPoll ? draft.summary : null, target });
 
     if (outcome._tag === 'failed' || !isDefined(outcome.sessionId)) {
         yield* restoreAdminState(consumed.value, user.now);
-        const failed = outcome._tag === 'failed' ? { notice: outcome.text, uncertain: outcome.uncertain } : {};
-        yield* presentNewGame(user, { ...draft, ...failed }, data, messageId);
+        yield* presentNewGame(user, { ...draft, ...failureOf(outcome) }, data, messageId);
 
         return Option.none<string>();
     }
+
+    const done = { sessionId: outcome.sessionId, created: !isDefined(draft.sessionId), revision: String(row.revision) };
 
     if (self) {
-        const header = [menuText(user.locale, isDefined(draft.sessionId) ? 'announcedMe' : 'createdMe'), menuText(user.locale, 'selfHint')];
-        yield* clearKeyboard(user.chatId, messageId);
-        const card = yield* gameCardScreen(user, outcome.sessionId, header.join('\n'));
-        yield* showScreen(user.chatId, null, card);
+        yield* showSelfReceipt(user, messageId, { sessionId: outcome.sessionId, status: done.created ? 'receiptMe' : 'sentMe' });
+        yield* rememberDone(user, messageId, { ...done, self: true });
 
         return Option.none<string>();
     }
 
-    const lines = withPoll ? yield* resultLines(user, draft, data, outcome.sessionId) : [menuText(user.locale, 'createdQuiet')];
-    const card = yield* gameCardScreen(user, outcome.sessionId, lines.join('\n'));
+    const lines = withPoll ? yield* resultLines(user, draft, outcome.sessionId) : [menuText(user.locale, 'createdQuiet')];
+    const card = yield* gameCardScreen(user, outcome.sessionId, { text: lines.join('\n'), saysPoll: withPoll });
     yield* showScreen(user.chatId, messageId, card);
+    yield* rememberDone(user, messageId, { ...done, self: false });
 
     return Option.none<string>();
 });
@@ -147,7 +198,8 @@ export const handleNewGameTap = Effect.fn('Bot.handleNewGameTap')(function* (
     }
 
     const data = yield* loadNewGameData(user);
-    yield* presentNewGame(user, applyOp(draft, tap.op, tap.arg, data), data, tap.messageId);
+    const next = tap.op === 'redraw' ? draft : applyOp(draft, tap.op, tap.arg, data);
+    yield* presentNewGame(user, next, data, tap.messageId);
 
     return Option.none<string>();
 });
@@ -171,6 +223,8 @@ export const handleNewGameInput = Effect.fn('Bot.handleNewGameInput')(function* 
     if (Option.isNone(taken)) {
         return false;
     }
+
+    yield* clearOld(user, row.messageId);
 
     if (placeInput) {
         const placed = yield* applyPlaceInput(user, draft, input);

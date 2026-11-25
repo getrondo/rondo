@@ -11,7 +11,7 @@ import { applyOp, withVenue } from './new-game.flow';
 import type { MenuUser } from '../screen.interface';
 import type { Draft, TypedInput } from './draft';
 
-const placeOfName = Effect.fn('Bot.placeOfName')(function* (user: MenuUser, name: string, actorPersonId: string | null) {
+export const placeOfName = Effect.fn('Bot.placeOfName')(function* (user: MenuUser, name: string, actorPersonId: string | null) {
     const known = yield* findVenueByName(user.communityId, name);
 
     if (isDefined(known)) {
@@ -50,9 +50,8 @@ export const applyPlaceInput = Effect.fn('Bot.applyPlaceInput')(function* (user:
         return yield* placeOfName(user, name, actorPersonId).pipe(
             Effect.map(venueId => {
                 const located = data.venues.find(entry => entry.id === venueId)?.located ?? false;
-                const known = isDefined(draft.localDate) && isDefined(draft.localTime) && draft.sized;
 
-                return withVenue(draft, venueId, data, located || known ? null : 'map');
+                return withVenue(draft, venueId, data, located ? null : 'map');
             }),
             Effect.catchTag('ActionFailedError', () => Effect.succeed({ ...draft, notice: 'newPlaceName' }))
         );

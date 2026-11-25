@@ -32,10 +32,10 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(701));
             yield* admin.type('/newgame');
             const main = admin.screen();
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
             const [game] = yield* gamesOn(communityId, '2026-12-02');
 
-            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Опублікувати в «Second»']);
+            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати в «Second»']);
             expect(callsTo(-4002, 'sendPoll')).toHaveLength(1);
             expect(callsTo(-4001, 'sendPoll')).toHaveLength(0);
             expect(game).toMatchObject({ venueId: park, capacityMax: 18 });
@@ -50,7 +50,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(702));
             yield* admin.type('/newgame');
             const main = admin.screen();
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
             const pollId = pollIdIn(-4011);
             const answer = { poll_id: pollId, user: voter(9201), option_ids: [0], option_persistent_ids: [] };
             yield* deliver({ poll_answer: answer });
@@ -61,7 +61,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 .from(signup)
                 .where(eq(signup.sessionId, game?.id ?? ''));
 
-            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Опублікувати в обидві групи']);
+            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати в обидві групи']);
             expect(callsTo(-4011, 'sendPoll')).toHaveLength(1);
             expect(callsTo(-4012, 'forwardMessage')[0]?.payload).toMatchObject({ from_chat_id: -4011 });
             expect(callsTo(-4012, 'sendPoll')).toHaveLength(0);
@@ -80,7 +80,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('«Games»');
             yield* admin.tap('👥 22');
             yield* admin.type('2');
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
             const pollId = pollIdIn(-4021);
             const vote = (id: number, optionIds: number[]) =>
                 deliver({ poll_answer: { poll_id: pollId, user: voter(id), option_ids: optionIds, option_persistent_ids: [] } });

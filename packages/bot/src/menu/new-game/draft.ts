@@ -18,6 +18,16 @@ const gameFields = {
 
 const RestoreSchema = Schema.Struct(gameFields);
 
+const TargetSchema = Schema.Struct({ id: Schema.String, title: Schema.String });
+
+export const DoneSchema = Schema.Struct({
+    flow: Schema.Literal('done'),
+    sessionId: Schema.String,
+    created: Schema.Boolean,
+    self: Schema.Boolean,
+    revision: Schema.String
+});
+
 export const DraftSchema = Schema.Struct({
     flow: Schema.Literal('new'),
     view: Schema.Literals(views),
@@ -28,6 +38,8 @@ export const DraftSchema = Schema.Struct({
     notice: Schema.NullOr(Schema.String),
     audience: Schema.Array(Schema.String),
     uncertain: Schema.Boolean,
+    warning: Schema.NullOr(Schema.String),
+    targets: Schema.Array(TargetSchema),
     restore: Schema.NullOr(RestoreSchema)
 });
 
@@ -52,6 +64,7 @@ export interface NewGameData {
     readonly chats: readonly { readonly id: string; readonly title: string }[];
     readonly selfChatId: string;
     readonly lastChatId: string | null;
+    readonly typingHint: boolean;
 }
 
 export interface TypedInput {
@@ -77,5 +90,7 @@ export const emptyDraft: Draft = {
     audience: [],
     custom: false,
     uncertain: false,
+    warning: null,
+    targets: [],
     restore: null
 };

@@ -26,12 +26,10 @@ export const afterChange = Effect.fn('Bot.afterChange')(function* (game: Session
 export const changeNotes = Effect.fn('Bot.changeNotes')(function* (
     user: MenuUser,
     game: SessionView,
-    action: Extract<Action, { _tag: 'update_session' }>
+    change: { readonly action: Extract<Action, { _tag: 'update_session' }>; readonly loud: boolean }
 ) {
+    const { action } = change;
     const changedPlaces = Predicate.isNotUndefined(action.capacityMax) && action.capacityMax !== game.capacityMax;
-    const places = changedPlaces
-        ? [menuText(user.locale, 'placesChange', { from: game.capacityMax ?? '♾', to: action.capacityMax ?? '♾' })]
-        : [];
     const changes: [boolean, MenuKey][] = [
         [isDefined(action.localTime) && action.localTime !== game.localTime, 'oldTime'],
         [isDefined(action.localDate) && action.localDate !== game.localDate, 'oldDate'],
@@ -41,5 +39,11 @@ export const changeNotes = Effect.fn('Bot.changeNotes')(function* (
     const stale = changes.filter(([changed]) => changed).map(([, key]) => menuText(user.locale, key));
     const hasPoll = yield* hasOpenPoll(game.id);
 
-    return [...places, ...(hasPoll && isNotEmptyArray(stale) ? [menuText(user.locale, 'staleIn', { what: stale.join(', ') })] : [])];
+    if (!hasPoll || !isNotEmptyArray(stale)) {
+        return [];
+    }
+
+    const learn = change.loud ? [menuText(user.locale, 'playersLearn')] : [];
+
+    return [[menuText(user.locale, 'staleIn', { what: stale.join(', ') }), ...learn].join(' ')];
 });

@@ -32,7 +32,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(301));
             const stranger = conversation(recorder, member);
             yield* admin.type('/newgame');
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
             yield* admin.type('/start');
             const start = admin.screen();
             yield* admin.type('/menu');
@@ -95,7 +95,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/newgame');
             const old = admin.screen();
             yield* admin.type('/newgame');
-            yield* admin.tapOn(old, '👥 +');
+            yield* admin.tapOn(old, '+1');
             const stale = recorder.calls.findLast(call => call.method === 'answerCallbackQuery')?.payload;
             yield* db
                 .update(roleGrant)

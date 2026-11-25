@@ -16,9 +16,9 @@ const refused = /^Telegram refused: /u;
 
 export const failureText = (locale: Locale, reason: string, target: FailureTarget): FailureText => {
     if (/uncertain/u.test(reason)) {
-        const to = target.isPrivate ? menuText(locale, 'toMe') : menuText(locale, 'toChat', { where: target.where });
+        const text = target.isPrivate ? menuText(locale, 'uncertainMe') : menuText(locale, 'uncertain', { where: target.where });
 
-        return { text: menuText(locale, 'uncertain', { to }), uncertain: true };
+        return { text, uncertain: true };
     }
 
     const known: [RegExp, () => string][] = [

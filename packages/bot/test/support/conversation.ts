@@ -77,6 +77,7 @@ export const conversation = (recorder: TelegramRecorder, user: Person) => {
 
     return {
         screen,
+        seen: () => [...messages().shown.values()].toSorted((left, right) => left.id - right.id),
         labels: () => screen().buttons.map(row => row.map(button => button.text)),
         type: (text: string) => deliver({ message: { message_id: nextUpdateId, date: 0, chat, from: user, text } }),
         location: (latitude: number, longitude: number) =>

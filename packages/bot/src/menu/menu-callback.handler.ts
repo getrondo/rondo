@@ -54,16 +54,20 @@ const navigate = Effect.fn('Bot.navigate')(function* (user: MenuUser, parts: rea
     return Option.none<string>();
 });
 
+const sendingOps = new Set(['ok', 'sv']);
+
 const newGameTap = Effect.fn('Bot.newGameTap')(function* (user: MenuUser, parts: readonly string[], messageId: number) {
-    const [, revision, op = '', arg = ''] = parts;
+    const [, revision = '', op = '', arg = ''] = parts;
     const state = yield* loadAdminState(user.tgUserId, user.now);
     const draft = state.pipe(Option.flatMap(row => decodeDraft(row.draft)));
 
-    if (Option.isNone(state) || Option.isNone(draft) || state.value.messageId !== messageId || String(state.value.revision) !== revision) {
-        return yield* replyStale(user, messageId, op === 'ok' || op === 'sv');
+    if (Option.isNone(state) || Option.isNone(draft) || state.value.messageId !== messageId) {
+        return yield* replyStale(user, messageId, revision);
     }
 
-    return yield* handleNewGameTap(user, state.value, draft.value, { op, arg, messageId });
+    const live = String(state.value.revision) === revision;
+
+    return yield* handleNewGameTap(user, state.value, draft.value, { op: live || !sendingOps.has(op) ? op : 'redraw', arg, messageId });
 });
 
 export const handleMenuTap = Effect.fn('Bot.handleMenuTap')(function* (user: MenuUser, data: string, messageId: number) {

@@ -24,7 +24,7 @@ const postedGame = Effect.fn('test.postedGame')(function* (slug: string, chatId:
     yield* admin.type('/newgame');
     yield* admin.tap('👥 22');
     yield* admin.type(places);
-    yield* admin.tap('✅ Опублікувати');
+    yield* admin.tap('✅ Надіслати');
     const sent = recorder.calls.findLast(call => call.method === 'sendPoll' && call.payload.chat_id === chatId)?.result as {
         poll: { id: string };
     };

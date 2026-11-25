@@ -1,4 +1,4 @@
-import { isDefined, isNotEmptyString } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
 import { clearHistory } from '@rondo/assistant/history/conversation.repository';
 import { runAssistant } from '@rondo/assistant/run-assistant';
 import { communityProfile } from '@rondo/core/community/community.repository';
@@ -15,12 +15,12 @@ import * as Schema from 'effect/Schema';
 import { noFollowUp, type FollowUp } from '../context/follow-up';
 import { sendProposal } from '../context/send-proposal';
 import { toTelegramUser } from '../context/telegram-user.mapper';
-import { handleGameInput } from '../menu/game-actions/game-actions.handler';
+import { handleGameInput } from '../menu/game-actions/card-input';
 import { gamesScreen } from '../menu/games.screen';
 import { homeScreen, startScreen } from '../menu/home.screen';
 import { menuUserOf } from '../menu/menu-user';
 import { DraftSchema } from '../menu/new-game/draft';
-import { handleNewGameInput, openNewGame } from '../menu/new-game/new-game.handler';
+import { handleNewGameInput, openNewGame, showNotUnderstood } from '../menu/new-game/new-game.handler';
 import { showScreen } from '../menu/show-screen';
 
 import type { MenuUser } from '../menu/screen.interface';
@@ -105,8 +105,14 @@ const assistantReply = Effect.fn('Bot.assistantReply')(function* (user: MenuUser
         }
     }).pipe(
         Effect.tapCause(Effect.logError),
-        Effect.catchCause(() => Effect.succeed({ text: text(user.locale, 'aiError'), proposals: [] }))
+        Effect.catchCause(() => Effect.succeed({ text: '', proposals: [] }))
     );
+
+    if (!isNotEmptyString(reply.text) && !isNotEmptyArray(reply.proposals)) {
+        yield* showNotUnderstood(user);
+
+        return;
+    }
 
     if (isNotEmptyString(reply.text)) {
         yield* send(reply.text);
