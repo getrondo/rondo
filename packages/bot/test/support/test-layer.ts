@@ -1,6 +1,6 @@
 import { AiGateway } from '@rondo/assistant/service/ai-gateway.service';
 import { Access } from '@rondo/core/access/admin-access';
-import { postgresRaceLayer } from '@rondo/core/testing/postgres-race.layer';
+import { localPostgresLayer } from '@rondo/core/testing/local-postgres.layer';
 import { testDbLayer } from '@rondo/db/testing/test-db.layer';
 import { recordingTelegramLayer, type TelegramRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import { MockLanguageModelV4 } from 'ai/test';
@@ -10,12 +10,14 @@ import { fixedClockLayer } from './fixed-clock';
 
 const silentModel = new MockLanguageModelV4({ doGenerate: async () => await Promise.reject(new Error('gateway down')) });
 
+export const raceDatabaseUrl = process.env.RONDO_TEST_DATABASE_URL ?? '';
+
 export const menuTestLayer = (recorder: TelegramRecorder) =>
     Layer.mergeAll(testDbLayer, recordingTelegramLayer(recorder), AiGateway.layerFor(silentModel), Access.layerFor([42n]), fixedClockLayer);
 
 export const raceMenuLayer = (recorder: TelegramRecorder) =>
     Layer.mergeAll(
-        postgresRaceLayer,
+        localPostgresLayer(raceDatabaseUrl),
         recordingTelegramLayer(recorder),
         AiGateway.layerFor(silentModel),
         Access.layerFor([42n]),

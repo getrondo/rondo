@@ -117,9 +117,18 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                         date: Math.floor(Date.parse('2026-11-27T16:00:00Z') / 1000),
                         chat: { id: -3202, type: 'supergroup', title: 'Games' },
                         from: { id: 323, is_bot: false, first_name: 'Admin 323' },
-                        text: String(update[0]?.payload.text)
-                            .replace(/^Оновлені склади\n/u, '')
-                            .replaceAll(/<[^<>]*>/gu, '')
+                        forward_origin: { type: 'user', date: 0, sender_user: { id: 777, is_bot: true, first_name: 'Rondo' } },
+                        text: String(update[0]?.payload.text).replaceAll(/<[^<>]*>/gu, '')
+                    }
+                });
+                yield* deliver({
+                    message: {
+                        message_id: 9002,
+                        date: Math.floor(Date.parse('2026-11-27T16:01:00Z') / 1000),
+                        chat: { id: -3202, type: 'supergroup', title: 'Games' },
+                        from: { id: 323, is_bot: false, first_name: 'Admin 323' },
+                        forward_origin: { type: 'user', date: 0, sender_user: { id: 778, is_bot: true, first_name: 'Other bot' } },
+                        text: 'Склади: Пт 27.11 19:00\n\n🔴 Червоні · 4\nAndriy\nBohdan\nVasyl\nHryhoriy\n\n🔵 Сині · 4\nDmytro\nYevhen\nZakhar\nIvan'
                     }
                 });
                 const teams = yield* db.select().from(team).where(eq(team.sessionId, sessionId));

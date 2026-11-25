@@ -1,7 +1,7 @@
 import { isDefined, isEmptyArray, isNotEmptyArray } from '@rnw-community/shared';
 import { telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { messageRef } from '@rondo/db/schema/platform.schema';
-import { team, teamColor, teamDraft } from '@rondo/db/schema/play.schema';
+import { team, teamColor } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { chatRules } from '@rondo/ingest-telegram/extract/chat-rules';
@@ -10,7 +10,7 @@ import { extractPoll, makeVenueMatcher } from '@rondo/ingest-telegram/extract/ex
 import { extractCancellation } from '@rondo/ingest-telegram/extract/extract-signals';
 import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import { storeLineup } from '@rondo/ingest-telegram/roster/store-lineup';
-import { and, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -187,17 +187,6 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
     }
 
     const sessionId = found.value;
-    const [made] = yield* db
-        .select({ publishedAt: teamDraft.publishedAt })
-        .from(teamDraft)
-        .where(and(eq(teamDraft.sessionId, sessionId), isNotNull(teamDraft.publishedAt)));
-
-    if (isDefined(made)) {
-        yield* rememberMessage(message, 'lineup', sessionId);
-
-        return;
-    }
-
     const colors = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId));
 
     yield* db.delete(team).where(eq(team.sessionId, sessionId));

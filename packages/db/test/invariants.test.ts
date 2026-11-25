@@ -348,7 +348,7 @@ layer(testDbLayer, { timeout: 60_000 })('database invariants', it => {
                 .returning({ id: session.id });
             yield* db.insert(team).values({ sessionId: game?.id ?? '', ordinal: 1, colorId: orange?.id });
             const badges = readFileSync(
-                fileURLToPath(new URL('../drizzle/20261125112522_team_badges/migration.sql', import.meta.url)),
+                fileURLToPath(new URL('../drizzle/20261125115337_team_badges/migration.sql', import.meta.url)),
                 'utf8'
             )
                 .split('--> statement-breakpoint')

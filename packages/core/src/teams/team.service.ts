@@ -7,6 +7,7 @@ import * as Effect from 'effect/Effect';
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 import { footballActivity } from '../sessions/session.service';
+import { plainText } from '../utils/plain-text.util';
 
 import { paddedColours } from './badges';
 import { initialState, syncRoster, withChange, type DraftState } from './draft-state';
@@ -39,11 +40,6 @@ const solvedTeams = (inputs: TeamInputs, teamCount: number | null): ProposedTeam
         players: members.map(personId => ({ personId, displayName: nameOf.get(personId) ?? '', isGk: keepers.includes(personId) }))
     }));
 };
-
-const entities: Readonly<Record<string, string>> = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"' };
-
-const plainText = (html: string): string =>
-    html.replaceAll(/<[^<>]*>/gu, '').replaceAll(/&(?:amp|lt|gt|quot);/gu, entity => entities[entity] ?? entity);
 
 const withProposed = (state: DraftState, teams: readonly ProposedTeam[]): DraftState =>
     withChange(state, {

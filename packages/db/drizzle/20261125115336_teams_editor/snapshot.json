@@ -2,8 +2,8 @@
     "type": "diff",
     "version": "10",
     "dialect": "postgres",
-    "id": "cef656a8-a49c-4130-8354-81574fe5ce46",
-    "prevIds": ["0d3fc089-69ba-48a9-8598-1b00e39f30d7"],
+    "id": "2f699242-aa79-4d06-a4fa-311fae7fa5a2",
+    "prevIds": ["ea1d59bc-290b-46b1-8bc7-b04a27f5f510"],
     "footprints": [
         {
             "statementType": "create_enum",
