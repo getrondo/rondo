@@ -1,5 +1,6 @@
 import { isDefined } from '@rnw-community/shared';
 import { community, telegramChat } from '@rondo/db/schema/org.schema';
+import { messageRef, pollForward, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { CommunityConfigSchema, type CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
 import { and, asc, eq } from 'drizzle-orm';
@@ -83,15 +84,20 @@ export const linkedChatsOf = Effect.fn('Core.linkedChatsOf')(function* (communit
 
 export const moveChat = Effect.fn('Core.moveChat')(function* (from: bigint, to: bigint) {
     const db = yield* Db;
-    const [taken] = yield* db.select({ chatId: telegramChat.chatId }).from(telegramChat).where(eq(telegramChat.chatId, to));
 
-    if (isDefined(taken)) {
-        yield* db.delete(telegramChat).where(eq(telegramChat.chatId, from));
+    yield* db.transaction(() =>
+        Effect.gen(function* () {
+            const [taken] = yield* db.select({ chatId: telegramChat.chatId }).from(telegramChat).where(eq(telegramChat.chatId, to));
 
-        return;
-    }
+            yield* isDefined(taken)
+                ? db.delete(telegramChat).where(eq(telegramChat.chatId, from))
+                : db.update(telegramChat).set({ chatId: to, kind: 'supergroup' }).where(eq(telegramChat.chatId, from));
+            yield* db.update(messageRef).set({ chatId: to }).where(eq(messageRef.chatId, from));
+            yield* db.update(telegramPoll).set({ chatId: to }).where(eq(telegramPoll.chatId, from));
 
-    yield* db.update(telegramChat).set({ chatId: to, kind: 'supergroup' }).where(eq(telegramChat.chatId, from));
+            return yield* db.update(pollForward).set({ chatId: to }).where(eq(pollForward.chatId, from));
+        })
+    );
 });
 
 export const bindChat = Effect.fn('Core.bindChat')(function* (input: {

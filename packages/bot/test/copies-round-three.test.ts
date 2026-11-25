@@ -1,7 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { bindChat } from '@rondo/core/community/community.repository';
 import { telegramChat } from '@rondo/db/schema/org.schema';
-import { messageRef } from '@rondo/db/schema/platform.schema';
+import { messageRef, pollForward, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -88,6 +88,36 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(chats.map(chat => ({ chatId: chat.chatId, topicId: chat.topicId, kind: chat.kind }))).toEqual([
                 { chatId: -1_000_026_003n, topicId: 7, kind: 'supergroup' }
             ]);
+        })
+    );
+
+    it.effect('moves the polls, copies and forward claims of a group that became a supergroup in one go', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            yield* seedSeason('r4-migrate-refs', { groupChatId: -26_004, adminId: 2604 });
+            const admin = conversation(recorder, adminNumbered(2604));
+            yield* admin.type('/newgame');
+            yield* admin.tap('✅ Надіслати');
+            const pollId = lastPollId(recorder, -26_004);
+            yield* db.insert(pollForward).values({ pollId, chatId: -26_004n, messageId: 9 });
+            yield* deliver({
+                message: {
+                    message_id: 2,
+                    date: 1_795_680_000,
+                    chat: { id: -26_004, type: 'group', title: 'Games' },
+                    from: { id: 2604, is_bot: false, first_name: 'Admin 2604' },
+                    migrate_to_chat_id: -1_000_026_004
+                }
+            });
+            const [poll] = yield* db.select().from(telegramPoll).where(eq(telegramPoll.pollId, pollId));
+            const refs = yield* db.select().from(messageRef).where(eq(messageRef.chatId, -26_004n));
+            const moved = yield* db.select().from(messageRef).where(eq(messageRef.chatId, -1_000_026_004n));
+            const [claim] = yield* db.select().from(pollForward).where(eq(pollForward.pollId, pollId));
+
+            expect(poll?.chatId).toBe(-1_000_026_004n);
+            expect(refs).toEqual([]);
+            expect(moved).toHaveLength(1);
+            expect(claim?.chatId).toBe(-1_000_026_004n);
         })
     );
 });

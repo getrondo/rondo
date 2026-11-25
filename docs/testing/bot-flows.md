@@ -165,8 +165,9 @@ without the bot still arrive as poll answers with public voters.
 | 152 | SEND SAFETY | Retry after an unknown send opens the confirmation | Card → 📣 → ✅ times out → 📣 Немає, надіслати в | — | «Так буде в «Games»:» with ✅ | — | update | `opens the normal confirmation from the button after an unknown poll send on the card` |
 | 153 | ADMIN AFTER | Notice with no linked chat left | Group unlinked, card → 🕖 → 20:15 | Nothing | Only the quiet button; «✅ Змінено. У групу нічого не надіслано.» | Game moved | update | `offers only the quiet change when no chat of the game is linked any more and says nothing was sent` |
 | 154 | ADMIN AFTER | Notice to a group and to me | Game posted to me, its copy in a linked topic; card → 🕖 → ✅ | Notice in the topic and in my chat | «Так буде в «Copies» і в тебе:», «✅ Змінено, у «Copies» і тобі написано.» | Game moved | update | `names the group and the private chat a notice goes to and sends it to exactly both` |
-| 155 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 156 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 157 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 158 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 159 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 155 | AUDIENCE | Supergroup move keeps the game's messages | Posted poll with a forward claim, then migrate_to_chat_id | — | — | Poll, message refs and claims move to the new id in one transaction | update | `moves the polls, copies and forward claims of a group that became a supergroup in one go` |
+| 156 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 157 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 158 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 159 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 160 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
