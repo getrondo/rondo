@@ -10,11 +10,13 @@ import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 import { requireSession } from '../sessions/session.service';
 
-import { squadOf } from './lineup-of-draft';
+import { squadFingerprint, squadOf } from './lineup-of-draft';
 import { rateResult } from './rate-result';
 import { ratingsOf } from './team-inputs';
 
 const correctionMs = 12 * 60 * 60_000;
+
+export const squadChanged = 'the teams changed after the card was shown';
 
 // Who played: the squad without sign-ups that are out and without no-shows an admin marked
 const playedSquad = Effect.fn('Core.playedSquad')(function* (sessionId: string) {
@@ -85,6 +87,7 @@ export const recordResult = Effect.fn('Core.recordResult')(
         readonly winner: number | null;
         readonly actorPersonId: string | null;
         readonly now: Date;
+        readonly squad?: string | null;
     }) =>
         withCommunityLock(
             { id: input.communityId },
@@ -98,6 +101,10 @@ export const recordResult = Effect.fn('Core.recordResult')(
 
                 if (target.status === 'cancelled' || target.status === 'moved') {
                     return yield* ActionFailedError.make({ reason: 'the game is already over or cancelled' });
+                }
+
+                if (isDefined(input.squad) && input.squad !== (yield* squadFingerprint(input.sessionId))) {
+                    return yield* ActionFailedError.make({ reason: squadChanged });
                 }
 
                 if (input.now.getTime() < target.startsAt.getTime()) {

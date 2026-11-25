@@ -99,5 +99,6 @@ export const teamsTextRu = {
     twice: '«{name}» дважды в списке — оставил в {badge}.',
     queued: '⏳ Игра полная — в очереди: {names}. Сверх лимита: ➕ Кто-то пришёл.',
     guestsAdded: '➕ Добавил: {names}.',
-    alreadyIn: '«{name}» уже в игре.'
+    alreadyIn: '«{name}» уже в игре.',
+    squadChanged: '🔄 Составы изменились, результат не записан. Посмотри ещё раз.'
 } as const;

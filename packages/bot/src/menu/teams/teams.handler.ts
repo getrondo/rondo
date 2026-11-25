@@ -3,7 +3,7 @@ import { requireSession } from '@rondo/core/sessions/session.service';
 import { joinCandidates, waitingOf } from '@rondo/core/signups/roster.service';
 import { playersOf } from '@rondo/core/teams/draft-state';
 import { personNames } from '@rondo/core/teams/team-inputs';
-import { recordResult } from '@rondo/core/teams/team-result';
+import { recordResult, squadChanged } from '@rondo/core/teams/team-result';
 import { setTier } from '@rondo/core/teams/team.service';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -141,22 +141,26 @@ const changeScreen = Effect.fn('Bot.teamsChange')(function* (user: MenuUser, tap
 
 const resultTap = Effect.fn('Bot.teamsResult')(function* (user: MenuUser, tap: TeamsTap, messageId: number) {
     const isChoosing = tap.args[0] === 'c';
-
-    if (!isChoosing) {
-        const winner = Number(tap.args[0]);
-        yield* recordResult({
-            communityId: user.communityId,
-            sessionId: tap.sessionId,
-            winner: winner > 0 ? winner : null,
-            actorPersonId: yield* actorOf(user),
-            now: user.now
-        });
-    }
-
+    const winner = Number(tap.args[0]);
+    const recorded = isChoosing
+        ? true
+        : yield* recordResult({
+              communityId: user.communityId,
+              sessionId: tap.sessionId,
+              winner: winner > 0 ? winner : null,
+              actorPersonId: yield* actorOf(user),
+              now: user.now,
+              squad: tap.args[1] ?? null
+          }).pipe(
+              Effect.as(true),
+              Effect.catchTag('ActionFailedError', failure =>
+                  failure.reason === squadChanged ? Effect.succeed(false) : Effect.fail(failure)
+              )
+          );
     const card = yield* gameCardPage(user, tap.sessionId, null, { page: 0, isChoosing });
     yield* showScreen(user.chatId, messageId, card);
 
-    return Option.none<string>();
+    return recorded ? Option.none<string>() : Option.some(teamsText(user.locale, 'squadChanged'));
 });
 
 const tierTap = Effect.fn('Bot.teamsTier')(function* (user: MenuUser, view: EditorView, tap: TeamsTap) {

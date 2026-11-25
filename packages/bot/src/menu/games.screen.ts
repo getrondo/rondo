@@ -7,7 +7,7 @@ import { listSessions, requireSession } from '@rondo/core/sessions/session.servi
 import { audienceOf } from '@rondo/core/signups/audience';
 import { unknownForwardsOf } from '@rondo/core/signups/forward-poll';
 import { rosterOf } from '@rondo/core/signups/signup.service';
-import { storedTeams } from '@rondo/core/teams/lineup-of-draft';
+import { squadFingerprint, storedTeams } from '@rondo/core/teams/lineup-of-draft';
 import { teamName } from '@rondo/core/teams/lineup-post';
 import { addDays } from '@rondo/core/utils/add-days.util';
 import { escapeHtml } from '@rondo/telegram/format/html';
@@ -220,9 +220,13 @@ const countLine = (user: MenuUser, game: SessionView, signedLine: string, signed
 const resultOf = (
     user: MenuUser,
     game: SessionView,
-    stored: readonly { readonly ordinal: number; readonly rank: number | null; readonly badge: string }[],
+    result: {
+        readonly teams: readonly { readonly ordinal: number; readonly rank: number | null; readonly badge: string }[];
+        readonly squad: string;
+    },
     isChoosing: boolean
 ): { readonly line: string; readonly rows: MenuButton[][] } | null => {
+    const stored = result.teams;
     const hasStarted = game.startsAt.getTime() <= user.now.getTime() && game.status !== 'cancelled' && game.status !== 'moved';
     const isRanked = stored.some(entry => isDefined(entry.rank));
     const isCorrectable = !isRanked || user.now.getTime() <= game.startsAt.getTime() + 12 * 60 * 60_000;
@@ -240,10 +244,10 @@ const resultOf = (
         ...Array.from({ length: Math.ceil(stored.length / 2) }, (_row, row) =>
             stored.slice(row * 2, row * 2 + 2).map((entry, index) => ({
                 text: `🏆 ${nameAt(row * 2 + index)}`,
-                callback_data: teamsData(base, 'W', [entry.ordinal])
+                callback_data: teamsData(base, 'W', [entry.ordinal, result.squad])
             }))
         ),
-        [{ text: menuText(user.locale, 'draw'), callback_data: teamsData(base, 'W', [0]) }]
+        [{ text: menuText(user.locale, 'draw'), callback_data: teamsData(base, 'W', [0, result.squad]) }]
     ];
     const change = isCorrectable ? [[{ text: menuText(user.locale, 'changeResult'), callback_data: teamsData(base, 'W', ['c']) }]] : [];
 
@@ -277,7 +281,7 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
     const canDelete = yield* isDeletableSession(user.communityId, sessionId, user.today);
     const unknown = yield* unknownForwardsOf(sessionId);
     const stored = yield* storedTeams(sessionId);
-    const result = resultOf(user, game, stored, card.isChoosing === true);
+    const result = resultOf(user, game, { teams: stored, squad: yield* squadFingerprint(sessionId) }, card.isChoosing === true);
     const state: CardState = {
         hasPoll: isNotEmptyArray(audience),
         canDelete,

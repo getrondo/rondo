@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
 import { lineupEntry, team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
@@ -122,4 +124,20 @@ export const storedTeams = Effect.fn('Core.storedTeams')(function* (sessionId: s
             rank: row.rank,
             badge: badgeOfRow({ emoji: row.emoji, name: row.colour ?? '' })?.badge ?? `${row.ordinal}.`
         }));
+});
+
+// A short mark of the stored squad and its badges, carried by result buttons
+export const squadFingerprint = Effect.fn('Core.squadFingerprint')(function* (sessionId: string) {
+    const teams = yield* storedTeams(sessionId);
+    const squad = yield* squadOf(sessionId);
+    const shown = teams.map(entry => [
+        entry.ordinal,
+        entry.badge,
+        squad
+            .filter(member => member.ordinal === entry.ordinal)
+            .map(member => member.personId)
+            .toSorted()
+    ]);
+
+    return createHash('sha256').update(JSON.stringify(shown)).digest('base64url').slice(0, 6);
 });

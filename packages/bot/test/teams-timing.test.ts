@@ -1,7 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { cancelSession, getSession } from '@rondo/core/sessions/session.service';
 import { adminState, telegramPoll } from '@rondo/db/schema/platform.schema';
-import { rating, team } from '@rondo/db/schema/play.schema';
+import { rating, team, teamMember } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -15,7 +15,7 @@ import { conversation, deliver } from './support/conversation';
 import { setNow } from './support/fixed-clock';
 import { grantOrganizer } from './support/season';
 import { teamsGame } from './support/teams-game';
-import { buttonData, draftTeams, labelsOf, sentMessage } from './support/teams-screen';
+import { buttonData, draftTeams, labelsOf, openOverview, sentMessage } from './support/teams-screen';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
@@ -197,6 +197,36 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const [state] = yield* db.select({ messageId: adminState.messageId }).from(adminState).where(eq(adminState.tgUserId, 371n));
 
             expect(state?.messageId).toBe(creating.id);
+        })
+    );
+
+    it.effect('records no winner from a card whose squad changed since it was shown', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { sessionId } = yield* teamsGame('teams-result-stale', { groupChatId: -3381, adminId: 381, players: 8 });
+            const admin = conversation(recorder, adminNumbered(381));
+            yield* openOverview(admin);
+            yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
+            yield* setNow(at('21:30').getTime());
+            yield* admin.type('/games');
+            yield* admin.tap('Пт 27.11');
+            const card = admin.screen();
+            const teams = yield* db.select({ id: team.id }).from(team).where(eq(team.sessionId, sessionId)).orderBy(team.ordinal);
+            const [moved] = yield* db
+                .select()
+                .from(teamMember)
+                .where(eq(teamMember.teamId, teams[0]?.id ?? ''));
+            yield* db
+                .update(teamMember)
+                .set({ teamId: teams[1]?.id ?? '' })
+                .where(eq(teamMember.personId, moved?.personId ?? ''));
+            yield* admin.press(buttonData(card, '🏆 Червоні'));
+            const stale = yield* db.select({ rank: team.rank }).from(team).where(eq(team.sessionId, sessionId)).orderBy(team.ordinal);
+            yield* admin.press(buttonData(admin.screen(), '🏆 Червоні'));
+            const fresh = yield* db.select({ rank: team.rank }).from(team).where(eq(team.sessionId, sessionId)).orderBy(team.ordinal);
+
+            expect(stale.map(row => row.rank)).toEqual([null, null]);
+            expect(fresh.map(row => row.rank)).toEqual([1, 2]);
         })
     );
 });
