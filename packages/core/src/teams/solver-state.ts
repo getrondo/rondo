@@ -76,7 +76,7 @@ export const strengthSpread = (model: SolverModel, state: SolverState): number =
     return spreadOf(state.totals.map((total, team) => total + (largest - (state.sizes[team] ?? 0)) * model.meanStrength));
 };
 
-export const teamCost = (model: SolverModel, state: SolverState): number => {
+const teamCost = (model: SolverModel, state: SolverState): number => {
     const largest = Math.max(...state.sizes);
     const adjusted = state.totals.map((total, team) => total + (largest - (state.sizes[team] ?? 0)) * model.meanStrength);
     const average = adjusted.reduce((sum, value) => sum + value, 0) / model.teamCount;
@@ -153,4 +153,16 @@ export const swapDelta = (model: SolverModel, state: SolverState, first: number,
         anchorCost(model, second, left) -
         anchorCost(model, second, right)
     );
+};
+
+export const totalCost = (model: SolverModel, state: SolverState): number => {
+    let pairs = 0;
+
+    for (let player = 0; player < model.size; player += 1) {
+        pairs += state.link[player * model.teamCount + (state.team[player] ?? 0)] ?? 0;
+        const anchored = model.anchor[player];
+        pairs += isDefined(anchored) && anchored !== state.team[player] ? 2 * model.weights.move : 0;
+    }
+
+    return teamCost(model, state) + pairs / 2;
 };

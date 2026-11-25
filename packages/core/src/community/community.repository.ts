@@ -1,6 +1,7 @@
 import { isDefined } from '@rnw-community/shared';
 import { community, telegramChat } from '@rondo/db/schema/org.schema';
 import { messageRef, pollForward, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { lineupDelivery } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { CommunityConfigSchema, type CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
 import { and, asc, eq, sql } from 'drizzle-orm';
@@ -108,7 +109,15 @@ export const moveChat = Effect.fn('Core.moveChat')(function* (from: bigint, to: 
                   and ((stale.chat_id = ${from} and other.chat_id = ${to} and stale.claimed_at <= other.claimed_at)
                     or (stale.chat_id = ${to} and other.chat_id = ${from} and stale.claimed_at < other.claimed_at))`);
 
-            return yield* db.update(pollForward).set({ chatId: to }).where(eq(pollForward.chatId, from));
+            yield* db.update(pollForward).set({ chatId: to }).where(eq(pollForward.chatId, from));
+            yield* db.execute(sql`
+                delete from play.lineup_delivery stale
+                using play.lineup_delivery other
+                where stale.session_id = other.session_id
+                  and ((stale.chat_id = ${from} and other.chat_id = ${to} and stale.updated_at <= other.updated_at)
+                    or (stale.chat_id = ${to} and other.chat_id = ${from} and stale.updated_at < other.updated_at))`);
+
+            return yield* db.update(lineupDelivery).set({ chatId: to }).where(eq(lineupDelivery.chatId, from));
         })
     );
 });

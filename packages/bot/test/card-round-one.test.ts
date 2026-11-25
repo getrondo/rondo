@@ -78,7 +78,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('✅ Надіслати мені');
             yield* admin.tap('✅ Надіслати мені');
             const lineup = sentTo(1602, 'sendMessage').findLast(call => String(call.payload.text).startsWith('<b>Склади'));
-            const hint = sentTo(1602, 'sendMessage').findLast(call => String(call.payload.text).startsWith('☝️'));
+            const hint = sentTo(1602, 'sendMessage').findLast(call => String(call.payload.text).includes('☝️'));
             yield* admin.tap('⬅️ Назад');
             yield* admin.tap('🕖 Час');
             yield* admin.tap('19:00');
@@ -99,7 +99,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 ])
             );
             expect(String(lineup?.payload.text)).not.toContain('Перешли');
-            expect(String(hint?.payload.text)).toBe('☝️ Склади вище: натисни й утримуй → Переслати → група.');
+            expect(String(hint?.payload.text)).toContain('☝️ Склади вище: натисни й утримуй → Переслати → група.');
             expect(labelsOf(changeAsk)).toEqual(expect.arrayContaining(['✅ Змінити й надіслати мені', 'Змінити без повідомлення']));
             expect(String(notice?.payload.text)).toContain('↪️ Перешли це в групу.');
         })

@@ -1,27 +1,32 @@
-import { rating, teamDraft } from '@rondo/db/schema/play.schema';
+import { isDefined } from '@rnw-community/shared';
+import { rating } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
-import * as Option from 'effect/Option';
-import * as Schema from 'effect/Schema';
 
 import { recordAudit } from '../audit/record-audit';
+import { ActionFailedError } from '../error/action-failed.error';
 import { footballActivity } from '../sessions/session.service';
 
-import { DraftStateSchema, initialState, withChange } from './draft-state';
+import { paddedColours } from './badges';
+import { initialState, syncRoster, withChange, type DraftState } from './draft-state';
+import { planLineup } from './lineup-plan';
+import { lineupChanged, publishLineup } from './publish-lineup';
 import { solveTeams } from './solve-teams';
-import { createDraft, loadDraft, solverInputFor, usualTeamCount } from './team-draft.service';
+import { changeDraft, openDraft, solverInputFor, usualTeamCount } from './team-draft.service';
 import { loadTeamInputs, tierLevel } from './team-inputs';
 
-import type { Tier } from './interface/team-inputs.interface';
+import type { Action } from '../actions/action.model';
+import type { Locale } from '../i18n/locale';
+import type { GroupTarget } from '../interface/group-target.interface';
+import type { TeamInputs, Tier } from './interface/team-inputs.interface';
+import type * as Option from 'effect/Option';
 
 export interface ProposedTeam {
     readonly ordinal: number;
     readonly players: readonly { readonly personId: string; readonly displayName: string; readonly isGk: boolean }[];
 }
 
-export const proposeTeams = Effect.fn('Core.proposeTeams')(function* (communityId: string, sessionId: string, teamCount: number | null) {
-    const inputs = yield* loadTeamInputs(communityId, sessionId);
+const solvedTeams = (inputs: TeamInputs, teamCount: number | null): ProposedTeam[] => {
     const keepers = inputs.members.filter(member => member.isGk).map(member => member.personId);
     const count = teamCount ?? usualTeamCount(inputs.players.length);
     const empty = initialState({ variants: [], reasons: [], colours: [], keepers });
@@ -32,33 +37,71 @@ export const proposeTeams = Effect.fn('Core.proposeTeams')(function* (communityI
         ordinal: index + 1,
         players: members.map(personId => ({ personId, displayName: nameOf.get(personId) ?? '', isGk: keepers.includes(personId) }))
     }));
+};
+
+const withProposed = (state: DraftState, teams: readonly ProposedTeam[]): DraftState =>
+    withChange(state, {
+        teams: teams.map(entry => entry.players.map(player => player.personId)),
+        keepers: teams.flatMap(entry => entry.players.filter(player => player.isGk).map(player => player.personId)),
+        pending: [],
+        locks: [],
+        colours: paddedColours(state.colours, teams.length)
+    });
+
+export const publishTeamsAction = Effect.fn('Core.publishTeamsAction')(function* (input: {
+    readonly communityId: string;
+    readonly sessionId: string;
+    readonly teams: readonly ProposedTeam[] | null;
+    readonly teamCount: number | null;
+    readonly locale: Locale;
+    readonly privateChatId: number | null;
+    readonly fallback: Option.Option<GroupTarget>;
+    readonly actorPersonId: string | null;
+}) {
+    const opened = yield* openDraft(input.communityId, input.sessionId, input.actorPersonId);
+    const teams = input.teams ?? solvedTeams(opened.inputs, input.teamCount);
+    const plan = yield* planLineup({ ...input, loaded: opened, state: withProposed(opened.row.state, teams) });
+
+    return {
+        _tag: 'publish_teams',
+        sessionId: input.sessionId,
+        teams,
+        version: opened.row.version,
+        fingerprint: plan.fingerprint
+    } satisfies Action;
 });
 
-export const storeProposedTeams = Effect.fn('Core.storeProposedTeams')(function* (
-    communityId: string,
-    sessionId: string,
-    teams: readonly ProposedTeam[],
-    actorPersonId: string | null
+export const executePublishTeams = Effect.fn('Core.executePublishTeams')(function* (
+    action: Extract<Action, { _tag: 'publish_teams' }>,
+    context: {
+        readonly communityId: string;
+        readonly locale: Locale;
+        readonly actorPersonId: string | null;
+        readonly privateChatId: number | null;
+        readonly fallback: Option.Option<GroupTarget>;
+    }
 ) {
-    const db = yield* Db;
-    const inputs = yield* loadTeamInputs(communityId, sessionId);
-    const found = yield* loadDraft(sessionId);
-    const row = Option.isSome(found)
-        ? found.value
-        : yield* createDraft(inputs, { actorPersonId, proposedAt: null, teamCount: teams.length });
-    const placed = teams.map(entry => entry.players.map(player => player.personId));
-    const keepers = teams.flatMap(entry => entry.players.filter(player => player.isGk).map(player => player.personId));
-    const colours = row.state.colours.length === placed.length ? row.state.colours : row.state.colours.slice(0, placed.length);
-    const state = withChange(row.state, { teams: placed, keepers, pending: [], locks: [], colours });
+    const roster = (yield* loadTeamInputs(context.communityId, action.sessionId)).members.map(member => member.personId);
+    const change = yield* changeDraft(
+        { sessionId: action.sessionId, version: action.version, key: 'assistant', actorPersonId: context.actorPersonId },
+        state => Effect.succeed(syncRoster(withProposed(state, action.teams), roster))
+    );
 
-    yield* db
-        .update(teamDraft)
-        .set({
-            state: yield* Schema.encodeEffect(DraftStateSchema)(state).pipe(Effect.orDie),
-            version: row.version + 1,
-            updatedBy: actorPersonId
-        })
-        .where(eq(teamDraft.sessionId, sessionId));
+    if (change._tag !== 'changed') {
+        return yield* ActionFailedError.make({ reason: lineupChanged });
+    }
+
+    const published = yield* publishLineup({
+        ...context,
+        sessionId: action.sessionId,
+        version: change.row.version,
+        fingerprint: action.fingerprint
+    });
+    const missed = published.deliveries.find(delivery => !['sent', 'edited', 'unchanged'].includes(delivery.status));
+
+    return isDefined(missed)
+        ? yield* ActionFailedError.make({ reason: missed.reason ?? 'the teams result is uncertain, check the chat' })
+        : published;
 });
 
 export const setSeedRating = Effect.fn('Core.setSeedRating')(function* (input: {

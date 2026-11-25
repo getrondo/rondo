@@ -18,8 +18,7 @@ import { cancelSession, createSession, findSameGame, requireSession, updateSessi
 import { forwardPoll } from '../signups/forward-poll';
 import { publishPoll } from '../signups/publish-poll';
 import { closePollsOf } from '../signups/signup.service';
-import { publishLineup } from '../teams/publish-lineup';
-import { setSeedRating, storeProposedTeams } from '../teams/team.service';
+import { executePublishTeams, setSeedRating } from '../teams/team.service';
 import { createVenue, requireVenue, updateVenue } from '../venues/venue.service';
 
 import type { Locale } from '../i18n/locale';
@@ -140,20 +139,13 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
             }).pipe(asResult);
         }
         case 'publish_teams': {
-            return yield* Effect.gen(function* () {
-                yield* storeProposedTeams(communityId, action.sessionId, action.teams, actorPersonId);
-                yield* publishLineup({
-                    communityId,
-                    sessionId: action.sessionId,
-                    version: null,
-                    locale,
-                    actorPersonId,
-                    privateChatId: isDefined(context.requester) ? Number(context.requester) : null,
-                    fallback: context.group
-                });
-
-                return { sessionId: action.sessionId };
-            }).pipe(asResult);
+            return yield* executePublishTeams(action, {
+                communityId,
+                locale,
+                actorPersonId,
+                privateChatId: isDefined(context.requester) ? Number(context.requester) : null,
+                fallback: context.group
+            }).pipe(Effect.as({ sessionId: action.sessionId }), asResult);
         }
         case 'delete_session': {
             const now = yield* DateTime.nowAsDate;

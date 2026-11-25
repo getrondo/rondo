@@ -67,7 +67,8 @@ const ForwardPollAction = Schema.TaggedStruct('forward_poll', {
 const PublishTeamsAction = Schema.TaggedStruct('publish_teams', {
     sessionId: Schema.String,
     teams: Schema.Array(Team),
-    preview: Schema.optional(NoticePreview)
+    version: Schema.Int,
+    fingerprint: Schema.String
 });
 
 const MergePeopleAction = Schema.TaggedStruct('merge_people', { fromPersonId: Schema.String, intoPersonId: Schema.String });

@@ -9,6 +9,7 @@ import * as Option from 'effect/Option';
 
 import { syncMember } from '../src/identity/telegram-user';
 import { playersOf, swapPlayers, undo } from '../src/teams/draft-state';
+import { planLineup } from '../src/teams/lineup-plan';
 import { publishLineup } from '../src/teams/publish-lineup';
 import { changeDraft, openDraft, rebalanced } from '../src/teams/team-draft.service';
 import { recordResult } from '../src/teams/team-result';
@@ -90,14 +91,19 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
             const { communityId, sessionId, people } = yield* playedGame('draft-result', 10, 83_000);
             yield* setTier({ communityId, personId: people[3] ?? '', tier: 'strong', actorPersonId: null });
             yield* openDraft(communityId, sessionId, null);
-            yield* publishLineup({
+            const input = {
                 communityId,
                 sessionId,
-                version: null,
-                locale: 'uk',
+                locale: 'uk' as const,
                 actorPersonId: null,
                 privateChatId: null,
                 fallback: Option.some({ chatId: -830n, topicId: null })
+            };
+            const plan = yield* planLineup(input);
+            yield* publishLineup({
+                ...input,
+                version: plan.version,
+                fingerprint: plan.fingerprint
             });
             const evening = new Date('2026-12-04T20:30:00Z');
             const ranks = yield* recordResult({ communityId, sessionId, winner: 1, actorPersonId: null, now: evening });

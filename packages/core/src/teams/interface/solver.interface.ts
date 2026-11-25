@@ -12,8 +12,6 @@ export interface SolverInput {
     readonly players: readonly SolverPlayer[];
     readonly teamCount: number;
     readonly locks: ReadonlyMap<string, number>;
-    readonly together: readonly (readonly [string, string])[];
-    readonly apart: readonly (readonly [string, string])[];
     readonly habits: ReadonlyMap<string, number>;
     readonly recent: ReadonlyMap<string, number>;
     readonly anchor?: readonly (readonly string[])[];
@@ -27,7 +25,10 @@ export interface Proposal {
     readonly reason: ProposalReason;
     readonly balance: number;
     readonly moves: number;
+    readonly unresolved: readonly HardRule[];
 }
+
+export type HardRule = 'sizes' | 'keepers';
 
 export interface LineupRow {
     readonly game: string;

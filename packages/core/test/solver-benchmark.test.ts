@@ -102,8 +102,6 @@ const solve = ({ players, teamCount }: Case, anchor?: readonly (readonly string[
         players,
         teamCount,
         locks: new Map(),
-        together: [],
-        apart: [],
         habits: new Map(),
         recent: new Map(),
         proposals: 1,

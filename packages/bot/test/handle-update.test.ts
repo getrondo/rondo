@@ -2,9 +2,8 @@ import { expect, layer } from '@effect/vitest';
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { AiGateway } from '@rondo/assistant/service/ai-gateway.service';
 import { Access } from '@rondo/core/access/admin-access';
-import { describeAction } from '@rondo/core/actions/describe-action';
-import { proposeAction } from '@rondo/core/actions/pending-action.service';
 import { createSession } from '@rondo/core/sessions/session.service';
+import { proposeAs, teamsActionAsOwner } from '@rondo/core/testing/confirm-action';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
 import { telegramAccount } from '@rondo/db/schema/identity.schema';
 import { community, membership, telegramChat } from '@rondo/db/schema/org.schema';
@@ -89,10 +88,7 @@ const confirm = (data: string) =>
         })
     );
 const confirmAction = (communityId: string, action: Action) =>
-    describeAction(action, 'uk', communityId).pipe(
-        Effect.flatMap(summary => proposeAction({ communityId, tgUserId: BigInt(owner.id), action, summary })),
-        Effect.flatMap(actionId => confirm(`act:${actionId}:y`))
-    );
+    proposeAs(communityId, BigInt(owner.id), action).pipe(Effect.flatMap(actionId => confirm(`act:${actionId}:y`)));
 const groupUpdate = (from: typeof owner, chatId: number, body: Partial<Message>) =>
     nextUpdate({
         message: {
@@ -383,7 +379,7 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
 
             const sessionId = yield* promoteIn(chatId, communityId, venueIdByName.get('Park Field') ?? null);
             yield* confirmAction(communityId, { _tag: 'update_session', sessionId, localTime: '20:00', notify: true });
-            yield* confirmAction(communityId, { _tag: 'publish_teams', sessionId, teams: [] });
+            yield* confirmAction(communityId, yield* teamsActionAsOwner(communityId, sessionId, null));
             yield* confirmAction(communityId, { _tag: 'cancel_session', sessionId, reason: 'weather', notify: true });
             const posts = callsTo(chatId).filter(call => call.method.startsWith('send'));
 

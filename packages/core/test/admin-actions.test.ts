@@ -10,7 +10,7 @@ import { isAdminOf } from '../src/access/admin-access';
 import { syncMember } from '../src/identity/telegram-user';
 import { notifyPromoted } from '../src/notify/notifier';
 import { createSession, getSession } from '../src/sessions/session.service';
-import { confirmAsOwner } from '../src/testing/confirm-action';
+import { confirmAsOwner, teamsActionAsOwner } from '../src/testing/confirm-action';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 import { updateVenue } from '../src/venues/venue.service';
@@ -112,7 +112,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions, on
                     isGk: false
                 }))
             }));
-            yield* confirmAsOwner(communityId, { _tag: 'publish_teams', sessionId, teams }, -555n);
+            yield* confirmAsOwner(communityId, yield* teamsActionAsOwner(communityId, sessionId, teams, -555n), -555n);
             const lineup = String(postsSince(start).at(-1)?.payload.text);
             const target = Option.getOrThrow(yield* getSession(sessionId));
             yield* notifyPromoted({

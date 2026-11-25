@@ -1,7 +1,8 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 
 import { baseWeights, buildModel, tierStep, type SolverModel, type Weights } from './solver-model';
-import { emptyState, moveDelta, place, strengthSpread, swapDelta, teamCost, type SolverState } from './solver-state';
+import { repairState } from './solver-repair';
+import { emptyState, moveDelta, place, strengthSpread, swapDelta, totalCost, type SolverState } from './solver-state';
 
 import type { Proposal, ProposalReason, SolverInput } from './interface/solver.interface';
 
@@ -44,11 +45,9 @@ const capacities = (model: SolverModel): number[] => {
     return capacity.map((value, team) => Math.max(value, lockedIn[team] ?? 0));
 };
 
-const pickTeam = (model: SolverModel, state: SolverState, unit: readonly number[], capacity: readonly number[]): number => {
-    const hasGk = unit.some(player => model.isGk[player] === true);
-    const open = capacity
-        .map((limit, team) => ({ team, room: limit - (state.sizes[team] ?? 0) }))
-        .filter(({ room }) => room >= unit.length);
+const pickTeam = (model: SolverModel, state: SolverState, player: number, capacity: readonly number[]): number => {
+    const hasGk = model.isGk[player] === true;
+    const open = capacity.map((limit, team) => ({ team, room: limit - (state.sizes[team] ?? 0) })).filter(({ room }) => room >= 1);
     const candidates = isNotEmptyArray(open) ? open : capacity.map((limit, team) => ({ team, room: limit - (state.sizes[team] ?? 0) }));
     const score = (team: number): number =>
         (hasGk ? (state.gks[team] ?? 0) * 1e9 : 0) + (state.totals[team] ?? 0) + (state.variances[team] ?? 0) / 100;
@@ -59,35 +58,15 @@ const pickTeam = (model: SolverModel, state: SolverState, unit: readonly number[
     );
 };
 
-interface Unit {
-    readonly members: readonly number[];
-    readonly team: number | null;
-}
-
-const unitsOf = (model: SolverModel, random: (() => number) | null): Unit[] => {
-    const units = model.together.flatMap(cluster => {
-        const members = cluster.filter(player => !isDefined(model.locked[player]));
-        const team = cluster.map(player => model.locked[player] ?? null).find(locked => isDefined(locked)) ?? null;
-
-        return isNotEmptyArray(members) ? [{ members, team }] : [];
-    });
-    const strengthOf = (members: readonly number[]): number => members.reduce((sum, player) => sum + (model.strength[player] ?? 0), 0);
-    const keyed = units.map(unit => ({
-        unit,
-        hasGk: unit.members.some(player => model.isGk[player] === true),
-        key: isDefined(random) ? random() : -strengthOf(unit.members)
-    }));
-
-    return keyed
-        .toSorted(
-            (left, right) =>
-                Number(isDefined(right.unit.team)) - Number(isDefined(left.unit.team)) ||
-                Number(right.hasGk) - Number(left.hasGk) ||
-                right.unit.members.length - left.unit.members.length ||
-                left.key - right.key
+const freeOrder = (model: SolverModel, random: (() => number) | null): number[] =>
+    model.locked
+        .flatMap((locked, player) =>
+            isDefined(locked) ? [] : [{ player, key: isDefined(random) ? random() : -(model.strength[player] ?? 0) }]
         )
-        .map(({ unit }) => unit);
-};
+        .toSorted(
+            (left, right) => Number(model.isGk[right.player] === true) - Number(model.isGk[left.player] === true) || left.key - right.key
+        )
+        .map(({ player }) => player);
 
 const startFrom = (model: SolverModel, random: (() => number) | null): SolverState => {
     const state = emptyState(model);
@@ -101,13 +80,8 @@ const startFrom = (model: SolverModel, random: (() => number) | null): SolverSta
 
     const anchored = isDefined(random) ? model.anchor.map(() => null) : model.anchor;
 
-    for (const unit of unitsOf(model, random)) {
-        const fixed = unit.team ?? unit.members.map(player => anchored[player] ?? null).find(team => isDefined(team)) ?? null;
-        const team = fixed ?? pickTeam(model, state, unit.members, capacity);
-
-        for (const player of unit.members) {
-            place(model, state, player, unit.team ?? anchored[player] ?? team);
-        }
+    for (const player of freeOrder(model, random)) {
+        place(model, state, player, anchored[player] ?? pickTeam(model, state, player, capacity));
     }
 
     return state;
@@ -171,18 +145,6 @@ const improve = (model: SolverModel, state: SolverState): void => {
     }
 };
 
-const totalCost = (model: SolverModel, state: SolverState): number => {
-    let pairs = 0;
-
-    for (let player = 0; player < model.size; player += 1) {
-        pairs += state.link[player * model.teamCount + (state.team[player] ?? 0)] ?? 0;
-        const anchored = model.anchor[player];
-        pairs += isDefined(anchored) && anchored !== state.team[player] ? 2 * model.weights.move : 0;
-    }
-
-    return teamCost(model, state) + pairs / 2;
-};
-
 const solveOnce = (model: SolverModel, seed: number): SolverState => {
     const random = randomFrom(seed);
     const tries = model.anchor.some(team => isDefined(team)) ? 1 : restarts;
@@ -221,7 +183,8 @@ const plansFor = (input: SolverInput): Plan[] => {
           ];
 };
 
-const proposalOf = (model: SolverModel, state: SolverState, input: SolverInput, reason: ProposalReason): Proposal => {
+const proposalOf = (model: SolverModel, solved: SolverState, input: SolverInput, reason: ProposalReason): Proposal => {
+    const { state, unresolved } = repairState(model, solved);
     const order = new Map(input.players.map((player, index) => [player.id, index]));
     const teams = Array.from({ length: model.teamCount }, (_, team) =>
         model.ids
@@ -233,7 +196,8 @@ const proposalOf = (model: SolverModel, state: SolverState, input: SolverInput, 
         teams,
         reason,
         balance: Math.max(0, Math.min(1, 1 - strengthSpread(model, state) / (2 * tierStep))),
-        moves: model.anchor.filter((team, player) => isDefined(team) && team !== state.team[player]).length
+        moves: model.anchor.filter((team, player) => isDefined(team) && team !== state.team[player]).length,
+        unresolved
     };
 };
 

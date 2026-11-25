@@ -12,7 +12,7 @@ import { syncMember } from '../src/identity/telegram-user';
 import { footballHistory, plannedFootball } from '../src/menu/game-history.repository';
 import { createSession } from '../src/sessions/session.service';
 import { audienceOf } from '../src/signups/audience';
-import { confirmAsOwner } from '../src/testing/confirm-action';
+import { confirmAsOwner, teamsActionAsOwner } from '../src/testing/confirm-action';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -71,7 +71,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('one game, one poll, several
             yield* db.insert(signup).values({ sessionId, personId, role: 'field', status: 'in' });
             const beforeNotice = recorder.calls.length;
             yield* confirmAsOwner(communityId, { _tag: 'update_session', sessionId, localTime: '20:00', notify: true });
-            yield* confirmAsOwner(communityId, { _tag: 'publish_teams', sessionId, teams: [] });
+            yield* confirmAsOwner(communityId, yield* teamsActionAsOwner(communityId, sessionId, null));
 
             expect(created._tag).toBe('done');
             expect(

@@ -7,7 +7,7 @@ import * as Effect from 'effect/Effect';
 
 import { formatSessionLabel } from '../i18n/messages';
 
-import { badgeOfColour, badgeOfRow } from './badges';
+import { badgeOfColour, badgeOfRow, paddedColours } from './badges';
 
 import type { Locale } from '../i18n/locale';
 import type { SessionView } from '../sessions/session.model';
@@ -16,9 +16,12 @@ import type { LineupPost, PostTeam } from './interface/lineup-post.interface';
 import type { TeamMember } from './interface/team-inputs.interface';
 import type { TeamPlacement } from './lineup-post';
 
-export const postTeamsOf = (state: DraftState, members: readonly TeamMember[]): PostTeam[] =>
-    state.teams.map((personIds, index) => ({
-        badge: badgeOfColour(state.colours[index])?.badge ?? `${index + 1}.`,
+export const postTeamsOf = (state: DraftState, members: readonly TeamMember[]): PostTeam[] => {
+    const colours = paddedColours(state.colours, state.teams.length);
+
+    return state.teams.map((personIds, index) => ({
+        colour: colours[index] ?? '',
+        badge: badgeOfColour(colours[index])?.badge ?? `${index + 1}.`,
         members: personIds.flatMap(personId => {
             const member = members.find(entry => entry.personId === personId);
 
@@ -37,6 +40,7 @@ export const postTeamsOf = (state: DraftState, members: readonly TeamMember[]): 
                 : [];
         })
     }));
+};
 
 export const postOf = (
     game: SessionView,

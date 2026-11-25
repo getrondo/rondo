@@ -54,6 +54,12 @@ const revertResult = Effect.fn('Core.revertResult')(function* (sessionId: string
     return events.length;
 });
 
+export const clearResult = Effect.fn('Core.clearResult')(function* (sessionId: string) {
+    const db = yield* Db;
+    yield* revertResult(sessionId, true);
+    yield* db.update(team).set({ rank: null }).where(eq(team.sessionId, sessionId));
+});
+
 export const recordResult = Effect.fn('Core.recordResult')(
     (input: {
         readonly communityId: string;

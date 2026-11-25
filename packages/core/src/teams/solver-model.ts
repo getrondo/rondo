@@ -43,7 +43,6 @@ export interface SolverModel {
     readonly roleCount: number;
     readonly locked: readonly (number | null)[];
     readonly anchor: readonly (number | null)[];
-    readonly together: readonly (readonly number[])[];
     readonly pair: Float64Array;
     readonly gkTotal: number;
     readonly meanStrength: number;
@@ -62,39 +61,6 @@ const anchorOf = (input: SolverInput, ids: readonly string[]): (number | null)[]
     return ids.map(id => teamOf.get(id) ?? null);
 };
 
-const clustersOf = (size: number, links: readonly (readonly [number, number])[]): number[][] => {
-    const parent = Array.from({ length: size }, (_, index) => index);
-    const root = (index: number): number => {
-        let current = index;
-
-        while (parent[current] !== current) {
-            current = parent[current] ?? current;
-        }
-
-        return current;
-    };
-
-    for (const [first, second] of links) {
-        parent[root(first)] = root(second);
-    }
-
-    const groups = new Map<number, number[]>();
-
-    for (let index = 0; index < size; index += 1) {
-        groups.set(root(index), [...(groups.get(root(index)) ?? []), index]);
-    }
-
-    return [...groups.values()];
-};
-
-const indexPairs = (pairs: SolverInput['together'], indexOf: ReadonlyMap<string, number>): [number, number][] =>
-    pairs.flatMap(([first, second]) => {
-        const left = indexOf.get(first);
-        const right = indexOf.get(second);
-
-        return !isDefined(left) || !isDefined(right) || left === right ? [] : [[left, right] satisfies [number, number]];
-    });
-
 export const buildModel = (input: SolverInput, weights: Weights, previous: readonly (readonly (readonly string[])[])[]): SolverModel => {
     const players = input.players.toSorted((left, right) => left.id.localeCompare(right.id));
     const ids = players.map(player => player.id);
@@ -112,16 +78,6 @@ export const buildModel = (input: SolverInput, weights: Weights, previous: reado
             const key = pairKey(ids[first] ?? '', ids[second] ?? '');
             add(first, second, -weights.habit * (input.habits.get(key) ?? 0) + weights.variety * (input.recent.get(key) ?? 0));
         }
-    }
-
-    const together = indexPairs(input.together, indexOf);
-
-    for (const [first, second] of together) {
-        add(first, second, -hardWeight);
-    }
-
-    for (const [first, second] of indexPairs(input.apart, indexOf)) {
-        add(first, second, hardWeight);
     }
 
     for (const [index, player] of players.entries()) {
@@ -162,7 +118,6 @@ export const buildModel = (input: SolverInput, weights: Weights, previous: reado
             return isDefined(team) && team >= 0 && team < teamCount ? team : null;
         }),
         anchor: anchorOf(input, ids),
-        together: clustersOf(size, together),
         pair,
         gkTotal: players.filter(player => player.isGk).length,
         meanStrength: size > 0 ? players.reduce((sum, player) => sum + player.strength, 0) / size : 0,

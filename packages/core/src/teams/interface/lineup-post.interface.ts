@@ -11,6 +11,7 @@ export interface PostMember {
 }
 
 export interface PostTeam {
+    readonly colour?: string;
     readonly badge: string;
     readonly members: readonly PostMember[];
 }

@@ -16,6 +16,8 @@ import { isReasonKey, teamsCount, teamsText } from './teams-text';
 
 import type { MenuButton, MenuUser, Screen } from '../screen.interface';
 import type { EditorView } from './teams-view.interface';
+import type { Locale } from '@rondo/core/i18n/locale';
+import type { PlannedDelivery } from '@rondo/core/teams/interface/publish.interface';
 
 const columnsShown = 3;
 const pageSize = 2;
@@ -48,23 +50,35 @@ export const badgeAt = (view: Pick<EditorView, 'row'>, team: number): string =>
 export const nameOf = (view: Pick<EditorView, 'inputs'>, personId: string): string =>
     view.inputs.members.find(member => member.personId === personId)?.displayName ?? '?';
 
-export const destinationLabel = (user: MenuUser, view: EditorView): string => {
-    const isUpdate = isDefined(view.row.publishedAt);
-    const [group] = view.audience.groups;
+type Destination = Pick<PlannedDelivery, 'chatId' | 'title'>;
 
-    if (view.audience.isPrivate || !isDefined(group)) {
-        return teamsText(user.locale, isUpdate ? 'updateMe' : 'sendMe');
+export const isUnsure = (delivery: PlannedDelivery): boolean => delivery.stored === 'claimed' || delivery.stored === 'uncertain';
+
+export const ticketOf = (delivery: PlannedDelivery): string => (delivery.token ?? '').slice(0, 8);
+
+export const whereOf = (locale: Locale, deliveries: readonly Destination[], form: 'to' | 'at'): string =>
+    deliveries
+        .map(delivery =>
+            delivery.chatId > 0n
+                ? teamsText(locale, form === 'to' ? 'toMe' : 'atMe')
+                : teamsText(locale, 'inGroup', { title: delivery.title ?? '' })
+        )
+        .join(teamsText(locale, 'and'));
+
+export const retryRows = (locale: Locale, base: TeamsBase, deliveries: readonly PlannedDelivery[]): MenuButton[][] =>
+    deliveries.map(delivery => [
+        {
+            text: teamsText(locale, 'retryTo', { where: whereOf(locale, [delivery], 'to') }),
+            callback_data: teamsData(base, 'Z', [ticketOf(delivery)])
+        }
+    ]);
+
+export const sendLabel = (locale: Locale, deliveries: readonly PlannedDelivery[], isUpdate: boolean): string => {
+    if (isUpdate && deliveries.every(delivery => delivery.chatId > 0n)) {
+        return teamsText(locale, 'updateMe');
     }
 
-    if (isUpdate) {
-        return view.audience.groups.length > 1
-            ? teamsText(user.locale, 'updateGroups')
-            : teamsText(user.locale, 'updateGroup', { title: group.title });
-    }
-
-    return view.audience.groups.length > 1
-        ? teamsText(user.locale, 'sendGroups')
-        : teamsText(user.locale, 'sendGroup', { title: group.title });
+    return teamsText(locale, isUpdate ? 'updateTo' : 'sendTo', { where: whereOf(locale, deliveries, 'to') });
 };
 
 const visibleTeams = (view: EditorView): number[] => {
@@ -156,7 +170,8 @@ const textOf = (user: MenuUser, view: EditorView, uneven: string | null): string
         : teamsText(user.locale, isDefined(view.title) ? 'titleSelected' : 'pick', {
               badge: isDefined(view.title) ? badgeAt(view, view.title) : ''
           });
-    const sent = view.audience.isPrivate ? 'sentMe' : 'sentGroups';
+    const sent = view.plan.deliveries.filter(delivery => delivery.stored === 'sent');
+    const unsure = view.plan.deliveries.filter(delivery => isUnsure(delivery));
 
     return [
         teamsText(user.locale, 'title', { label: escapeHtml(formatSessionLabel(user.locale, view.inputs.game)) }),
@@ -177,7 +192,10 @@ const textOf = (user: MenuUser, view: EditorView, uneven: string | null): string
         ...(view.offerLevels ? [teamsText(user.locale, 'nudge')] : []),
         prompt,
         ...(isDefined(uneven) ? [teamsText(user.locale, 'uneven')] : []),
-        teamsText(user.locale, isDefined(view.row.publishedAt) ? sent : 'quiet')
+        ...unsure.map(delivery => teamsText(user.locale, 'uncertain', { where: escapeHtml(whereOf(user.locale, [delivery], 'at')) })),
+        isNotEmptyArray(sent)
+            ? teamsText(user.locale, 'sent', { where: escapeHtml(whereOf(user.locale, sent, 'at')) })
+            : teamsText(user.locale, 'quiet')
     ].join('\n');
 };
 
@@ -246,7 +264,12 @@ export const editorScreen = (user: MenuUser, view: EditorView): Screen => {
                           }
                       ]
                   ]),
-            [{ text: destinationLabel(user, view), callback_data: teamsData(base, 'x') }],
+            ...retryRows(
+                user.locale,
+                base,
+                view.plan.deliveries.filter(delivery => isUnsure(delivery))
+            ),
+            [{ text: sendLabel(user.locale, view.plan.deliveries, view.plan.isUpdate), callback_data: teamsData(base, 'x') }],
             [{ text: teamsText(user.locale, 'back'), callback_data: `m:g:${toShortId(view.row.sessionId)}` }]
         ])
     };

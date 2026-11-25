@@ -1,128 +1,121 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { groupLocaleOf, mainGroupOf } from '@rondo/core/community/community.repository';
 import { formatSessionLabel } from '@rondo/core/i18n/messages';
-import { placementOf, postOf, postTeamsOf, publishedPlacement } from '@rondo/core/teams/lineup-of-draft';
-import { lineupDiff, lineupPostHtml } from '@rondo/core/teams/lineup-post';
-import { publishLineup } from '@rondo/core/teams/publish-lineup';
+import { lineupChanged, publishLineup } from '@rondo/core/teams/publish-lineup';
 import { escapeHtml } from '@rondo/telegram/format/html';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
 import * as Effect from 'effect/Effect';
 
-import { toShortId } from '../../utils/to-short-id.util';
+import { showScreen } from '../show-screen';
 
-import { teamsData } from './teams-callback';
-import { destinationLabel, editorScreen } from './teams-editor.screen';
+import { teamsData, type TeamsTap } from './teams-callback';
+import { editorScreen, isUnsure, retryRows, sendLabel, ticketOf, whereOf } from './teams-editor.screen';
 import { teamsText } from './teams-text';
-import { actorOf, loadView } from './teams-view';
+import { actorOf, loadView, planOf, showTeams } from './teams-view';
 
 import type { MenuUser, Screen } from '../screen.interface';
 import type { EditorView } from './teams-view.interface';
-import type { PublishOutcome } from '@rondo/core/teams/interface/publish.interface';
+import type { DeliveryOutcome } from '@rondo/core/teams/interface/publish.interface';
 
-const postHtmlOf = Effect.fn('Bot.teamsPostHtml')(function* (user: MenuUser, view: EditorView) {
-    const locale = yield* groupLocaleOf(user.communityId);
-    const teams = postTeamsOf(view.row.state, view.inputs.members);
+const telegramPrefix = /^Call to '\w+' failed! \(\d+: (?<detail>.*)\)$/u;
 
-    return {
-        teams,
-        html: lineupPostHtml(postOf(view.inputs.game, teams, { locale, showHandles: view.inputs.settings.showHandles, isUpdate: false }))
-    };
-});
-
-export const previewScreen = Effect.fn('Bot.teamsPreview')(function* (user: MenuUser, view: EditorView) {
-    const { teams, html } = yield* postHtmlOf(user, view);
-    const before = isDefined(view.row.publishedAt) ? yield* publishedPlacement(view.row.sessionId) : [];
-    const diff = isDefined(view.row.publishedAt) ? lineupDiff(before, placementOf(teams)) : [];
-    const isSame = isDefined(view.row.publishedAt) && (view.audience.isPrivate ? view.row.privateText === html : !isNotEmptyArray(diff));
+export const previewScreen = (user: MenuUser, view: EditorView, notes: readonly string[] = []): Screen => {
+    const { plan } = view;
+    const due = plan.deliveries.filter(delivery => delivery.isDue);
+    const unsure = plan.deliveries.filter(delivery => !delivery.isDue && isUnsure(delivery));
+    const retry = due.find(delivery => isUnsure(delivery));
     const base = { sessionId: view.row.sessionId, version: view.row.version, page: view.page };
+    const where = (deliveries: typeof due, form: 'to' | 'at') => escapeHtml(whereOf(user.locale, deliveries, form));
 
     return {
         text: [
             teamsText(user.locale, 'title', { label: escapeHtml(formatSessionLabel(user.locale, view.inputs.game)) }),
-            teamsText(user.locale, 'preview'),
-            `<blockquote>${html}</blockquote>`,
-            ...(isNotEmptyArray(diff) ? [teamsText(user.locale, 'changes'), escapeHtml(diff.join('\n'))] : []),
-            teamsText(user.locale, isSame ? 'unchanged' : 'quiet')
+            ...notes,
+            ...(isNotEmptyArray(due) ? [teamsText(user.locale, 'sees', { where: where(due, 'at') })] : []),
+            `<blockquote>${due[0]?.html ?? plan.deliveries[0]?.html ?? ''}</blockquote>`,
+            ...(isNotEmptyArray(plan.diff) ? [teamsText(user.locale, 'changes'), escapeHtml(plan.diff.join('\n'))] : []),
+            ...unsure.map(delivery => teamsText(user.locale, 'uncertain', { where: where([delivery], 'at') })),
+            teamsText(user.locale, isNotEmptyArray(due) ? 'quiet' : 'unchanged')
         ].join('\n'),
         keyboard: [
-            ...(isSame ? [] : [[{ text: destinationLabel(user, view), callback_data: teamsData(base, 'X') }]]),
+            ...(isNotEmptyArray(due)
+                ? [
+                      [
+                          {
+                              text: isDefined(retry)
+                                  ? teamsText(user.locale, 'retryTo', { where: whereOf(user.locale, due, 'to') })
+                                  : sendLabel(user.locale, due, plan.isUpdate),
+                              callback_data: teamsData(base, 'X', [plan.fingerprint, ...(isDefined(retry) ? [ticketOf(retry)] : [])])
+                          }
+                      ]
+                  ]
+                : []),
+            ...retryRows(user.locale, base, unsure),
             [{ text: teamsText(user.locale, 'toEditor'), callback_data: teamsData(base, 'e') }]
         ]
-    } satisfies Screen;
+    };
+};
+
+export const retryPreview = Effect.fn('Bot.teamsRetryPreview')(function* (user: MenuUser, view: EditorView, ticket: string) {
+    return previewScreen(user, { ...view, plan: yield* planOf(user, view, ticket) });
 });
 
-const outcomeNotes = (user: MenuUser, outcome: PublishOutcome): string[] => [
-    ...(outcome.privateStatus === 'sent' ? [teamsText(user.locale, 'doneMe')] : []),
-    ...(outcome.privateStatus === 'unchanged' && !isNotEmptyArray(outcome.groups) ? [teamsText(user.locale, 'unchanged')] : []),
-    ...outcome.groups.map(group => {
-        const title = escapeHtml(group.title);
+const outcomeNote = (user: MenuUser, outcome: DeliveryOutcome): string | null => {
+    const where = escapeHtml(whereOf(user.locale, [outcome], 'at'));
+    const notes: Readonly<Record<DeliveryOutcome['status'], () => string | null>> = {
+        sent: () => (outcome.chatId > 0n ? teamsText(user.locale, 'hint') : teamsText(user.locale, 'doneGroup', { where })),
+        edited: () => teamsText(user.locale, 'editedGroup', { where }),
+        refused: () =>
+            teamsText(user.locale, 'refusedGroup', {
+                where,
+                reason: escapeHtml(telegramPrefix.exec(outcome.reason ?? '')?.groups?.detail ?? outcome.reason ?? '')
+            }),
+        uncertain: () => teamsText(user.locale, 'uncertain', { where }),
+        busy: () => teamsText(user.locale, 'busy', { where }),
+        unchanged: () => null
+    };
 
-        if (group.status === 'refused') {
-            return teamsText(user.locale, 'refusedGroup', { title });
-        }
+    return notes[outcome.status]();
+};
 
-        return teamsText(user.locale, group.status === 'edited' ? 'editedGroup' : 'doneGroup', { title });
-    })
-];
-
-const telegramPrefix = /^Call to '\w+' failed! \(\d+: (?<detail>.*)\)$/u;
-
-const failureNote = (user: MenuUser, reason: string): string =>
-    reason.includes('may not be saved')
-        ? teamsText(user.locale, 'failedMaybe')
-        : teamsText(user.locale, 'failedNothing', { reason: escapeHtml(telegramPrefix.exec(reason)?.groups?.detail ?? reason) });
-
-const publishTeams = Effect.fn('Bot.publishTeams')(function* (user: MenuUser, view: EditorView) {
-    const telegram = yield* Telegram;
-    const locale = yield* groupLocaleOf(user.communityId);
-    const actorPersonId = yield* actorOf(user);
-    const outcome = yield* publishLineup({
+export const publishAndShow = Effect.fn('Bot.publishAndShow')(function* (user: MenuUser, tap: TeamsTap, messageId: number) {
+    const [fingerprint, ticket] = tap.args;
+    const published = yield* publishLineup({
         communityId: user.communityId,
-        sessionId: view.row.sessionId,
-        version: view.row.version,
-        locale,
-        actorPersonId,
+        sessionId: tap.sessionId,
+        version: tap.version,
+        fingerprint: fingerprint ?? '',
+        retryToken: ticket ?? null,
+        locale: yield* groupLocaleOf(user.communityId),
+        actorPersonId: yield* actorOf(user),
         privateChatId: user.chatId,
         fallback: yield* mainGroupOf(user.communityId)
     }).pipe(
-        Effect.map(success => ({ _tag: 'published' as const, success })),
-        Effect.catchTags({
-            ActionFailedError: failure => Effect.succeed({ _tag: 'failed' as const, reason: failure.reason }),
-            TelegramApiError: failure =>
-                Effect.succeed({ _tag: 'failed' as const, reason: failure.isUncertain ? 'may not be saved' : failure.description })
-        })
+        Effect.catchTag('ActionFailedError', failure => (failure.reason === lineupChanged ? Effect.succeed(null) : Effect.fail(failure)))
     );
 
-    if (outcome._tag === 'failed') {
-        return [failureNote(user, outcome.reason)];
+    if (!isDefined(published)) {
+        const fresh = yield* loadView(user, tap.sessionId, { page: tap.page });
+        const isDone = !fresh.plan.deliveries.some(delivery => delivery.isDue);
+
+        return yield* showTeams(user, messageId, {
+            sessionId: tap.sessionId,
+            screen: isDone
+                ? editorScreen(user, { ...fresh, notes: [teamsText(user.locale, 'unchanged')] })
+                : previewScreen(user, fresh, [teamsText(user.locale, 'changedPreview')])
+        });
     }
 
-    if (outcome.success.privateStatus === 'sent') {
-        yield* telegram.call('sendMessage', api =>
-            api.sendMessage(
-                user.chatId,
-                [
-                    teamsText(user.locale, 'hint'),
-                    ...(isNotEmptyArray(outcome.success.diff)
-                        ? ['', teamsText(user.locale, 'changes'), escapeHtml(outcome.success.diff.join('\n'))]
-                        : [])
-                ].join('\n'),
-                {
-                    parse_mode: 'HTML',
-                    reply_markup: {
-                        inline_keyboard: [[{ text: teamsText(user.locale, 'card'), callback_data: `m:g:${toShortId(view.row.sessionId)}` }]]
-                    }
-                }
-            )
-        );
+    const notes = published.deliveries.flatMap(outcome => outcomeNote(user, outcome) ?? []);
+    const toMe = published.deliveries.some(outcome => outcome.chatId > 0n && outcome.status === 'sent');
+    const diff = toMe && isNotEmptyArray(published.diff) ? [teamsText(user.locale, 'changes'), escapeHtml(published.diff.join('\n'))] : [];
+    const fresh = yield* loadView(user, tap.sessionId, {
+        page: tap.page,
+        notes: isNotEmptyArray(notes) ? [...notes, ...diff] : [teamsText(user.locale, 'unchanged')]
+    });
+
+    if (toMe) {
+        yield* showScreen(user.chatId, messageId, { text: teamsText(user.locale, 'below'), keyboard: [] });
     }
 
-    return outcomeNotes(user, outcome.success);
-});
-
-export const publishAndShow = Effect.fn('Bot.publishAndShow')(function* (user: MenuUser, view: EditorView) {
-    const notes = yield* publishTeams(user, view);
-    const fresh = yield* loadView(user, view.row.sessionId, { page: view.page, notes });
-
-    return editorScreen(user, fresh);
+    return yield* showTeams(user, toMe ? null : messageId, { sessionId: tap.sessionId, screen: editorScreen(user, fresh) });
 });

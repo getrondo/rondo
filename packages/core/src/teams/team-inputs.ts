@@ -1,7 +1,7 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { community, playerProfile } from '@rondo/db/schema/org.schema';
-import { pairRule, rating, team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
+import { rating, team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, asc, desc, eq, inArray, lt, ne } from 'drizzle-orm';
@@ -153,12 +153,6 @@ export const loadTeamInputs = Effect.fn('Core.loadTeamInputs')(function* (commun
               .from(playerProfile)
               .where(and(eq(playerProfile.activityId, activityId), inArray(playerProfile.personId, ids)))
         : [];
-    const pairs = isNotEmptyArray(ids)
-        ? yield* db
-              .select()
-              .from(pairRule)
-              .where(and(eq(pairRule.communityId, communityId), inArray(pairRule.personId, ids), inArray(pairRule.otherPersonId, ids)))
-        : [];
     const history = yield* historyRows(communityId, game.localDate);
     const { habits, recent, short } = habitsOf(history, game.localDate, among);
     const players = members.map((member): SolverPlayer => {
@@ -178,7 +172,6 @@ export const loadTeamInputs = Effect.fn('Core.loadTeamInputs')(function* (commun
             shortScore: short.get(member.personId) ?? 0
         };
     });
-    const pairOf = (row: (typeof pairs)[number]): [string, string] => [row.personId, row.otherPersonId];
     const lastColours = yield* lastColoursAt(communityId, game.venueId, game.localDate);
     const settings = yield* teamSettingsOf(communityId);
 
@@ -188,8 +181,6 @@ export const loadTeamInputs = Effect.fn('Core.loadTeamInputs')(function* (commun
         players,
         habits,
         recent,
-        together: pairs.filter(row => row.kind === 'together').map(row => pairOf(row)),
-        apart: pairs.filter(row => row.kind === 'apart').map(row => pairOf(row)),
         hasLevels,
         lastColours,
         settings

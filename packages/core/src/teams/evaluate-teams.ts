@@ -78,8 +78,6 @@ const evaluateGame = (game: readonly HistoryRow[], earlier: readonly HistoryRow[
         })),
         teamCount: ordinals.length,
         locks: new Map(),
-        together: [],
-        apart: [],
         habits,
         recent,
         proposals: 1

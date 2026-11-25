@@ -2,32 +2,32 @@
     "type": "diff",
     "version": "10",
     "dialect": "postgres",
-    "id": "5552aa6e-8e07-4f83-bc9d-b249a98fd86c",
-    "prevIds": ["15552e92-82e2-4f7f-9198-2e1eb472a776"],
+    "id": "c8af40f1-d2cf-4f9b-aa7a-6a58bd9320ab",
+    "prevIds": ["0d3fc089-69ba-48a9-8598-1b00e39f30d7"],
     "footprints": [
         {
             "statementType": "create_enum",
-            "statementTarget": ["enum", "play_private", "pair_kind"],
+            "statementTarget": ["enum", "play", "lineup_delivery_status"],
             "writes": [
-                "s|enum|play_private.pair_kind",
-                "n|enum|play_private.pair_kind",
-                "e|enum|play_private.pair_kind",
-                "n|type|play_private.pair_kind"
+                "s|enum|play.lineup_delivery_status",
+                "n|enum|play.lineup_delivery_status",
+                "e|enum|play.lineup_delivery_status",
+                "n|type|play.lineup_delivery_status"
             ],
-            "reads": ["n|sch|play_private"]
+            "reads": ["n|sch|play"]
         },
         {
             "statementType": "create_table",
-            "statementTarget": ["table", "play_private", "pair_rule"],
+            "statementTarget": ["table", "play", "lineup_delivery"],
             "writes": [
-                "s|tbl|play_private.pair_rule",
-                "n|tbl|play_private.pair_rule",
-                "e|tbl|play_private.pair_rule",
-                "n|rel|play_private.pair_rule",
-                "n|type|play_private.pair_rule",
-                "n|rel|play_private.pair_rule_pkey"
+                "s|tbl|play.lineup_delivery",
+                "n|tbl|play.lineup_delivery",
+                "e|tbl|play.lineup_delivery",
+                "n|rel|play.lineup_delivery",
+                "n|type|play.lineup_delivery",
+                "n|rel|play.lineup_delivery_pkey"
             ],
-            "reads": ["n|sch|play_private", "n|enum|play_private.pair_kind"]
+            "reads": ["n|sch|play", "n|enum|play.lineup_delivery_status"]
         },
         {
             "statementType": "create_table",
@@ -66,78 +66,21 @@
         },
         {
             "statementType": "create_fk",
-            "statementTarget": ["table", "play_private", "pair_rule"],
+            "statementTarget": ["table", "play", "lineup_delivery"],
             "writes": [
-                "s|fk|play_private.pair_rule.pair_rule_community_id_community_id_fkey",
-                "n|fk|play_private.pair_rule.pair_rule_community_id_community_id_fkey",
-                "e|fk|play_private.pair_rule.pair_rule_community_id_community_id_fkey",
-                "n|con|play_private.pair_rule.pair_rule_community_id_community_id_fkey"
+                "s|fk|play.lineup_delivery.lineup_delivery_session_id_session_id_fkey",
+                "n|fk|play.lineup_delivery.lineup_delivery_session_id_session_id_fkey",
+                "e|fk|play.lineup_delivery.lineup_delivery_session_id_session_id_fkey",
+                "n|con|play.lineup_delivery.lineup_delivery_session_id_session_id_fkey"
             ],
             "reads": [
-                "n|tbl|play_private.pair_rule",
-                "n|sch|play_private",
-                "n|tbl|org.community",
-                "n|sch|org",
-                "n|col|play_private.pair_rule.community_id",
-                "n|col|org.community.id",
-                "e|uniqueness|org.community.id"
-            ]
-        },
-        {
-            "statementType": "create_fk",
-            "statementTarget": ["table", "play_private", "pair_rule"],
-            "writes": [
-                "s|fk|play_private.pair_rule.pair_rule_person_id_person_id_fkey",
-                "n|fk|play_private.pair_rule.pair_rule_person_id_person_id_fkey",
-                "e|fk|play_private.pair_rule.pair_rule_person_id_person_id_fkey",
-                "n|con|play_private.pair_rule.pair_rule_person_id_person_id_fkey"
-            ],
-            "reads": [
-                "n|tbl|play_private.pair_rule",
-                "n|sch|play_private",
-                "n|tbl|identity.person",
-                "n|sch|identity",
-                "n|col|play_private.pair_rule.person_id",
-                "n|col|identity.person.id",
-                "e|uniqueness|identity.person.id"
-            ]
-        },
-        {
-            "statementType": "create_fk",
-            "statementTarget": ["table", "play_private", "pair_rule"],
-            "writes": [
-                "s|fk|play_private.pair_rule.pair_rule_other_person_id_person_id_fkey",
-                "n|fk|play_private.pair_rule.pair_rule_other_person_id_person_id_fkey",
-                "e|fk|play_private.pair_rule.pair_rule_other_person_id_person_id_fkey",
-                "n|con|play_private.pair_rule.pair_rule_other_person_id_person_id_fkey"
-            ],
-            "reads": [
-                "n|tbl|play_private.pair_rule",
-                "n|sch|play_private",
-                "n|tbl|identity.person",
-                "n|sch|identity",
-                "n|col|play_private.pair_rule.other_person_id",
-                "n|col|identity.person.id",
-                "e|uniqueness|identity.person.id"
-            ]
-        },
-        {
-            "statementType": "create_fk",
-            "statementTarget": ["table", "play_private", "pair_rule"],
-            "writes": [
-                "s|fk|play_private.pair_rule.pair_rule_created_by_person_id_fkey",
-                "n|fk|play_private.pair_rule.pair_rule_created_by_person_id_fkey",
-                "e|fk|play_private.pair_rule.pair_rule_created_by_person_id_fkey",
-                "n|con|play_private.pair_rule.pair_rule_created_by_person_id_fkey"
-            ],
-            "reads": [
-                "n|tbl|play_private.pair_rule",
-                "n|sch|play_private",
-                "n|tbl|identity.person",
-                "n|sch|identity",
-                "n|col|play_private.pair_rule.created_by",
-                "n|col|identity.person.id",
-                "e|uniqueness|identity.person.id"
+                "n|tbl|play.lineup_delivery",
+                "n|sch|play",
+                "n|tbl|scheduling.session",
+                "n|sch|scheduling",
+                "n|col|play.lineup_delivery.session_id",
+                "n|col|scheduling.session.id",
+                "e|uniqueness|scheduling.session.id"
             ]
         },
         {
@@ -221,8 +164,8 @@
         {
             "op": "create",
             "row": {
-                "schema": "play_private",
-                "name": "pair_rule",
+                "schema": "play",
+                "name": "lineup_delivery",
                 "isRlsEnabled": false,
                 "entityType": "tables"
             }
@@ -239,18 +182,18 @@
         {
             "op": "create",
             "row": {
-                "schema": "play_private",
-                "name": "pair_kind",
-                "values": ["together", "apart"],
+                "schema": "play",
+                "name": "lineup_delivery_status",
+                "values": ["claimed", "sent", "uncertain", "refused"],
                 "entityType": "enums"
             }
         },
         {
             "op": "create",
             "row": {
-                "schema": "play_private",
-                "table": "pair_rule",
-                "name": "community_id",
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "session_id",
                 "type": "uuid",
                 "typeSchema": null,
                 "notNull": true,
@@ -264,10 +207,10 @@
         {
             "op": "create",
             "row": {
-                "schema": "play_private",
-                "table": "pair_rule",
-                "name": "person_id",
-                "type": "uuid",
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "chat_id",
+                "type": "bigint",
                 "typeSchema": null,
                 "notNull": true,
                 "dimensions": 0,
@@ -280,42 +223,10 @@
         {
             "op": "create",
             "row": {
-                "schema": "play_private",
-                "table": "pair_rule",
-                "name": "other_person_id",
-                "type": "uuid",
-                "typeSchema": null,
-                "notNull": true,
-                "dimensions": 0,
-                "default": null,
-                "generated": null,
-                "identity": null,
-                "entityType": "columns"
-            }
-        },
-        {
-            "op": "create",
-            "row": {
-                "schema": "play_private",
-                "table": "pair_rule",
-                "name": "kind",
-                "type": "pair_kind",
-                "typeSchema": "play_private",
-                "notNull": true,
-                "dimensions": 0,
-                "default": null,
-                "generated": null,
-                "identity": null,
-                "entityType": "columns"
-            }
-        },
-        {
-            "op": "create",
-            "row": {
-                "schema": "play_private",
-                "table": "pair_rule",
-                "name": "created_by",
-                "type": "uuid",
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "topic_id",
+                "type": "bigint",
                 "typeSchema": null,
                 "notNull": false,
                 "dimensions": 0,
@@ -328,9 +239,73 @@
         {
             "op": "create",
             "row": {
-                "schema": "play_private",
-                "table": "pair_rule",
-                "name": "created_at",
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "message_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "text",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "status",
+                "type": "lineup_delivery_status",
+                "typeSchema": "play",
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "token",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "gen_random_uuid()",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "updated_at",
                 "type": "timestamp with time zone",
                 "typeSchema": null,
                 "notNull": true,
@@ -458,22 +433,6 @@
             "row": {
                 "schema": "play",
                 "table": "team_draft",
-                "name": "private_text",
-                "type": "text",
-                "typeSchema": null,
-                "notNull": false,
-                "dimensions": 0,
-                "default": null,
-                "generated": null,
-                "identity": null,
-                "entityType": "columns"
-            }
-        },
-        {
-            "op": "create",
-            "row": {
-                "schema": "play",
-                "table": "team_draft",
                 "name": "proposed_at",
                 "type": "timestamp with time zone",
                 "typeSchema": null,
@@ -584,64 +543,16 @@
         {
             "op": "create",
             "row": {
-                "schema": "play_private",
-                "table": "pair_rule",
-                "name": "pair_rule_community_id_community_id_fkey",
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "lineup_delivery_session_id_session_id_fkey",
                 "nameExplicit": false,
-                "columns": ["community_id"],
-                "schemaTo": "org",
-                "tableTo": "community",
+                "columns": ["session_id"],
+                "schemaTo": "scheduling",
+                "tableTo": "session",
                 "columnsTo": ["id"],
                 "onUpdate": "NO ACTION",
                 "onDelete": "CASCADE",
-                "entityType": "fks"
-            }
-        },
-        {
-            "op": "create",
-            "row": {
-                "schema": "play_private",
-                "table": "pair_rule",
-                "name": "pair_rule_person_id_person_id_fkey",
-                "nameExplicit": false,
-                "columns": ["person_id"],
-                "schemaTo": "identity",
-                "tableTo": "person",
-                "columnsTo": ["id"],
-                "onUpdate": "NO ACTION",
-                "onDelete": "CASCADE",
-                "entityType": "fks"
-            }
-        },
-        {
-            "op": "create",
-            "row": {
-                "schema": "play_private",
-                "table": "pair_rule",
-                "name": "pair_rule_other_person_id_person_id_fkey",
-                "nameExplicit": false,
-                "columns": ["other_person_id"],
-                "schemaTo": "identity",
-                "tableTo": "person",
-                "columnsTo": ["id"],
-                "onUpdate": "NO ACTION",
-                "onDelete": "CASCADE",
-                "entityType": "fks"
-            }
-        },
-        {
-            "op": "create",
-            "row": {
-                "schema": "play_private",
-                "table": "pair_rule",
-                "name": "pair_rule_created_by_person_id_fkey",
-                "nameExplicit": false,
-                "columns": ["created_by"],
-                "schemaTo": "identity",
-                "tableTo": "person",
-                "columnsTo": ["id"],
-                "onUpdate": "NO ACTION",
-                "onDelete": "SET NULL",
                 "entityType": "fks"
             }
         },
@@ -712,10 +623,10 @@
         {
             "op": "create",
             "row": {
-                "schema": "play_private",
-                "table": "pair_rule",
-                "name": "pair_rule_pkey",
-                "columns": ["community_id", "person_id", "other_person_id"],
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "lineup_delivery_pkey",
+                "columns": ["session_id", "chat_id"],
                 "nameExplicit": false,
                 "entityType": "pks"
             }
@@ -729,16 +640,6 @@
                 "columns": ["session_id"],
                 "nameExplicit": false,
                 "entityType": "pks"
-            }
-        },
-        {
-            "op": "create",
-            "row": {
-                "schema": "play_private",
-                "table": "pair_rule",
-                "name": "pair_rule_order_ck",
-                "value": "\"person_id\" < \"other_person_id\"",
-                "entityType": "checks"
             }
         }
     ]

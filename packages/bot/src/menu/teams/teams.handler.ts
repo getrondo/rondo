@@ -16,7 +16,7 @@ import { applyChange, hostGuestsInTeam } from './teams-changes';
 import { editorScreen } from './teams-editor.screen';
 import { handlePasteTap } from './teams-input';
 import { notifyRosterChange } from './teams-notify';
-import { previewScreen, publishAndShow } from './teams-publish';
+import { previewScreen, publishAndShow, retryPreview } from './teams-publish';
 import {
     colourScreen,
     guestCountScreen,
@@ -30,7 +30,7 @@ import {
 import { teamsText } from './teams-text';
 import { actorOf, loadView, showTeams } from './teams-view';
 
-import type { MenuUser, Screen } from '../screen.interface';
+import type { MenuUser } from '../screen.interface';
 import type { EditorView } from './teams-view.interface';
 import type { Tier } from '@rondo/core/teams/interface/team-inputs.interface';
 
@@ -76,7 +76,10 @@ const viewScreen = Effect.fn('Bot.teamsViewScreen')(function* (user: MenuUser, v
             return joinersScreen(user, view, candidates);
         }
         case 'x': {
-            return yield* previewScreen(user, view);
+            return previewScreen(user, view);
+        }
+        case 'Z': {
+            return yield* retryPreview(user, view, tap.args[0] ?? '');
         }
         case 'r': {
             const waiting = yield* firstWaiting(view.row.sessionId);
@@ -109,7 +112,7 @@ const changeScreen = Effect.fn('Bot.teamsChange')(function* (user: MenuUser, tap
     const isPublishing = tap.op === 'A' && change._tag === 'changed' && isDefined(change.row.publishedAt);
 
     return {
-        screen: isPublishing ? yield* publishAndShow(user, fresh) : editorScreen(user, fresh),
+        screen: isPublishing ? previewScreen(user, fresh) : editorScreen(user, fresh),
         toast: change._tag === 'stale' ? teamsText(user.locale, 'changedByOther') : null
     };
 });
@@ -150,16 +153,6 @@ const tierTap = Effect.fn('Bot.teamsTier')(function* (user: MenuUser, view: Edit
     return tiersScreen(user, fresh);
 });
 
-const publishTapScreen = Effect.fn('Bot.teamsPublishTap')(function* (user: MenuUser, tap: TeamsTap) {
-    const view = yield* loadView(user, tap.sessionId, { page: tap.page });
-
-    if (view.row.version !== tap.version) {
-        return editorScreen(user, { ...view, notes: [teamsText(user.locale, 'changedByOther')] });
-    }
-
-    return yield* publishAndShow(user, view);
-});
-
 const teamsTap = Effect.fn('Bot.teamsTap')(function* (user: MenuUser, data: string, messageId: number) {
     const tap = parseTeamsData(data);
     const game = isDefined(tap) ? yield* requireSession(user.communityId, tap.sessionId).pipe(Effect.option) : Option.none();
@@ -178,12 +171,17 @@ const teamsTap = Effect.fn('Bot.teamsTap')(function* (user: MenuUser, data: stri
         return Option.none<string>();
     }
 
-    if (changingOps.has(tap.op) || tap.op === 'X') {
-        const changed = tap.op === 'X' ? null : yield* changeScreen(user, tap);
-        const screen: Screen = changed?.screen ?? (yield* publishTapScreen(user, tap));
-        yield* showTeams(user, messageId, { sessionId: tap.sessionId, screen });
+    if (tap.op === 'X') {
+        yield* publishAndShow(user, tap, messageId);
 
-        return Option.fromNullishOr(changed?.toast);
+        return Option.none<string>();
+    }
+
+    if (changingOps.has(tap.op)) {
+        const changed = yield* changeScreen(user, tap);
+        yield* showTeams(user, messageId, { sessionId: tap.sessionId, screen: changed.screen });
+
+        return Option.fromNullishOr(changed.toast);
     }
 
     const view = yield* loadView(user, tap.sessionId, { page: tap.page, offerLevels: tap.op === 'e' });

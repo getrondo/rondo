@@ -1,8 +1,8 @@
 import { isDefined } from '@rnw-community/shared';
-import { mainGroupOf } from '@rondo/core/community/community.repository';
+import { groupLocaleOf, mainGroupOf } from '@rondo/core/community/community.repository';
 import { personIdOfTelegramUser } from '@rondo/core/identity/telegram-user';
 import { loadAdminState, saveAdminState } from '@rondo/core/menu/admin-state.repository';
-import { audienceForTeams } from '@rondo/core/teams/publish-lineup';
+import { planLineup } from '@rondo/core/teams/lineup-plan';
 import { openDraft, type DraftRow } from '@rondo/core/teams/team-draft.service';
 import { loadTeamInputs } from '@rondo/core/teams/team-inputs';
 import { claimLevelsOffer } from '@rondo/core/teams/team-schedule';
@@ -31,10 +31,20 @@ const decodeTeamsDraft = Schema.decodeUnknownOption(TeamsDraftSchema);
 
 export const actorOf = (user: MenuUser) => personIdOfTelegramUser(user.tgUserId);
 
-const audienceOfGame = Effect.fn('Bot.teamsAudience')(function* (user: MenuUser, sessionId: string) {
-    const fallback = yield* mainGroupOf(user.communityId);
-
-    return yield* audienceForTeams(user.communityId, sessionId, fallback);
+export const planOf = Effect.fn('Bot.teamsPlan')(function* (
+    user: MenuUser,
+    loaded: { readonly row: DraftRow; readonly inputs: EditorView['inputs'] },
+    retryToken: string | null = null
+) {
+    return yield* planLineup({
+        communityId: user.communityId,
+        sessionId: loaded.row.sessionId,
+        locale: yield* groupLocaleOf(user.communityId),
+        privateChatId: user.chatId,
+        fallback: yield* mainGroupOf(user.communityId),
+        loaded,
+        retryToken
+    });
 });
 
 export const loadView = Effect.fn('Bot.loadTeamsView')(function* (
@@ -46,13 +56,13 @@ export const loadView = Effect.fn('Bot.loadTeamsView')(function* (
     const opened = isDefined(options.row)
         ? { row: options.row, inputs: yield* loadTeamInputs(user.communityId, sessionId) }
         : yield* openDraft(user.communityId, sessionId, actor);
-    const audience = yield* audienceOfGame(user, sessionId);
+    const plan = yield* planOf(user, opened);
     const pages = Math.max(1, Math.ceil(opened.row.state.teams.length / 2));
 
     return {
         row: opened.row,
         inputs: opened.inputs,
-        audience,
+        plan,
         selected: null,
         title: null,
         page: Math.min(options.page ?? 0, pages - 1),

@@ -1,7 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { isEmptyString } from '@rnw-community/shared';
-import { messageRef } from '@rondo/db/schema/platform.schema';
-import { teamDraft } from '@rondo/db/schema/play.schema';
+import { lineupDelivery, teamDraft } from '@rondo/db/schema/play.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder, recordingTelegramLayer } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -13,6 +12,7 @@ import * as Option from 'effect/Option';
 import { Access } from '../src/access/admin-access';
 import { syncMember } from '../src/identity/telegram-user';
 import { swapPlayers } from '../src/teams/draft-state';
+import { planLineup } from '../src/teams/lineup-plan';
 import { publishLineup } from '../src/teams/publish-lineup';
 import { changeDraft, openDraft } from '../src/teams/team-draft.service';
 import { claimNotice, claimProposal } from '../src/teams/team-schedule';
@@ -71,23 +71,24 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('team draf
                 const { row } = yield* openDraft(communityId, sessionId, null);
                 const raceChat = -9_600_000n - BigInt(Math.floor(performance.now()));
                 const now = new Date('2026-12-04T17:30:00Z');
-                const publish = publishLineup({
+                const input = {
                     communityId,
                     sessionId,
-                    version: row.version,
-                    locale: 'uk',
+                    locale: 'uk' as const,
                     actorPersonId: null,
                     privateChatId: null,
                     fallback: Option.some({ chatId: raceChat, topicId: null })
-                }).pipe(Effect.result);
+                };
+                const plan = yield* planLineup(input);
+                const publish = publishLineup({ ...input, version: row.version, fingerprint: plan.fingerprint }).pipe(Effect.result);
                 const results = yield* Effect.all(
                     Array.from({ length: racers }, () => publish),
                     { concurrency: 'unbounded' }
                 );
                 const posts = yield* db
                     .select()
-                    .from(messageRef)
-                    .where(and(eq(messageRef.entityId, sessionId), eq(messageRef.purpose, 'lineup')));
+                    .from(lineupDelivery)
+                    .where(and(eq(lineupDelivery.sessionId, sessionId), eq(lineupDelivery.status, 'sent')));
                 const proposals = yield* Effect.all(
                     Array.from({ length: racers }, () => claimProposal(sessionId, now)),
                     { concurrency: 'unbounded' }
@@ -105,9 +106,11 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('team draf
 
                 expect(
                     results
-                        .flatMap(result => (result._tag === 'Success' ? result.success.groups.map(group => group.status) : ['failed']))
+                        .flatMap(result =>
+                            result._tag === 'Success' ? result.success.deliveries.map(delivery => delivery.status) : ['changed']
+                        )
                         .toSorted()
-                ).toEqual([...Array.from({ length: racers - 1 }, () => 'edited'), 'sent']);
+                ).toEqual([...Array.from({ length: racers - 1 }, () => 'changed'), 'sent']);
                 expect(posts).toHaveLength(1);
                 expect(
                     raceRecorder.calls.filter(call => call.method === 'sendMessage' && call.payload.chat_id === Number(raceChat))

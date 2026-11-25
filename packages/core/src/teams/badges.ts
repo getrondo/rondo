@@ -1,3 +1,4 @@
+import { isDefined } from '@rnw-community/shared';
 import { teamBadges } from '@rondo/ingest-telegram/config/team-badges';
 
 import type { Badge, BadgeColour } from './interface/badge.interface';
@@ -16,4 +17,19 @@ export const defaultColours = (count: number, preferred: readonly BadgeColour[])
     const order = [...new Set([...preferred, ...badges.map(entry => entry.colour)])];
 
     return order.slice(0, count);
+};
+
+export const paddedColours = (colours: readonly string[], count: number): string[] => {
+    const valid = colours.slice(0, count).map(colour => (isDefined(badgeOfColour(colour)) ? colour : null));
+    const spare = badges.map(entry => entry.colour).filter(colour => !valid.includes(colour));
+
+    return Array.from({ length: count }, (_team, index) => {
+        const kept = valid[index];
+
+        if (isDefined(kept) && valid.indexOf(kept) === index) {
+            return kept;
+        }
+
+        return spare.shift() ?? '';
+    });
 };

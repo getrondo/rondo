@@ -26,8 +26,6 @@ export interface TeamInputs {
     readonly players: readonly SolverPlayer[];
     readonly habits: ReadonlyMap<string, number>;
     readonly recent: ReadonlyMap<string, number>;
-    readonly together: readonly (readonly [string, string])[];
-    readonly apart: readonly (readonly [string, string])[];
     readonly hasLevels: boolean;
     readonly lastColours: readonly BadgeColour[];
     readonly settings: TeamSettings;

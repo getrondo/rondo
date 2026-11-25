@@ -11,7 +11,8 @@ import {
     primaryKey,
     smallint,
     text,
-    uniqueIndex
+    uniqueIndex,
+    uuid
 } from 'drizzle-orm/pg-core';
 
 import { createdAt, id, instant, ref, updatedAt, requiredRef } from './columns';
@@ -35,7 +36,7 @@ export const matchStageEnum = play.enum('match_stage', [
 ]);
 export const matchEventKindEnum = play.enum('match_event_kind', ['goal', 'own_goal', 'assist', 'yellow', 'timeout_2min', 'red', 'injury']);
 export const ratingModelEnum = playPrivate.enum('rating_model', ['openskill_pl', 'organizer_seed']);
-export const pairKindEnum = playPrivate.enum('pair_kind', ['together', 'apart']);
+export const lineupDeliveryStatusEnum = play.enum('lineup_delivery_status', ['claimed', 'sent', 'uncertain', 'refused']);
 
 export const teamColor = play.table(
     'team_color',
@@ -180,22 +181,6 @@ export const ratingEvent = playPrivate.table(
     t => [index('rating_event_person_idx').on(t.personId, t.at)]
 );
 
-export const pairRule = playPrivate.table(
-    'pair_rule',
-    {
-        communityId: requiredRef('community_id', () => community.id),
-        personId: requiredRef('person_id', () => person.id),
-        otherPersonId: requiredRef('other_person_id', () => person.id),
-        kind: pairKindEnum('kind').notNull(),
-        createdBy: ref('created_by').references(() => person.id, { onDelete: 'set null' }),
-        createdAt: createdAt()
-    },
-    t => [
-        primaryKey({ columns: [t.communityId, t.personId, t.otherPersonId] }),
-        check('pair_rule_order_ck', sql`${t.personId} < ${t.otherPersonId}`)
-    ]
-);
-
 export const teamDraft = play.table('team_draft', {
     sessionId: ref('session_id')
         .primaryKey()
@@ -204,7 +189,6 @@ export const teamDraft = play.table('team_draft', {
     version: integer('version').notNull().default(1),
     state: jsonb('state').notNull(),
     proposed: jsonb('proposed'),
-    privateText: text('private_text'),
     proposedAt: instant('proposed_at'),
     changedAt: instant('changed_at'),
     notifiedAt: instant('notified_at'),
@@ -212,3 +196,18 @@ export const teamDraft = play.table('team_draft', {
     updatedBy: ref('updated_by').references(() => person.id, { onDelete: 'set null' }),
     updatedAt: updatedAt()
 });
+
+export const lineupDelivery = play.table(
+    'lineup_delivery',
+    {
+        sessionId: requiredRef('session_id', () => session.id),
+        chatId: bigint('chat_id', { mode: 'bigint' }).notNull(),
+        topicId: bigint('topic_id', { mode: 'number' }),
+        messageId: bigint('message_id', { mode: 'number' }),
+        text: text('text'),
+        status: lineupDeliveryStatusEnum('status').notNull(),
+        token: uuid('token').notNull().defaultRandom(),
+        updatedAt: updatedAt()
+    },
+    t => [primaryKey({ columns: [t.sessionId, t.chatId] })]
+);

@@ -333,8 +333,17 @@ layer(testDbLayer, { timeout: 60_000 })('database invariants', it => {
                 })
                 .returning({ id: session.id });
             yield* db.insert(team).values({ sessionId: game?.id ?? '', ordinal: 1, colorId: orange?.id });
-            yield* db.execute(sql`select play.fix_money_colours()`);
-            yield* db.execute(sql`select play.fix_money_colours()`);
+            const badges = readFileSync(
+                fileURLToPath(new URL('../drizzle/20261125101540_team_badges/migration.sql', import.meta.url)),
+                'utf8'
+            )
+                .split('--> statement-breakpoint')
+                .map(statement => statement.trim());
+
+            for (const statement of [...badges, ...badges]) {
+                yield* db.execute(sql.raw(statement));
+            }
+
             const colours = yield* db
                 .select({ communityId: teamColor.communityId, name: teamColor.name, emoji: teamColor.emoji })
                 .from(teamColor)

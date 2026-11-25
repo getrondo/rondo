@@ -15,6 +15,7 @@ import { syncMember } from '../src/identity/telegram-user';
 import { noticeOf } from '../src/notify/notice-preview';
 import { createSession } from '../src/sessions/session.service';
 import { publishPoll } from '../src/signups/publish-poll';
+import { publishTeamsAction } from '../src/teams/team.service';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -284,14 +285,20 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
                 [1, 2, 3, 4].map(index => syncMember(communityId, { id: BigInt(7100 + index), firstName: `Team${index}` }, 'active'))
             );
             yield* db.insert(signup).values(players.map(personId => ({ sessionId, personId, status: 'in' as const })));
-            const teamsOf = (order: readonly string[]): Action => ({
-                _tag: 'publish_teams',
-                sessionId,
-                teams: [order.slice(0, 2), order.slice(2)].map((members, index) => ({
-                    ordinal: index + 1,
-                    players: members.map(personId => ({ personId, displayName: '', isGk: false }))
-                }))
-            });
+            const teamsOf = (order: readonly string[]) =>
+                publishTeamsAction({
+                    communityId,
+                    sessionId,
+                    teams: [order.slice(0, 2), order.slice(2)].map((members, index) => ({
+                        ordinal: index + 1,
+                        players: members.map(personId => ({ personId, displayName: '', isGk: false }))
+                    })),
+                    teamCount: 2,
+                    locale: 'uk',
+                    privateChatId: null,
+                    fallback: Option.fromNullishOr(group),
+                    actorPersonId: null
+                });
             const membersOf = () =>
                 db
                     .select({ personId: teamMember.personId, ordinal: team.ordinal })
@@ -300,12 +307,13 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
                     .where(eq(teamMember.sessionId, sessionId))
                     .orderBy(teamMember.personId);
             const sends = countOfCalls('sendMessage');
-            yield* confirm(communityId, teamsOf(players));
+            yield* confirm(communityId, yield* teamsOf(players));
             const swapped = [players[2] ?? '', players[1] ?? '', players[0] ?? '', players[3] ?? ''];
-            const edited = yield* confirm(communityId, teamsOf(swapped));
+            const edited = yield* confirm(communityId, yield* teamsOf(swapped));
             const afterEdit = yield* membersOf();
             const refused = refusal('editMessageText', 'Bad Request: message to edit not found');
-            const { outcome } = yield* failing('editMessageText', refused, confirm(communityId, teamsOf(players)));
+            const back = yield* teamsOf(players);
+            const { outcome } = yield* failing('editMessageText', refused, confirm(communityId, back));
 
             expect(countOfCalls('sendMessage') - sends).toBe(1);
             expect(edited.outcome._tag).toBe('done');

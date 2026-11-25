@@ -428,7 +428,8 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
                     publishLineup({
                         communityId: target.communityId,
                         sessionId: target.id,
-                        version: null,
+                        version: 0,
+                        fingerprint: '',
                         locale: 'uk',
                         actorPersonId: null,
                         privateChatId: null,

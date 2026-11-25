@@ -26,7 +26,6 @@ export interface DraftRow {
     readonly changedAt: Date | null;
     readonly notifiedAt: Date | null;
     readonly publishedAt: Date | null;
-    readonly privateText: string | null;
 }
 
 interface DraftChange {
@@ -70,8 +69,6 @@ export const solverInputFor = (inputs: TeamInputs, state: DraftState, extra: Par
             })),
         teamCount: Math.max(2, state.teams.length),
         locks: new Map(state.locks.map(personId => [personId, teamIndexOf(state, personId)])),
-        together: inputs.together,
-        apart: inputs.apart,
         habits: inputs.habits,
         recent: inputs.recent,
         ...extra

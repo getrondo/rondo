@@ -30,8 +30,6 @@ const inputOf = (players: readonly SolverPlayer[], teamCount: number, extra: Par
     players,
     teamCount,
     locks: new Map(),
-    together: [],
-    apart: [],
     habits: new Map(),
     recent: new Map(),
     ...extra
@@ -51,14 +49,11 @@ const randomCase = (seed: number): SolverInput => {
     );
     const outfield = players.filter(entry => !entry.isGk).map(entry => entry.id);
     const locks = new Map(outfield.slice(0, Math.floor(random() * teamCount)).map((id, team) => [id, team]));
-    const free = outfield.filter(id => !locks.has(id));
-    const together: [string, string][] = random() < 0.6 && free.length > 6 ? [[free[0] ?? '', free[1] ?? '']] : [];
-    const apart: [string, string][] = random() < 0.6 && free.length > 6 ? [[free[2] ?? '', free[3] ?? '']] : [];
     const habits = new Map(
         players.flatMap((first, index) => players.slice(index + 1).map(second => [pairKey(first.id, second.id), random() * 4 - 2] as const))
     );
 
-    return inputOf(players, teamCount, { locks, together, apart, habits });
+    return inputOf(players, teamCount, { locks, habits });
 };
 
 const teamOf = (teams: readonly (readonly string[])[], id: string): number => teams.findIndex(team => team.includes(id));
@@ -73,20 +68,55 @@ const hardMisses = (input: SolverInput, teams: readonly (readonly string[])[]): 
     return (
         Math.max(0, Math.max(...sizes) - Math.min(...sizes) - 1) +
         gks.filter(count => count < fewest || count > most).length +
-        [...input.locks].filter(([id, team]) => teamOf(teams, id) !== team).length +
-        input.together.filter(([first, second]) => teamOf(teams, first) !== teamOf(teams, second)).length +
-        input.apart.filter(([first, second]) => teamOf(teams, first) === teamOf(teams, second)).length
+        [...input.locks].filter(([id, team]) => teamOf(teams, id) !== team).length
     );
 };
 
 describe('solveTeams', () => {
-    it('always keeps the hard rules: sizes one apart, keepers spread, locks and pairs', () => {
+    it('repairs keepers the greedy start leaves together and names a rule the locks make impossible', () => {
+        const players = Array.from({ length: 12 }, (_, index) => player(`k${index}`, index < 3 ? 40 : 20, { isGk: index < 3 }));
+        const threeLocked = inputOf(players, 3, {
+            locks: new Map([
+                ['k3', 0],
+                ['k4', 0],
+                ['k5', 0]
+            ])
+        });
+        const spread = solveTeams(threeLocked);
+        const lockedKeepers = solveTeams(
+            inputOf(players, 2, {
+                locks: new Map([
+                    ['k0', 0],
+                    ['k1', 0],
+                    ['k2', 0]
+                ]),
+                proposals: 1
+            })
+        );
+        const lockedSizes = solveTeams(
+            inputOf(players, 2, { locks: new Map(players.slice(3, 10).map(entry => [entry.id, 0])), proposals: 1 })
+        );
+
+        expect(spread.map(proposal => [hardMisses(threeLocked, proposal.teams), proposal.unresolved])).toEqual([
+            [0, []],
+            [0, []],
+            [0, []]
+        ]);
+        expect(lockedKeepers.map(proposal => proposal.unresolved)).toEqual([['keepers']]);
+        expect(lockedSizes.map(proposal => proposal.unresolved)).toEqual([['sizes']]);
+    });
+
+    it('always keeps the hard rules: sizes one apart, keepers spread and locks', () => {
         for (let seed = 1; seed <= 80; seed += 1) {
             const input = randomCase(seed * 7919);
             const proposals = solveTeams(input);
 
             for (const proposal of proposals) {
-                expect({ seed, misses: hardMisses(input, proposal.teams) }).toEqual({ seed, misses: 0 });
+                expect({ seed, misses: hardMisses(input, proposal.teams), unresolved: proposal.unresolved }).toEqual({
+                    seed,
+                    misses: 0,
+                    unresolved: []
+                });
                 expect(proposal.teams.flat().toSorted()).toEqual(input.players.map(entry => entry.id).toSorted());
             }
         }
@@ -113,7 +143,7 @@ describe('solveTeams', () => {
             )
         );
         const started = performance.now();
-        const proposals = solveTeams({ ...input, players, teamCount: 4, locks: new Map(), together: [], apart: [], habits });
+        const proposals = solveTeams({ ...input, players, teamCount: 4, locks: new Map(), habits });
         const elapsed = performance.now() - started;
         const differing = (left: readonly (readonly string[])[], right: readonly (readonly string[])[]) =>
             left

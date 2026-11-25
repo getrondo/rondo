@@ -1,0 +1,134 @@
+import { createHash } from 'node:crypto';
+
+import { isDefined, isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
+import { telegramChat } from '@rondo/db/schema/org.schema';
+import { lineupDelivery, ratingEvent } from '@rondo/db/schema/play.schema';
+import { Db } from '@rondo/db/service/db.service';
+import { eq } from 'drizzle-orm';
+import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
+
+import { ActionFailedError } from '../error/action-failed.error';
+import { noticeTargets } from '../signups/audience';
+
+import { placementOf, postOf, postTeamsOf, publishedPlacement } from './lineup-of-draft';
+import { lineupDiff, lineupPostHtml } from './lineup-post';
+import { loadDraft, type DraftRow } from './team-draft.service';
+import { loadTeamInputs } from './team-inputs';
+
+import type { Locale } from '../i18n/locale';
+import type { GroupTarget } from '../interface/group-target.interface';
+import type { DraftState } from './draft-state';
+import type { LineupPlan, PlannedDelivery } from './interface/publish.interface';
+import type { TeamInputs } from './interface/team-inputs.interface';
+
+export interface PlanInput {
+    readonly communityId: string;
+    readonly sessionId: string;
+    readonly locale: Locale;
+    readonly privateChatId: number | null;
+    readonly fallback: Option.Option<GroupTarget>;
+    readonly state?: DraftState;
+    readonly loaded?: { readonly row: DraftRow; readonly inputs: TeamInputs };
+    readonly retryToken?: string | null;
+}
+
+const audienceForTeams = Effect.fn('Core.audienceForTeams')(function* (
+    communityId: string,
+    sessionId: string,
+    fallback: Option.Option<GroupTarget>
+) {
+    const db = yield* Db;
+    const audience = yield* noticeTargets(sessionId, Option.toArray(fallback));
+    const isPrivate = audience.some(target => target.chatId > 0n);
+    const targets = audience.filter(target => target.chatId < 0n);
+    const titles = isNotEmptyArray(targets)
+        ? yield* db
+              .select({ chatId: telegramChat.chatId, title: telegramChat.title })
+              .from(telegramChat)
+              .where(eq(telegramChat.communityId, communityId))
+        : [];
+
+    return {
+        groups: targets.map(target => ({
+            chatId: target.chatId,
+            topicId: target.topicId,
+            title: titles.find(row => row.chatId === target.chatId)?.title ?? ''
+        })),
+        isPrivate
+    };
+});
+
+const isDueBy = (stored: PlannedDelivery['stored'], storedText: string | null, text: string, isRetry: boolean): boolean => {
+    if (stored === 'claimed' || stored === 'uncertain') {
+        return isRetry;
+    }
+
+    return stored !== 'sent' || storedText !== text;
+};
+
+const fingerprintOf = (deliveries: readonly PlannedDelivery[], clearsResult: boolean): string =>
+    createHash('sha256')
+        .update(
+            JSON.stringify([
+                clearsResult,
+                deliveries.map(entry => [String(entry.chatId), entry.topicId, entry.isDue ? entry.html : [entry.stored, entry.token]])
+            ])
+        )
+        .digest('base64url')
+        .slice(0, 8);
+
+export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInput) {
+    const db = yield* Db;
+    const row =
+        input.loaded?.row ??
+        (yield* loadDraft(input.sessionId).pipe(
+            Effect.flatMap(found => Effect.fromOption(found)),
+            Effect.mapError(() => ActionFailedError.make({ reason: 'there are no teams to post' }))
+        ));
+    const inputs = input.loaded?.inputs ?? (yield* loadTeamInputs(input.communityId, input.sessionId));
+    const teams = postTeamsOf(input.state ?? row.state, inputs.members);
+    const previous = yield* publishedPlacement(input.sessionId);
+    const diff = isNotEmptyArray(previous) ? lineupDiff(previous, placementOf(teams)) : [];
+    const audience = yield* audienceForTeams(input.communityId, input.sessionId, input.fallback);
+    const stored = yield* db.select().from(lineupDelivery).where(eq(lineupDelivery.sessionId, input.sessionId));
+    const results = yield* db.select({ at: ratingEvent.at }).from(ratingEvent).where(eq(ratingEvent.sessionId, input.sessionId)).limit(1);
+    const post = (isUpdate: boolean) =>
+        lineupPostHtml(postOf(inputs.game, teams, { locale: input.locale, showHandles: inputs.settings.showHandles, isUpdate }));
+    const clean = post(false);
+    const isUpdate = stored.some(entry => entry.status === 'sent');
+    const self =
+        audience.isPrivate && isDefined(input.privateChatId) ? [{ chatId: BigInt(input.privateChatId), topicId: null, title: null }] : [];
+    const deliveries = [...audience.groups, ...self].map((target): PlannedDelivery => {
+        const found = stored.find(entry => entry.chatId === target.chatId);
+        const isPrivate = target.chatId > 0n;
+
+        return {
+            chatId: target.chatId,
+            topicId: target.topicId,
+            title: target.title,
+            html: isPrivate && isUpdate ? post(true) : clean,
+            text: clean,
+            messageId: isPrivate ? null : (found?.messageId ?? null),
+            stored: found?.status ?? null,
+            token: found?.token ?? null,
+            isDue: isDueBy(
+                found?.status ?? null,
+                found?.text ?? null,
+                clean,
+                isDefined(found) && isNotEmptyString(input.retryToken) && found.token.startsWith(input.retryToken)
+            )
+        };
+    });
+    const clearsResult = isNotEmptyArray(results) && isNotEmptyArray(diff);
+
+    return {
+        version: row.version,
+        teams,
+        deliveries,
+        diff,
+        isUpdate,
+        clearsResult,
+        fingerprint: fingerprintOf(deliveries, clearsResult)
+    } satisfies LineupPlan;
+});

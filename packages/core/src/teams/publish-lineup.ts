@@ -1,99 +1,69 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
-import { telegramChat } from '@rondo/db/schema/org.schema';
-import { messageRef } from '@rondo/db/schema/platform.schema';
-import { team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
+import { lineupDelivery, team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
-import { and, eq, lt } from 'drizzle-orm';
+import { and, eq, gt, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
-import * as Option from 'effect/Option';
-import * as Ref from 'effect/Ref';
 
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
-import { noticeTargets } from '../signups/audience';
 import { topicOptions } from '../utils/topic-options.util';
 
 import { badgeOfColour, badgeOfRow } from './badges';
-import { placementOf, postOf, postTeamsOf, publishedPlacement } from './lineup-of-draft';
-import { lineupDiff, lineupPostHtml } from './lineup-post';
-import { loadDraft } from './team-draft.service';
-import { loadTeamInputs } from './team-inputs';
+import { planLineup, type PlanInput } from './lineup-plan';
+import { clearResult } from './team-result';
 
-import type { Locale } from '../i18n/locale';
-import type { GroupTarget } from '../interface/group-target.interface';
-import type { DraftState } from './draft-state';
-import type { GroupOutcome, PublishOutcome } from './interface/publish.interface';
+import type { PostTeam } from './interface/lineup-post.interface';
+import type { DeliveryOutcome, LineupPlan, PlannedDelivery, PublishOutcome } from './interface/publish.interface';
+
+export const lineupChanged = 'the teams post changed after the preview';
 
 const notModified = /message is not modified/iu;
+const notFound = /message to edit not found/iu;
+const htmlOptions = { parse_mode: 'HTML' as const, link_preview_options: { is_disabled: true } };
 
 const colourIdOf = Effect.fn('Core.colourIdOf')(function* (communityId: string, colour: string) {
     const db = yield* Db;
     const rows = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId));
     const found = rows.find(row => badgeOfRow(row)?.colour === colour);
 
-    if (isDefined(found)) {
-        return found.id;
+    if (isDefined(found) || !isDefined(badgeOfColour(colour))) {
+        return found?.id ?? null;
     }
 
-    yield* db
+    const [created] = yield* db
         .insert(teamColor)
         .values({ communityId, name: colour, emoji: badgeOfColour(colour)?.badge ?? null })
-        .onConflictDoNothing();
-    const [created] = yield* db
-        .select({ id: teamColor.id })
-        .from(teamColor)
-        .where(and(eq(teamColor.communityId, communityId), eq(teamColor.name, colour)));
+        .onConflictDoUpdate({ target: [teamColor.communityId, teamColor.name], set: { name: colour } })
+        .returning({ id: teamColor.id });
 
     return created?.id ?? null;
 });
 
-export const audienceForTeams = Effect.fn('Core.audienceForTeams')(function* (
-    communityId: string,
-    sessionId: string,
-    fallback: Option.Option<GroupTarget>
-) {
-    const db = yield* Db;
-    const audience = yield* noticeTargets(sessionId, Option.toArray(fallback));
-    const isPrivate = audience.some(target => target.chatId > 0n);
-    const targets = audience.filter(target => target.chatId < 0n);
-    const titles = isNotEmptyArray(targets)
-        ? yield* db
-              .select({ chatId: telegramChat.chatId, title: telegramChat.title })
-              .from(telegramChat)
-              .where(eq(telegramChat.communityId, communityId))
-        : [];
-
-    return {
-        groups: targets.map(target => ({
-            chatId: target.chatId,
-            topicId: target.topicId,
-            title: titles.find(row => row.chatId === target.chatId)?.title ?? ''
-        })),
-        isPrivate
-    };
-});
-
-const storeSquad = Effect.fn('Core.storeSquad')(function* (communityId: string, sessionId: string, state: DraftState) {
+const storeSquad = Effect.fn('Core.storeSquad')(function* (communityId: string, sessionId: string, teams: readonly PostTeam[]) {
     const db = yield* Db;
     const publishedAt = yield* DateTime.nowAsDate;
-    yield* db.delete(team).where(eq(team.sessionId, sessionId));
+    const existing = yield* db.select({ id: team.id, ordinal: team.ordinal }).from(team).where(eq(team.sessionId, sessionId));
+    yield* db.delete(team).where(and(eq(team.sessionId, sessionId), gt(team.ordinal, teams.length)));
+    yield* db.delete(teamMember).where(eq(teamMember.sessionId, sessionId));
 
-    for (const [index, members] of state.teams.entries()) {
-        const [stored] = yield* db
-            .insert(team)
-            .values({ sessionId, ordinal: index + 1, colorId: yield* colourIdOf(communityId, state.colours[index] ?? ''), publishedAt })
-            .returning({ id: team.id });
+    for (const [index, posted] of teams.entries()) {
+        const ordinal = index + 1;
+        const colorId = yield* colourIdOf(communityId, posted.colour ?? '');
+        const kept = existing.find(entry => entry.ordinal === ordinal);
+        const [stored] = isDefined(kept)
+            ? yield* db.update(team).set({ colorId, publishedAt }).where(eq(team.id, kept.id)).returning({ id: team.id })
+            : yield* db.insert(team).values({ sessionId, ordinal, colorId, publishedAt }).returning({ id: team.id });
 
-        if (isNotEmptyArray(members)) {
+        if (isDefined(stored) && isNotEmptyArray(posted.members)) {
             yield* db.insert(teamMember).values(
-                members.map(personId => ({
-                    teamId: stored?.id ?? '',
+                posted.members.map(member => ({
+                    teamId: stored.id,
                     sessionId,
-                    personId,
-                    isGk: state.keepers.includes(personId),
+                    personId: member.personId,
+                    isGk: member.isGk,
                     assignedBy: 'balancer' as const
                 }))
             );
@@ -103,141 +73,173 @@ const storeSquad = Effect.fn('Core.storeSquad')(function* (communityId: string, 
     return publishedAt;
 });
 
-const toGroup = Effect.fn('Core.lineupToGroup')(function* (
-    sessionId: string,
-    group: GroupTarget & { readonly title: string },
-    html: string
-) {
+const claimDelivery = Effect.fn('Core.claimLineupDelivery')(function* (sessionId: string, delivery: PlannedDelivery) {
     const db = yield* Db;
-    const telegram = yield* Telegram;
-    const [existing] = yield* db
-        .select({ messageId: messageRef.messageId })
-        .from(messageRef)
-        .where(
-            and(
-                eq(messageRef.entityId, sessionId),
-                eq(messageRef.purpose, 'lineup'),
-                eq(messageRef.chatId, group.chatId),
-                lt(messageRef.chatId, 0n)
-            )
-        );
-    const options = { parse_mode: 'HTML' as const, link_preview_options: { is_disabled: true } };
 
-    if (isDefined(existing)) {
-        return yield* telegram
-            .call('editMessageText', api => api.editMessageText(Number(group.chatId), existing.messageId, html, options))
-            .pipe(
-                Effect.as<GroupOutcome>({ chatId: group.chatId, title: group.title, status: 'edited', reason: null }),
-                Effect.catchIf(
-                    error => !error.isUncertain,
-                    error =>
-                        Effect.succeed<GroupOutcome>({
-                            chatId: group.chatId,
-                            title: group.title,
-                            status: notModified.test(error.description) ? 'edited' : 'refused',
-                            reason: error.description
-                        })
-                )
-            );
+    if (!isDefined(delivery.stored)) {
+        const inserted = yield* db
+            .insert(lineupDelivery)
+            .values({ sessionId, chatId: delivery.chatId, topicId: delivery.topicId, status: 'claimed' })
+            .onConflictDoNothing()
+            .returning({ chatId: lineupDelivery.chatId });
+
+        return isNotEmptyArray(inserted);
     }
 
-    const sent = yield* telegram.call('sendMessage', api =>
-        api.sendMessage(Number(group.chatId), html, { ...options, ...topicOptions(group) })
-    );
-    yield* db
-        .insert(messageRef)
-        .values({ chatId: group.chatId, messageId: sent.message_id, purpose: 'lineup', entityType: 'session', entityId: sessionId })
-        .onConflictDoNothing();
+    const claimed = yield* db
+        .update(lineupDelivery)
+        .set({ status: 'claimed', token: sql`gen_random_uuid()` })
+        .where(
+            and(
+                eq(lineupDelivery.sessionId, sessionId),
+                eq(lineupDelivery.chatId, delivery.chatId),
+                eq(lineupDelivery.status, delivery.stored),
+                eq(lineupDelivery.token, delivery.token ?? '')
+            )
+        )
+        .returning({ chatId: lineupDelivery.chatId });
 
-    return { chatId: group.chatId, title: group.title, status: 'sent', reason: null } satisfies GroupOutcome;
+    return isNotEmptyArray(claimed);
 });
 
-export const publishLineup = Effect.fn('Core.publishLineup')(function* (input: {
-    readonly communityId: string;
-    readonly sessionId: string;
-    readonly version: number | null;
-    readonly locale: Locale;
-    readonly actorPersonId: string | null;
-    readonly privateChatId: number | null;
-    readonly fallback: Option.Option<GroupTarget>;
-}) {
-    const db = yield* Db;
-    const telegram = yield* Telegram;
-    const isSent = yield* Ref.make(false);
-    const publish = Effect.gen(function* () {
-        const row = yield* loadDraft(input.sessionId).pipe(
-            Effect.flatMap(found => Effect.fromOption(found)),
-            Effect.mapError(() => ActionFailedError.make({ reason: 'there are no teams to post' }))
+const sendOne = (delivery: PlannedDelivery) =>
+    Effect.gen(function* () {
+        const telegram = yield* Telegram;
+        const chatId = Number(delivery.chatId);
+        const { messageId } = delivery;
+
+        if (isDefined(messageId)) {
+            yield* telegram.call('editMessageText', api => api.editMessageText(chatId, messageId, delivery.html, htmlOptions));
+
+            return { messageId, status: 'edited' as const };
+        }
+
+        const sent = yield* telegram.call('sendMessage', api =>
+            api.sendMessage(chatId, delivery.html, { ...htmlOptions, ...topicOptions(delivery) })
         );
 
-        if (isDefined(input.version) && row.version !== input.version) {
-            return yield* ActionFailedError.make({ reason: 'the teams were changed by another admin' });
-        }
-
-        const inputs = yield* loadTeamInputs(input.communityId, input.sessionId);
-        const teams = postTeamsOf(row.state, inputs.members);
-        const previous = yield* publishedPlacement(input.sessionId);
-        const diff = isNotEmptyArray(previous) ? lineupDiff(previous, placementOf(teams)) : [];
-        const audience = yield* audienceForTeams(input.communityId, input.sessionId, input.fallback);
-        const post = (isUpdate: boolean) =>
-            lineupPostHtml(postOf(inputs.game, teams, { locale: input.locale, showHandles: inputs.settings.showHandles, isUpdate }));
-        const clean = post(false);
-        const publishedAt = yield* storeSquad(input.communityId, input.sessionId, row.state);
-        const groups: GroupOutcome[] = [];
-
-        for (const group of audience.groups) {
-            const outcome = yield* toGroup(input.sessionId, group, clean);
-            yield* Ref.update(isSent, wasSent => wasSent || outcome.status !== 'refused');
-            groups.push(outcome);
-        }
-
-        const isPrivateDue = audience.isPrivate && isDefined(input.privateChatId) && row.privateText !== clean;
-
-        if (isPrivateDue) {
-            yield* telegram.call('sendMessage', api =>
-                api.sendMessage(input.privateChatId ?? 0, post(isDefined(row.privateText)), {
-                    parse_mode: 'HTML',
-                    link_preview_options: { is_disabled: true }
-                })
-            );
-            yield* Ref.set(isSent, true);
-        }
-
-        if (isNotEmptyArray(groups) && groups.every(outcome => outcome.status === 'refused') && !isPrivateDue) {
-            return yield* ActionFailedError.make({
-                reason: groups.find(outcome => isDefined(outcome.reason))?.reason ?? 'Telegram refused'
-            });
-        }
-
-        yield* db
-            .update(teamDraft)
-            .set({ publishedAt, ...(isPrivateDue ? { privateText: clean } : {}) })
-            .where(eq(teamDraft.sessionId, input.sessionId));
-        yield* recordAudit({
-            communityId: input.communityId,
-            actorPersonId: input.actorPersonId,
-            action: 'teams.publish',
-            entityType: 'session',
-            entityId: input.sessionId,
-            diff: { groups: groups.length, isPrivate: isPrivateDue }
-        });
-
-        const privateStatus = isPrivateDue ? 'sent' : 'unchanged';
-
-        return { groups, privateStatus: audience.isPrivate ? privateStatus : null, diff } satisfies PublishOutcome;
+        return { messageId: sent.message_id, status: 'sent' as const };
     });
 
-    return yield* withCommunityLock({ id: input.communityId }, publish).pipe(
-        Effect.catchCause(cause =>
-            Effect.gen(function* () {
-                if (!(yield* Ref.get(isSent))) {
-                    return yield* Effect.failCause(cause);
-                }
+const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: string, sessionId: string, delivery: PlannedDelivery) {
+    const db = yield* Db;
+    const where = and(eq(lineupDelivery.sessionId, sessionId), eq(lineupDelivery.chatId, delivery.chatId));
+    const outcome = (status: DeliveryOutcome['status'], reason: string | null): DeliveryOutcome => ({
+        chatId: delivery.chatId,
+        title: delivery.title,
+        status,
+        reason
+    });
+    const receipt = sendOne(delivery).pipe(
+        Effect.flatMap(done =>
+            db
+                .update(lineupDelivery)
+                .set({ status: 'sent', messageId: done.messageId, text: delivery.text, topicId: delivery.topicId })
+                .where(where)
+                .pipe(Effect.as(outcome(done.status, null)))
+        ),
+        Effect.catchTag('TelegramApiError', error => {
+            if (notModified.test(error.description)) {
+                return db
+                    .update(lineupDelivery)
+                    .set({ status: 'sent', text: delivery.text })
+                    .where(where)
+                    .pipe(Effect.as(outcome('edited', null)));
+            }
 
-                yield* Effect.logError('[teams] sent but not saved', cause);
+            const status = error.isUncertain ? 'uncertain' : 'refused';
+            const messageId = notFound.test(error.description) ? null : delivery.messageId;
 
-                return yield* ActionFailedError.make({ reason: 'the teams were sent but may not be saved, check the chat' });
-            })
-        )
+            return db
+                .update(lineupDelivery)
+                .set({ status, messageId })
+                .where(where)
+                .pipe(Effect.as(outcome(status, error.description)));
+        })
     );
+
+    return yield* withCommunityLock({ id: communityId }, receipt).pipe(
+        Effect.catchCause(cause => Effect.logError('[teams] lineup receipt not saved', cause).pipe(Effect.as(outcome('uncertain', null))))
+    );
+});
+
+const startPublish = Effect.fn('Core.startPublish')(function* (
+    input: PlanInput & { readonly version: number; readonly fingerprint: string }
+) {
+    const plan = yield* planLineup(input);
+
+    if (plan.version !== input.version || plan.fingerprint !== input.fingerprint) {
+        return yield* ActionFailedError.make({ reason: lineupChanged });
+    }
+
+    if (plan.clearsResult) {
+        yield* clearResult(input.sessionId);
+    }
+
+    const claimed: PlannedDelivery[] = [];
+
+    for (const delivery of plan.deliveries.filter(entry => entry.isDue)) {
+        if (yield* claimDelivery(input.sessionId, delivery)) {
+            claimed.push(delivery);
+        }
+    }
+
+    return { plan, claimed };
+});
+
+const waitingOutcome = (delivery: PlannedDelivery): DeliveryOutcome => {
+    const quiet = delivery.stored === 'claimed' || delivery.stored === 'uncertain' ? 'uncertain' : 'unchanged';
+
+    return { chatId: delivery.chatId, title: delivery.title, status: delivery.isDue ? 'busy' : quiet, reason: null };
+};
+
+const finishPublish = Effect.fn('Core.finishPublish')(function* (
+    input: { readonly communityId: string; readonly sessionId: string; readonly actorPersonId: string | null },
+    plan: LineupPlan,
+    delivered: readonly DeliveryOutcome[]
+) {
+    const db = yield* Db;
+    const publishedAt = yield* storeSquad(input.communityId, input.sessionId, plan.teams);
+    yield* db.update(teamDraft).set({ publishedAt }).where(eq(teamDraft.sessionId, input.sessionId));
+    yield* recordAudit({
+        communityId: input.communityId,
+        actorPersonId: input.actorPersonId,
+        action: 'teams.publish',
+        entityType: 'session',
+        entityId: input.sessionId,
+        diff: { delivered: delivered.map(entry => entry.status) }
+    });
+});
+
+export const publishLineup = Effect.fn('Core.publishLineup')(function* (
+    input: PlanInput & { readonly version: number; readonly fingerprint: string; readonly actorPersonId: string | null }
+) {
+    const { plan, claimed } = yield* withCommunityLock({ id: input.communityId }, startPublish(input));
+    const delivered: DeliveryOutcome[] = [];
+
+    for (const delivery of claimed) {
+        const outcome = yield* deliverOne(input.communityId, input.sessionId, delivery);
+        delivered.push(outcome);
+    }
+
+    const isStored = delivered.some(entry => entry.status !== 'refused');
+
+    if (isStored) {
+        yield* withCommunityLock({ id: input.communityId }, finishPublish(input, plan, delivered)).pipe(
+            Effect.catchCause(cause =>
+                Effect.logError('[teams] sent but not saved', cause).pipe(
+                    Effect.andThen(ActionFailedError.make({ reason: 'the teams were sent but may not be saved, check the chat' }))
+                )
+            )
+        );
+    }
+
+    return {
+        deliveries: plan.deliveries.map(delivery => {
+            const index = claimed.indexOf(delivery);
+
+            return delivered[index] ?? waitingOutcome(delivery);
+        }),
+        diff: plan.diff
+    } satisfies PublishOutcome;
 });

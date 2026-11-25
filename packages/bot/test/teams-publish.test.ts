@@ -60,20 +60,20 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const members = yield* db.select().from(teamMember).where(eq(teamMember.sessionId, sessionId));
 
             expect(editor.text.split('\n')).toContain('Поки нічого не надіслано.');
-            expect(preview.text).toContain('Так виглядатиме:');
+            expect(preview.text).toContain('Так буде в «Games»:');
             expect(posted).toHaveLength(1);
             expect(String(posted[0]?.payload.text)).toMatch(
                 /^<b>Склади: Пт 27\.11 19:00 · North Arena<\/b>\n\n🔴 <a href="tg:\/\/user\?id=\d+">/u
             );
             expect(String(posted[0]?.payload.text)).not.toMatch(/[💪🌱Σ]|сильн|новач|рівн/u);
-            expect(done.text).toContain('✅ Склади в групі «Games».');
+            expect(done.text).toContain('✅ Склади в «Games».');
             expect(diff.text).toContain('Що змінилося:');
             expect(diff.text).toMatch(/: 🔴 → 🔵/u);
             expect(edited.map(call => call.method)).toEqual(['sendMessage', 'editMessageText']);
             expect(edited[1]?.payload.message_id).toBe(
                 Predicate.hasProperty(posted[0]?.result, 'message_id') ? posted[0].result.message_id : 0
             );
-            expect(refused.text).toContain('⚠️ Не вийшло, нічого не надіслано: Bad Request: message to edit not found');
+            expect(refused.text).toContain('⚠️ Не надіслано в «Games»: Bad Request: message to edit not found');
             expect(sentTo(-3201).filter(call => call.method === 'sendMessage')).toHaveLength(1);
             expect(members).toHaveLength(10);
         })
@@ -137,8 +137,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 expect(clean).toHaveLength(1);
                 expect(first[0]?.payload.reply_markup).toBeUndefined();
                 expect(String(first[0]?.payload.text)).toMatch(/^<b>Склади: Пт 27\.11 19:00/u);
-                expect(String(first[1]?.payload.text)).toBe('☝️ Составы выше: нажми и удерживай → Переслать → группа.');
-                expect(done.text).toContain('✅ Отправил тебе — перешли в группу.');
+                expect(String(first[1]?.payload.text)).toContain('☝️ Составы выше: нажми и удерживай → Переслать → группа.');
+                expect(done.text).toContain('📨 Составы уже у тебя.');
                 expect(unchanged.text).toContain('👌 Ничего не изменилось — ничего не отправляю.');
                 expect(labelsOf(unchanged).flat()).not.toContain('✅ Отправить обновлённые');
                 expect(sentTo(322).filter(call => call.method === 'sendMessage')).toHaveLength(quiet);
