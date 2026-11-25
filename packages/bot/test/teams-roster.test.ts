@@ -253,4 +253,45 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(new Set(guests).size).toBe(2);
         })
     );
+
+    it.effect(
+        'looks a typed name up like a paste: one match joins, several ask, a player already in is not added again, none is a guest',
+        () =>
+            Effect.gen(function* () {
+                const { sessionId, communityId } = yield* teamsGame('teams-typed-name', { groupChatId: -3604, adminId: 364, players: 8 });
+                const known = yield* syncMember(communityId, { id: 3_640_001n, firstName: 'Volodymyr', lastName: 'Kostenko' }, 'active');
+                yield* syncMember(communityId, { id: 3_640_002n, firstName: 'Oleh' }, 'active');
+                yield* syncMember(communityId, { id: 3_640_003n, firstName: 'Oleh' }, 'active');
+                const admin = conversation(recorder, adminNumbered(364));
+                const typeName = (name: string) =>
+                    Effect.gen(function* () {
+                        yield* openEditor(admin);
+                        yield* admin.press(buttonData(admin.screen(), '➕ Хтось прийшов'));
+                        yield* admin.press(buttonData(admin.screen(), '✍️ Інший'));
+                        yield* admin.type(name);
+
+                        return admin.screen();
+                    });
+                yield* typeName('Volodymyr Kostenko');
+                const afterKnown = yield* seats(sessionId);
+                const { teams } = yield* draftTeams(sessionId);
+                const several = yield* typeName('Oleh');
+                const again = yield* typeName('Volodymyr Kostenko');
+                const afterAgain = yield* seats(sessionId);
+                yield* typeName('Stranger');
+                const afterStranger = yield* seats(sessionId);
+
+                expect(yield* statusOf(sessionId, known)).toBe('in');
+                expect(afterKnown.filter(seat => seat.isGuest)).toEqual([]);
+                expect(teams.flat()).toContain('Volodymyr Kostenko');
+                expect(
+                    labelsOf(several)
+                        .flat()
+                        .filter(label => label === 'Oleh')
+                ).toHaveLength(2);
+                expect(afterAgain).toHaveLength(afterKnown.length);
+                expect(again.text).toContain('«Volodymyr Kostenko» вже в грі.');
+                expect(afterStranger.filter(seat => seat.isGuest)).toHaveLength(1);
+            })
+    );
 });

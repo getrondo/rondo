@@ -24,6 +24,7 @@ import { failureText } from '../failure-text';
 
 import { teamsData, type TeamsTap } from './teams-callback';
 import { editorScreen, shortName } from './teams-editor.screen';
+import { joinTyped } from './teams-join';
 import { teamsText } from './teams-text';
 import { actorOf, loadView, showTeams, TeamsDraftSchema } from './teams-view';
 
@@ -183,6 +184,15 @@ const typedInput = Effect.fn('Bot.teamsTypedInput')(function* (user: MenuUser, r
     const { sessionId } = draft.value;
     const view = yield* loadView(user, sessionId);
     const players = [...view.row.state.teams.flat(), ...view.row.state.pending];
+
+    if (
+        draft.value.step === 'guest' &&
+        draft.value.host === 'n' &&
+        !text.includes('\n') &&
+        (yield* joinTyped(user, sessionId, text.trim()))
+    ) {
+        return true;
+    }
 
     if (draft.value.step === 'guest' && !text.includes('\n')) {
         const hostId = draft.value.host === 'n' || !players.includes(draft.value.host ?? '') ? null : draft.value.host;

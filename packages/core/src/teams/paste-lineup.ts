@@ -78,14 +78,11 @@ const directory = Effect.fn('Core.pasteDirectory')(function* (communityId: strin
     return { people, aliases, playing };
 });
 
-export const resolvePaste = Effect.fn('Core.resolvePaste')(function* (
-    communityId: string,
-    sessionId: string,
-    teams: NonNullable<ReturnType<typeof parsePaste>>
-) {
-    const known = yield* directory(communityId, sessionId);
+// Who a name means: by name or a known alias, players of this game first
+const matcherOf = (known: Effect.Success<ReturnType<typeof directory>>) => {
     const playingIds = new Set(known.playing.map(row => row.personId));
-    const matches = (aliasNorm: string): string[] => {
+
+    return (aliasNorm: string): string[] => {
         const byName = [...known.playing, ...known.people].filter(row => normalizeAlias(row.name) === aliasNorm).map(row => row.personId);
         const byAlias = known.aliases
             .filter(row => row.aliasNorm === aliasNorm)
@@ -95,6 +92,26 @@ export const resolvePaste = Effect.fn('Core.resolvePaste')(function* (
 
         return isNotEmptyArray(inGame) ? inGame : found;
     };
+};
+
+export const lookupName = Effect.fn('Core.lookupName')(function* (communityId: string, sessionId: string, name: string) {
+    const known = yield* directory(communityId, sessionId);
+    const found = matcherOf(known)(normalizeAlias(name));
+
+    return found.map(personId => ({
+        personId,
+        displayName: [...known.playing, ...known.people].find(row => row.personId === personId)?.name ?? name,
+        isPlaying: known.playing.some(row => row.personId === personId)
+    }));
+});
+
+export const resolvePaste = Effect.fn('Core.resolvePaste')(function* (
+    communityId: string,
+    sessionId: string,
+    teams: NonNullable<ReturnType<typeof parsePaste>>
+) {
+    const known = yield* directory(communityId, sessionId);
+    const matches = matcherOf(known);
     const labelOf = (personId: string): string => {
         const found = known.people.find(row => row.personId === personId) ?? known.playing.find(row => row.personId === personId);
         const handle = known.people.find(row => row.personId === personId && isDefined(row.username))?.username;

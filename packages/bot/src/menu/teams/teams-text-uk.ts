@@ -98,5 +98,6 @@ export const teamsTextUk = {
     pasted: '📋 Взяв склади з тексту.',
     twice: '«{name}» двічі у списку — лишив у {badge}.',
     queued: '⏳ Гра повна — у черзі: {names}. Понад ліміт: ➕ Хтось прийшов.',
-    guestsAdded: '➕ Додав: {names}.'
+    guestsAdded: '➕ Додав: {names}.',
+    alreadyIn: '«{name}» вже в грі.'
 } as const;
