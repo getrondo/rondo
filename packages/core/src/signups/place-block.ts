@@ -21,6 +21,9 @@ export const routeOf = (place: PlaceBlock | null): PollRoute | null =>
 const linked = (place: PlaceBlock, text: string): string =>
     isNotEmptyString(place.mapUrl) ? `<a href="${escapeHtml(place.mapUrl)}"><b>${escapeHtml(text)}</b></a>` : `<b>${escapeHtml(text)}</b>`;
 
+export const addressHtml = (place: PlaceBlock | null): string =>
+    isDefined(place) && isNotEmptyString(place.address) ? `📍 ${linked(place, place.address)}` : '';
+
 export const placeHtml = (place: PlaceBlock | null): string =>
     isDefined(place)
         ? [

@@ -71,7 +71,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions, on
             const cancelled = postsSince(start).at(-1);
 
             expect(quiet).toBe(0);
-            expect(String(changed?.payload.text)).toContain('➡️ <b>Пт 04.12 20:30 · Park Field</b>');
+            expect(String(changed?.payload.text)).toContain('🕐 Час: 20:00 → 20:30');
             expect(String(changed?.payload.text)).toContain(
                 '<a href="https://www.google.com/maps/search/?api=1&amp;query=48.2,16.4"><b>Main Street 1</b></a>'
             );

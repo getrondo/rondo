@@ -97,7 +97,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect(days.slice(-3)).toEqual(['Сьогодні 26.11', '⬅️ Назад', '🏠 Меню']);
             expect(past.split('\n').at(-1)).toBe('⚠️ Ця дата вже минула. Обери день нижче або напиши, напр. 5.12.');
-            expect(moved).toContain('➡️ <b>Сб 05.12 19:00 · North Arena</b>');
+            expect(moved).toContain('📅 День: Пт 27.11 → Сб 05.12');
             expect(badTime.split('\n').at(-1)).toBe('⚠️ Не зрозумів час. Напиши, напр. 18:45.');
             expect(badLimit.split('\n').at(-1)).toBe('⚠️ Напиши число від 1 до 99.');
             expect(places).toEqual([['Park Field'], ['➕ Нове місце'], ['⬅️ Назад', '🏠 Меню']]);

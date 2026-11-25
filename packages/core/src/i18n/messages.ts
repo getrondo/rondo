@@ -53,7 +53,10 @@ const catalogue = {
         linked: 'Групу підключено до спільноти',
         unknownCommunity: 'Спільноту не знайдено',
         forwardHint: '↪️ Перешли це в групу.',
-        placesWord: 'Місць'
+        placesWord: 'Місць',
+        timeWord: 'Час',
+        dayWord: 'День',
+        placeWord: 'Місце'
     },
     ru: {
         pollIn: '✅ Играю',
@@ -76,7 +79,10 @@ const catalogue = {
         linked: 'Группа подключена к сообществу',
         unknownCommunity: 'Сообщество не найдено',
         forwardHint: '↪️ Перешли это в группу.',
-        placesWord: 'Мест'
+        placesWord: 'Мест',
+        timeWord: 'Время',
+        dayWord: 'День',
+        placeWord: 'Место'
     }
 } as const satisfies Record<Locale, Record<string, string>>;
 

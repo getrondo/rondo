@@ -56,9 +56,9 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(confirmTime.text).toContain(
                 'Опитування в чаті не зміниться, там залишиться старий час. Гравці дізнаються з цього повідомлення.'
             );
-            expect(confirmTime.text).toContain('➡️ <b>Пт 27.11 20:15 · North Arena</b>');
+            expect(confirmTime.text).toContain('🕐 Час: 19:00 → 20:15');
             expect(posts).toHaveLength(1);
-            expect(String(posts[0]?.payload.text)).toContain('📍 <b>North Arena</b>');
+            expect(String(posts[0]?.payload.text)).toContain('<b>Пт 27.11 · North Arena</b>');
             expect(game).toMatchObject({ venueId: park, capacityMax: 20 });
             expect(admin.screen().text).toContain('Пт 27.11 20:15 · Park Field');
             expect(admin.tidy()).toEqual({ unanswered: [], oversized: [] });

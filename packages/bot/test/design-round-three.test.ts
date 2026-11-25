@@ -1,5 +1,8 @@
 import { expect, layer } from '@effect/vitest';
+import { venue } from '@rondo/db/schema/venue.schema';
+import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
+import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { conversation, deliver, lastPollId } from './support/conversation';
@@ -7,6 +10,13 @@ import { seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
+const lastPost = (chatId: number) =>
+    String(recorder.calls.findLast(call => call.method === 'sendMessage' && call.payload.chat_id === chatId)?.payload.text);
+const setAddress = (venueId: string, address: string) =>
+    Effect.gen(function* () {
+        const db = yield* Db;
+        yield* db.update(venue).set({ address }).where(eq(venue.id, venueId));
+    });
 
 const voteIn = (chatId: number, id: number) =>
     deliver({
@@ -60,6 +70,27 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(receipt?.id).toBeGreaterThan(seen[notice]?.id ?? Number.MAX_SAFE_INTEGER);
             expect(receipt?.text.split('\n')[0]).toBe('✅ Изменено. Сообщение выше перешли в группу: нажми и удерживай → Переслать.');
             expect(seen.find(message => message.id === confirmation.id)?.text).toBe('✅ Сообщение ниже 👇');
+        })
+    );
+
+    it.effect('posts every change notice in one shape: what changed, from and to, and the address', () =>
+        Effect.gen(function* () {
+            const { park } = yield* seedSeason('r3-notice-shape', { groupChatId: -29_003, adminId: 2903 });
+            yield* setAddress(park, 'Park Lane 5');
+            const admin = conversation(recorder, adminNumbered(2903));
+            yield* admin.type('/newgame');
+            yield* admin.tap('✅ Надіслати');
+            yield* admin.tap('🕖 Час');
+            yield* admin.type('19:30');
+            yield* admin.tap('✅ Змінити й написати в «Games»');
+            const time = lastPost(-29_003);
+            yield* admin.tap('📍 Місце');
+            yield* admin.tap('Park Field');
+            yield* admin.tap('✅ Змінити й написати в «Games»');
+            const place = lastPost(-29_003);
+
+            expect(time).toBe('<b>📢 Зміни</b>\n<b>Пт 27.11 · North Arena</b>\n🕐 Час: 19:00 → 19:30');
+            expect(place).toBe('<b>📢 Зміни</b>\n<b>Пт 27.11 · North Arena</b>\n📍 Місце: North Arena → Park Field\n📍 <b>Park Lane 5</b>');
         })
     );
 });

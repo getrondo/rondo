@@ -7,9 +7,9 @@ import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, eq, inArray } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { cancelReasonText, formatSessionLabel, text } from '../i18n/messages';
+import { cancelReasonText, formatSessionLabel, text, type MessageKey } from '../i18n/messages';
 import { primaryAccount } from '../identity/primary-account';
-import { placeHtml, placeOf } from '../signups/place-block';
+import { addressHtml, placeOf } from '../signups/place-block';
 import { topicOptions } from '../utils/topic-options.util';
 
 import type { Locale } from '../i18n/locale';
@@ -30,12 +30,6 @@ const mentionsOf = Effect.fn('Core.mentionsOf')(function* (sessionId: string) {
     return rows.map(row => mentionHtml(row.tgUserId, row.name)).join(', ');
 });
 
-const placeLines = (target: SessionView): string[] => {
-    const html = placeHtml(placeOf(target));
-
-    return isEmptyString(html) ? [] : [html];
-};
-
 const post = Effect.fn('Core.post')(function* (group: GroupTarget, html: string, locale: Locale) {
     const telegram = yield* Telegram;
     const body = group.chatId > 0n ? `${html}\n\n${text(locale, 'forwardHint')}` : html;
@@ -43,22 +37,30 @@ const post = Effect.fn('Core.post')(function* (group: GroupTarget, html: string,
     yield* telegram.call('sendMessage', api => api.sendMessage(Number(group.chatId), body, { parse_mode: 'HTML', ...topicOptions(group) }));
 });
 
+const dayOf = (locale: Locale, game: SessionView): string =>
+    formatSessionLabel(locale, { localDate: game.localDate, localTime: '' }).trim();
+
+const changeLine = (locale: Locale, icon: string, word: MessageKey, [before, after]: readonly [string, string]): string[] =>
+    before === after ? [] : [`${icon} ${text(locale, word)}: ${escapeHtml(before)} → ${escapeHtml(after)}`];
+
 export const sessionChangedHtml = Effect.fn('Core.sessionChangedHtml')(function* (input: {
     readonly before: SessionView;
     readonly after: SessionView;
     readonly locale: Locale;
 }) {
-    const mentions = yield* mentionsOf(input.after.id);
-    const before = escapeHtml(formatSessionLabel(input.locale, input.before));
-    const after = escapeHtml(formatSessionLabel(input.locale, input.after));
+    const { before, after, locale } = input;
+    const mentions = yield* mentionsOf(after.id);
+    const game = [dayOf(locale, before), ...(isDefined(before.venueName) ? [before.venueName] : [])].join(' · ');
+    const address = addressHtml(placeOf(after));
 
     return [
-        `<b>${text(input.locale, 'changed')}</b>`,
-        ...(before === after ? [`<b>${after}</b>`] : [`<s>${before}</s>`, `➡️ <b>${after}</b>`]),
-        ...(input.before.capacityMax === input.after.capacityMax
-            ? []
-            : [`👥 ${text(input.locale, 'placesWord')}: ${input.before.capacityMax ?? '♾'} → ${input.after.capacityMax ?? '♾'}`]),
-        ...placeLines(input.after),
+        `<b>${text(locale, 'changed')}</b>`,
+        `<b>${escapeHtml(game)}</b>`,
+        ...changeLine(locale, '🕐', 'timeWord', [before.localTime, after.localTime]),
+        ...changeLine(locale, '📅', 'dayWord', [dayOf(locale, before), dayOf(locale, after)]),
+        ...changeLine(locale, '📍', 'placeWord', [before.venueName ?? '—', after.venueName ?? '—']),
+        ...changeLine(locale, '👥', 'placesWord', [String(before.capacityMax ?? '♾'), String(after.capacityMax ?? '♾')]),
+        ...(isEmptyString(address) ? [] : [address]),
         ...(isEmptyString(mentions) ? [] : [mentions])
     ].join('\n');
 });
