@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { evaluateTeams } from '../src/teams/evaluate-teams';
 import { habitsOf, pairKey } from '../src/teams/habits';
+
+import { evaluateTeams } from './support/evaluate-teams';
 
 import type { HistoryRow } from '../src/teams/interface/solver.interface';
 

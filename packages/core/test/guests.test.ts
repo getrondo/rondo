@@ -1,4 +1,5 @@
 import { expect, layer } from '@effect/vitest';
+import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { eq } from 'drizzle-orm';
@@ -49,6 +50,37 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('guests of one game', it => 
             expect(elsewhere).toMatchObject({ reason: 'player not found in this community' });
             expect(again).toEqual({ joined: [], waiting: [] });
             expect(attended.map(row => row.personId)).toEqual([host]);
+        })
+    );
+
+    it.effect('counts the bot-posted squad first, never a guest of any status and never someone who left', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* seedGame('guests-attended');
+            const people = yield* Effect.all(
+                [1, 2, 3, 4].map(index => syncMember(communityId, { id: BigInt(88_100 + index), firstName: `Played${index}` }, 'active'))
+            );
+            const [stayed = '', left = '', imported = '', guest = ''] = people;
+            yield* db.insert(signup).values([
+                { sessionId, personId: stayed, status: 'in' },
+                { sessionId, personId: left, status: 'out' },
+                { sessionId, personId: guest, status: 'waitlisted', isGuest: true }
+            ]);
+            const [squad] = yield* db
+                .insert(team)
+                .values({ sessionId, ordinal: 1, publishedAt: new Date('2026-12-04T17:00:00Z') })
+                .returning({ id: team.id });
+            yield* db.insert(teamMember).values([stayed, left, guest].map(personId => ({ teamId: squad?.id ?? '', sessionId, personId })));
+            yield* db
+                .insert(lineupEntry)
+                .values({ sessionId, messageId: 1, teamOrdinal: 1, position: 1, personId: imported, resolvedBy: 'manual' });
+            yield* finishPastSessions(new Date('2026-12-05T00:00:00Z'));
+            const attended = yield* db
+                .select({ personId: attendance.personId })
+                .from(attendance)
+                .where(eq(attendance.sessionId, sessionId));
+
+            expect(attended.map(row => row.personId)).toEqual([stayed]);
         })
     );
 });

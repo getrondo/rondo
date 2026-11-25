@@ -180,7 +180,6 @@ export const createDraft = Effect.fn('Core.createDraft')(function* (
             sessionId: inputs.game.id,
             communityId: inputs.game.communityId,
             state: yield* Schema.encodeEffect(DraftStateSchema)(state).pipe(Effect.orDie),
-            proposed: state.variants,
             proposedAt: marks.proposedAt,
             updatedBy: marks.actorPersonId
         })

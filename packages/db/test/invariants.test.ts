@@ -293,7 +293,7 @@ layer(testDbLayer, { timeout: 60_000 })('database invariants', it => {
         })
     );
 
-    it.effect('stores the money red bib as red, keeps its squads on the same row and leaves an existing red alone', () =>
+    it.effect('stores the money red bib as red, keeps its squads on the same row and merges it into an existing red', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const settings = {
@@ -315,7 +315,11 @@ layer(testDbLayer, { timeout: 60_000 })('database invariants', it => {
                 .insert(activity)
                 .values({ communityId: moneyId, sport: 'football', name: 'Football' })
                 .returning({ id: activity.id });
-            const [orange] = yield* db
+            const [takenActivity] = yield* db
+                .insert(activity)
+                .values({ communityId: withRedId, sport: 'football', name: 'Football' })
+                .returning({ id: activity.id });
+            const [orange, takenOrange, red] = yield* db
                 .insert(teamColor)
                 .values([
                     { communityId: moneyId, name: 'orange', emoji: '💷' },
@@ -323,6 +327,16 @@ layer(testDbLayer, { timeout: 60_000 })('database invariants', it => {
                     { communityId: withRedId, name: 'red', emoji: '🔴' }
                 ])
                 .returning({ id: teamColor.id });
+            const [takenGame] = yield* db
+                .insert(session)
+                .values({
+                    communityId: withRedId,
+                    activityId: takenActivity?.id ?? '',
+                    localDate: '2026-01-03',
+                    startsAt: new Date('2026-01-03T18:00:00Z')
+                })
+                .returning({ id: session.id });
+            yield* db.insert(team).values({ sessionId: takenGame?.id ?? '', ordinal: 1, colorId: takenOrange?.id });
             const [game] = yield* db
                 .insert(session)
                 .values({
@@ -334,7 +348,7 @@ layer(testDbLayer, { timeout: 60_000 })('database invariants', it => {
                 .returning({ id: session.id });
             yield* db.insert(team).values({ sessionId: game?.id ?? '', ordinal: 1, colorId: orange?.id });
             const badges = readFileSync(
-                fileURLToPath(new URL('../drizzle/20261125101540_team_badges/migration.sql', import.meta.url)),
+                fileURLToPath(new URL('../drizzle/20261125112522_team_badges/migration.sql', import.meta.url)),
                 'utf8'
             )
                 .split('--> statement-breakpoint')
@@ -355,8 +369,14 @@ layer(testDbLayer, { timeout: 60_000 })('database invariants', it => {
             const [stored] = yield* db.select({ settings: community.settings }).from(community).where(eq(community.id, moneyId));
 
             expect(colours.filter(colour => colour.communityId === moneyId)).toEqual([{ communityId: moneyId, name: 'red', emoji: '💷' }]);
-            expect(colours.filter(colour => colour.communityId === withRedId).map(({ name }) => name)).toEqual(['orange', 'red']);
+            const [takenSquad] = yield* db
+                .select({ colorId: team.colorId })
+                .from(team)
+                .where(eq(team.sessionId, takenGame?.id ?? ''));
+
+            expect(colours.filter(colour => colour.communityId === withRedId).map(({ name }) => name)).toEqual(['red']);
             expect(squad?.colorId).toBe(orange?.id);
+            expect(takenSquad?.colorId).toBe(red?.id);
             expect(stored?.settings).toEqual({
                 ingest: {
                     teamColors: [

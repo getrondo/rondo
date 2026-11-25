@@ -40,6 +40,11 @@ const solvedTeams = (inputs: TeamInputs, teamCount: number | null): ProposedTeam
     }));
 };
 
+const entities: Readonly<Record<string, string>> = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"' };
+
+const plainText = (html: string): string =>
+    html.replaceAll(/<[^<>]*>/gu, '').replaceAll(/&(?:amp|lt|gt|quot);/gu, entity => entities[entity] ?? entity);
+
 const withProposed = (state: DraftState, teams: readonly ProposedTeam[]): DraftState =>
     withChange(state, {
         teams: teams.map(entry => entry.players.map(player => player.personId)),
@@ -62,13 +67,19 @@ export const publishTeamsAction = Effect.fn('Core.publishTeamsAction')(function*
     const opened = yield* openDraft(input.communityId, input.sessionId, input.actorPersonId);
     const teams = input.teams ?? solvedTeams(opened.inputs, input.teamCount);
     const plan = yield* planLineup({ ...input, loaded: opened, state: withProposed(opened.row.state, teams) });
+    const due = plan.deliveries.filter(delivery => delivery.isDue);
 
     return {
         _tag: 'publish_teams',
         sessionId: input.sessionId,
         teams,
         version: opened.row.version,
-        fingerprint: plan.fingerprint
+        fingerprint: plan.fingerprint,
+        preview: {
+            text: plainText(due[0]?.html ?? ''),
+            to: due.map(delivery => (delivery.chatId > 0n ? null : delivery.title)),
+            clearsResult: plan.clearsResult
+        }
     } satisfies Action;
 });
 

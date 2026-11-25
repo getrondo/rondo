@@ -1,14 +1,16 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { lineupDelivery, team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
+import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, lte, or, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
+import { addMillis } from '../utils/add-millis.util';
 import { topicOptions } from '../utils/topic-options.util';
 
 import { badgeOfColour, badgeOfRow } from './badges';
@@ -73,33 +75,61 @@ const storeSquad = Effect.fn('Core.storeSquad')(function* (communityId: string, 
     return publishedAt;
 });
 
-const claimDelivery = Effect.fn('Core.claimLineupDelivery')(function* (sessionId: string, delivery: PlannedDelivery) {
+const busyMs = 60_000;
+const gameOver = 'the game is already over or cancelled';
+const closedStatuses = new Set(['cancelled', 'played', 'moved']);
+
+interface Claim {
+    readonly delivery: PlannedDelivery;
+    readonly token: string;
+}
+
+const isGameOpen = Effect.fn('Core.isGameOpenForLineup')(function* (sessionId: string) {
+    const db = yield* Db;
+    const [game] = yield* db.select({ status: session.status }).from(session).where(eq(session.id, sessionId));
+
+    return isDefined(game) && !closedStatuses.has(game.status);
+});
+
+const claimPublish = Effect.fn('Core.claimPublish')(function* (sessionId: string, now: Date) {
+    const db = yield* Db;
+    const [claimed] = yield* db
+        .update(teamDraft)
+        .set({ publishToken: sql`gen_random_uuid()`, publishAt: now })
+        .where(
+            and(eq(teamDraft.sessionId, sessionId), or(isNull(teamDraft.publishToken), lte(teamDraft.publishAt, addMillis(now, -busyMs))))
+        )
+        .returning({ token: teamDraft.publishToken });
+
+    return claimed?.token ?? null;
+});
+
+const claimDelivery = Effect.fn('Core.claimLineupDelivery')(function* (sessionId: string, delivery: PlannedDelivery, now: Date) {
     const db = yield* Db;
 
     if (!isDefined(delivery.stored)) {
-        const inserted = yield* db
+        const [inserted] = yield* db
             .insert(lineupDelivery)
-            .values({ sessionId, chatId: delivery.chatId, topicId: delivery.topicId, status: 'claimed' })
+            .values({ sessionId, chatId: delivery.chatId, topicId: delivery.topicId, status: 'claimed', updatedAt: now })
             .onConflictDoNothing()
-            .returning({ chatId: lineupDelivery.chatId });
+            .returning({ token: lineupDelivery.token });
 
-        return isNotEmptyArray(inserted);
+        return inserted?.token ?? null;
     }
 
-    const claimed = yield* db
+    const [claimed] = yield* db
         .update(lineupDelivery)
-        .set({ status: 'claimed', token: sql`gen_random_uuid()` })
+        .set({ status: 'claimed', token: sql`gen_random_uuid()`, updatedAt: now })
         .where(
             and(
                 eq(lineupDelivery.sessionId, sessionId),
                 eq(lineupDelivery.chatId, delivery.chatId),
-                eq(lineupDelivery.status, delivery.stored),
                 eq(lineupDelivery.token, delivery.token ?? '')
             )
         )
-        .returning({ chatId: lineupDelivery.chatId });
+        .returning({ token: lineupDelivery.token });
 
-    return isNotEmptyArray(claimed);
+    return claimed?.token ?? null;
 });
 
 const sendOne = (delivery: PlannedDelivery) =>
@@ -121,9 +151,14 @@ const sendOne = (delivery: PlannedDelivery) =>
         return { messageId: sent.message_id, status: 'sent' as const };
     });
 
-const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: string, sessionId: string, delivery: PlannedDelivery) {
+const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: string, sessionId: string, claim: Claim, publishToken: string) {
     const db = yield* Db;
-    const where = and(eq(lineupDelivery.sessionId, sessionId), eq(lineupDelivery.chatId, delivery.chatId));
+    const { delivery } = claim;
+    const where = and(
+        eq(lineupDelivery.sessionId, sessionId),
+        eq(lineupDelivery.chatId, delivery.chatId),
+        eq(lineupDelivery.token, claim.token)
+    );
     const outcome = (status: DeliveryOutcome['status'], reason: string | null): DeliveryOutcome => ({
         chatId: delivery.chatId,
         title: delivery.title,
@@ -131,7 +166,7 @@ const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: strin
         reason,
         isEdit: isDefined(delivery.messageId)
     });
-    const receipt = sendOne(delivery).pipe(
+    const send = sendOne(delivery).pipe(
         Effect.flatMap(done =>
             db
                 .update(lineupDelivery)
@@ -159,8 +194,27 @@ const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: strin
                 .pipe(Effect.as(outcome(status, error.description)));
         })
     );
+    const checked = Effect.gen(function* () {
+        const [draft] = yield* db.select({ token: teamDraft.publishToken }).from(teamDraft).where(eq(teamDraft.sessionId, sessionId));
+        const [own] = yield* db.select({ token: lineupDelivery.token }).from(lineupDelivery).where(where);
 
-    return yield* withCommunityLock({ id: communityId }, receipt).pipe(
+        if (draft?.token !== publishToken || !isDefined(own)) {
+            return outcome('busy', null);
+        }
+
+        if (!(yield* isGameOpen(sessionId))) {
+            yield* db
+                .update(lineupDelivery)
+                .set({ status: isDefined(delivery.messageId) ? 'sent' : 'refused' })
+                .where(where);
+
+            return outcome('refused', gameOver);
+        }
+
+        return yield* send;
+    });
+
+    return yield* withCommunityLock({ id: communityId }, checked).pipe(
         Effect.catchCause(cause => Effect.logError('[teams] lineup receipt not saved', cause).pipe(Effect.as(outcome('uncertain', null))))
     );
 });
@@ -169,39 +223,63 @@ const startPublish = Effect.fn('Core.startPublish')(function* (
     input: PlanInput & { readonly version: number; readonly fingerprint: string }
 ) {
     const plan = yield* planLineup(input);
+    const now = yield* DateTime.nowAsDate;
 
     if (plan.version !== input.version || plan.fingerprint !== input.fingerprint) {
         return yield* ActionFailedError.make({ reason: lineupChanged });
     }
 
-    if (plan.clearsResult) {
-        yield* clearResult(input.sessionId);
+    if (!(yield* isGameOpen(input.sessionId))) {
+        return yield* ActionFailedError.make({ reason: gameOver });
     }
 
-    const claimed: PlannedDelivery[] = [];
+    const token = yield* claimPublish(input.sessionId, now);
+    const claims: Claim[] = [];
 
-    for (const delivery of plan.deliveries.filter(entry => entry.isDue)) {
-        if (yield* claimDelivery(input.sessionId, delivery)) {
-            claimed.push(delivery);
+    for (const delivery of isDefined(token) ? plan.deliveries.filter(entry => entry.isDue) : []) {
+        const claimed = yield* claimDelivery(input.sessionId, delivery, now);
+
+        if (isDefined(claimed)) {
+            claims.push({ delivery, token: claimed });
         }
     }
 
-    return { plan, claimed };
+    return { plan, claims, token };
 });
 
 const waitingOutcome = (delivery: PlannedDelivery): DeliveryOutcome => {
     const quiet = delivery.stored === 'claimed' || delivery.stored === 'uncertain' ? 'uncertain' : 'unchanged';
 
-    return { chatId: delivery.chatId, title: delivery.title, status: delivery.isDue ? 'busy' : quiet, reason: null, isEdit: false };
+    return {
+        chatId: delivery.chatId,
+        title: delivery.title,
+        status: delivery.isDue || delivery.stored === 'busy' ? 'busy' : quiet,
+        reason: null,
+        isEdit: false
+    };
 };
 
 const finishPublish = Effect.fn('Core.finishPublish')(function* (
     input: { readonly communityId: string; readonly sessionId: string; readonly actorPersonId: string | null },
-    plan: LineupPlan,
-    delivered: readonly DeliveryOutcome[]
+    published: { readonly plan: LineupPlan; readonly token: string; readonly delivered: readonly DeliveryOutcome[] }
 ) {
     const db = yield* Db;
-    const publishedAt = yield* storeSquad(input.communityId, input.sessionId, plan.teams);
+    const released = yield* db
+        .update(teamDraft)
+        .set({ publishToken: null, publishAt: null })
+        .where(and(eq(teamDraft.sessionId, input.sessionId), eq(teamDraft.publishToken, published.token)))
+        .returning({ sessionId: teamDraft.sessionId });
+    const isStored = isNotEmptyArray(released) && published.delivered.some(entry => entry.status !== 'refused' && entry.status !== 'busy');
+
+    if (!isStored) {
+        return;
+    }
+
+    if (published.plan.clearsResult) {
+        yield* clearResult(input.sessionId);
+    }
+
+    const publishedAt = yield* storeSquad(input.communityId, input.sessionId, published.plan.teams);
     yield* db.update(teamDraft).set({ publishedAt }).where(eq(teamDraft.sessionId, input.sessionId));
     yield* recordAudit({
         communityId: input.communityId,
@@ -209,25 +287,23 @@ const finishPublish = Effect.fn('Core.finishPublish')(function* (
         action: 'teams.publish',
         entityType: 'session',
         entityId: input.sessionId,
-        diff: { delivered: delivered.map(entry => entry.status) }
+        diff: { delivered: published.delivered.map(entry => entry.status) }
     });
 });
 
 export const publishLineup = Effect.fn('Core.publishLineup')(function* (
     input: PlanInput & { readonly version: number; readonly fingerprint: string; readonly actorPersonId: string | null }
 ) {
-    const { plan, claimed } = yield* withCommunityLock({ id: input.communityId }, startPublish(input));
+    const { plan, claims, token } = yield* withCommunityLock({ id: input.communityId }, startPublish(input));
     const delivered: DeliveryOutcome[] = [];
 
-    for (const delivery of claimed) {
-        const outcome = yield* deliverOne(input.communityId, input.sessionId, delivery);
+    for (const claim of isDefined(token) ? claims : []) {
+        const outcome = yield* deliverOne(input.communityId, input.sessionId, claim, token ?? '');
         delivered.push(outcome);
     }
 
-    const isStored = delivered.some(entry => entry.status !== 'refused');
-
-    if (isStored) {
-        yield* withCommunityLock({ id: input.communityId }, finishPublish(input, plan, delivered)).pipe(
+    if (isDefined(token)) {
+        yield* withCommunityLock({ id: input.communityId }, finishPublish(input, { plan, token, delivered })).pipe(
             Effect.catchCause(cause =>
                 Effect.logError('[teams] sent but not saved', cause).pipe(
                     Effect.andThen(ActionFailedError.make({ reason: 'the teams were sent but may not be saved, check the chat' }))
@@ -237,11 +313,9 @@ export const publishLineup = Effect.fn('Core.publishLineup')(function* (
     }
 
     return {
-        deliveries: plan.deliveries.map(delivery => {
-            const index = claimed.indexOf(delivery);
-
-            return delivered[index] ?? waitingOutcome(delivery);
-        }),
+        deliveries: plan.deliveries.map(
+            delivery => delivered[claims.findIndex(claim => claim.delivery === delivery)] ?? waitingOutcome(delivery)
+        ),
         diff: plan.diff
     } satisfies PublishOutcome;
 });

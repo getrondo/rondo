@@ -188,11 +188,12 @@ export const teamDraft = play.table('team_draft', {
     communityId: requiredRef('community_id', () => community.id),
     version: integer('version').notNull().default(1),
     state: jsonb('state').notNull(),
-    proposed: jsonb('proposed'),
     proposedAt: instant('proposed_at'),
     changedAt: instant('changed_at'),
     notifiedAt: instant('notified_at'),
     publishedAt: instant('published_at'),
+    publishToken: uuid('publish_token'),
+    publishAt: instant('publish_at'),
     updatedBy: ref('updated_by').references(() => person.id, { onDelete: 'set null' }),
     updatedAt: updatedAt()
 });

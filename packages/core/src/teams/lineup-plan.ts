@@ -5,6 +5,7 @@ import { telegramChat } from '@rondo/db/schema/org.schema';
 import { lineupDelivery, ratingEvent } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { eq } from 'drizzle-orm';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -59,7 +60,13 @@ const audienceForTeams = Effect.fn('Core.audienceForTeams')(function* (
     };
 });
 
+const busyMs = 60_000;
+
 const isDueBy = (stored: PlannedDelivery['stored'], storedText: string | null, text: string, isRetry: boolean): boolean => {
+    if (stored === 'busy') {
+        return false;
+    }
+
     if (stored === 'claimed' || stored === 'uncertain') {
         return isRetry;
     }
@@ -102,8 +109,11 @@ export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInp
     const isUpdate = stored.some(entry => entry.status === 'sent');
     const self =
         audience.isPrivate && isDefined(input.privateChatId) ? [{ chatId: BigInt(input.privateChatId), topicId: null, title: null }] : [];
+    const now = yield* DateTime.nowAsDate;
     const deliveries = [...audience.groups, ...self].map((target): PlannedDelivery => {
         const found = stored.find(entry => entry.chatId === target.chatId);
+        const isBusy = found?.status === 'claimed' && found.updatedAt.getTime() > now.getTime() - busyMs;
+        const status = isBusy ? 'busy' : (found?.status ?? null);
         const isPrivate = target.chatId > 0n;
 
         return {
@@ -113,10 +123,10 @@ export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInp
             html: isPrivate && isUpdate ? post(true) : clean,
             text: clean,
             messageId: isPrivate ? null : (found?.messageId ?? null),
-            stored: found?.status ?? null,
+            stored: status,
             token: found?.token ?? null,
             isDue: isDueBy(
-                found?.status ?? null,
+                status,
                 found?.text ?? null,
                 clean,
                 isDefined(found) && isNotEmptyString(input.retryToken) && found.token.startsWith(input.retryToken)

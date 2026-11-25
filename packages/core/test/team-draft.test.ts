@@ -1,7 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { telegramAccount, telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { auditLog } from '@rondo/db/schema/platform.schema';
-import { rating, ratingEvent, team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
+import { lineupEntry, rating, ratingEvent, team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, asc, eq } from 'drizzle-orm';
@@ -10,6 +10,7 @@ import * as Option from 'effect/Option';
 
 import { syncMember } from '../src/identity/telegram-user';
 import { playersOf, swapPlayers, undo } from '../src/teams/draft-state';
+import { storedTeams } from '../src/teams/lineup-of-draft';
 import { planLineup } from '../src/teams/lineup-plan';
 import { publishLineup } from '../src/teams/publish-lineup';
 import { changeDraft, loadDraft, openDraft, rebalanced } from '../src/teams/team-draft.service';
@@ -270,6 +271,44 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
             expect(accountOf(people[0])).toBe(88_000n);
             expect(accountOf(people[1])).toBeNull();
             expect(accountOf(people[2])).toBe(88_002n);
+        })
+    );
+
+    it.effect('records the result of an imported line-up from its entries and offers none without a squad', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId, people } = yield* playedGame('draft-imported', 4, 89_000);
+            yield* db.insert(team).values([1, 2].map(ordinal => ({ sessionId, ordinal })));
+            const empty = yield* storedTeams(sessionId);
+            yield* db.insert(lineupEntry).values([
+                ...people.map((personId, index) => ({
+                    sessionId,
+                    messageId: 1,
+                    teamOrdinal: (index % 2) + 1,
+                    position: index + 1,
+                    personId,
+                    resolvedBy: 'manual' as const
+                })),
+                {
+                    sessionId,
+                    messageId: 1,
+                    teamOrdinal: 1,
+                    position: 9,
+                    guestOfPersonId: people[0],
+                    isGuest: true,
+                    resolvedBy: 'manual' as const
+                }
+            ]);
+            const shown = yield* storedTeams(sessionId);
+            yield* recordResult({ communityId, sessionId, winner: 1, actorPersonId: null, now: new Date('2026-12-04T20:30:00Z') });
+            const events = yield* db
+                .select({ personId: ratingEvent.personId })
+                .from(ratingEvent)
+                .where(eq(ratingEvent.sessionId, sessionId));
+
+            expect(empty).toEqual([]);
+            expect(shown).toHaveLength(2);
+            expect(events.map(event => event.personId).toSorted()).toEqual([...people].toSorted());
         })
     );
 });

@@ -1,7 +1,27 @@
-import { habitsOf, pairKey } from './habits';
-import { solveTeams } from './solve-teams';
+import { habitsOf, pairKey } from '../../src/teams/habits';
+import { solveTeams } from '../../src/teams/solve-teams';
 
-import type { Evaluation, GameEvaluation, HistoryRow } from './interface/solver.interface';
+import type { HistoryRow } from '../../src/teams/interface/solver.interface';
+
+interface GameEvaluation {
+    readonly game: string;
+    readonly players: number;
+    readonly pairMatch: number;
+    readonly randomPairMatch: number;
+    readonly moves: number;
+    readonly spread: number;
+    readonly actualSpread: number;
+}
+
+interface Evaluation {
+    readonly games: number;
+    readonly pairMatch: number;
+    readonly randomPairMatch: number;
+    readonly medianMoves: number;
+    readonly meanSpread: number;
+    readonly meanActualSpread: number;
+    readonly perGame: readonly GameEvaluation[];
+}
 
 const defaultStrength = 25;
 

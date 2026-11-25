@@ -9,7 +9,7 @@ export interface PlannedDelivery {
     readonly html: string;
     readonly text: string;
     readonly messageId: number | null;
-    readonly stored: 'claimed' | 'sent' | 'uncertain' | 'refused' | null;
+    readonly stored: 'claimed' | 'busy' | 'sent' | 'uncertain' | 'refused' | null;
     readonly token: string | null;
     readonly isDue: boolean;
 }

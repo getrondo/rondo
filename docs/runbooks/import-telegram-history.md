@@ -27,7 +27,7 @@ A JSON file validated by `CommunityConfigSchema` (`packages/ingest-telegram/src/
     "organizers": ["<organizer display name as in the export>"],
     "selfAliases": ["Я"],
     "venues": [{ "key": "main", "name": "Main Field", "kind": "training", "district": 14, "lat": 48.19, "lng": 16.28, "patterns": ["main", "основное поле"] }],
-    "teamColors": [{ "emoji": "💷", "name": "orange" }],
+    "teamColors": [{ "emoji": "💷", "name": "red" }],
     "squads": [
         { "name": "Team-2", "patterns": ["^team\\s?2$"], "contextPatterns": ["5\\s*лиг"] },
         { "name": "Team", "patterns": ["^team$"], "contextPatterns": [] }

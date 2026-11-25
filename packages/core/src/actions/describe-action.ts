@@ -93,6 +93,11 @@ const words = {
         remove: '🗑 Видалити гру',
         self: 'тобі в особисті',
         teams: '👥 Опублікувати склади',
+        sendTo: 'Надішлю',
+        inGroup: 'в «{title}»',
+        toYou: 'тобі',
+        and: ' і ',
+        clears: '⚠️ Склади змінилися після результату: результат вечора скинеться.',
         merge: '🔗 Обʼєднати гравців',
         link: '🔗 Привʼязати прізвисько',
         unlink: '✂️ Відвʼязати прізвисько',
@@ -117,6 +122,11 @@ const words = {
         remove: '🗑 Удалить игру',
         self: 'тебе в личку',
         teams: '👥 Опубликовать составы',
+        sendTo: 'Отправлю',
+        inGroup: 'в «{title}»',
+        toYou: 'тебе',
+        and: ' и ',
+        clears: '⚠️ Составы изменились после результата: результат вечера сбросится.',
         merge: '🔗 Объединить игроков',
         link: '🔗 Привязать прозвище',
         unlink: '✂️ Отвязать прозвище',
@@ -222,11 +232,17 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
             return `${word.forward} «${yield* chatTitle(action.chatId, locale)}»: ${yield* sessionLabel(locale, action.sessionId)}`;
         }
         case 'publish_teams': {
-            const lines = action.teams.map(
-                team => `${team.ordinal}. ${team.players.map(player => `${player.displayName}${player.isGk ? ' 🧤' : ''}`).join(', ')}`
-            );
+            const to = action.preview.to
+                .map(title => (isDefined(title) ? word.inGroup.replace('{title}', title) : word.toYou))
+                .join(word.and);
 
-            return [`${word.teams}: ${yield* sessionLabel(locale, action.sessionId)}`, ...lines].join('\n');
+            return [
+                `${word.teams}: ${yield* sessionLabel(locale, action.sessionId)}`,
+                `${word.sendTo} ${to}:`,
+                '',
+                action.preview.text,
+                ...(action.preview.clearsResult ? ['', word.clears] : [])
+            ].join('\n');
         }
         case 'merge_people': {
             return `${word.merge}: «${yield* nameOfPerson(action.fromPersonId)}» → «${yield* nameOfPerson(action.intoPersonId)}»`;

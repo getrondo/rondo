@@ -4,7 +4,7 @@ import { person } from '@rondo/db/schema/identity.schema';
 import { telegramChat } from '@rondo/db/schema/org.schema';
 import { messageRef } from '@rondo/db/schema/platform.schema';
 import { lineupDelivery, ratingEvent, team, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
-import { signup } from '@rondo/db/schema/scheduling.schema';
+import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { testDbLayer } from '@rondo/db/testing/test-db.layer';
 import { makeRecorder, recordingTelegramLayer, refusal } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -12,8 +12,10 @@ import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Option from 'effect/Option';
+import * as TestClock from 'effect/testing/TestClock';
 
 import { Access } from '../src/access/admin-access';
+import { describeAction } from '../src/actions/describe-action';
 import { syncMember } from '../src/identity/telegram-user';
 import { setColour, swapPlayers } from '../src/teams/draft-state';
 import { planLineup } from '../src/teams/lineup-plan';
@@ -213,6 +215,84 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             expect(stale).toMatchObject({ _tag: 'failed' });
             expect(done).toMatchObject({ _tag: 'done' });
             expect(sendsTo(-7501)).toEqual(['sendMessage']);
+        })
+    );
+
+    it.effect('keeps the recorded result when the changed squad could not be delivered', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-result-kept', [-7601, -7602], 76_000);
+            yield* publishPlanned(game);
+            yield* recordResult({ ...game, winner: 1, actorPersonId: null, now: new Date('2026-12-04T20:30:00Z') });
+            const { row } = yield* openDraft(game.communityId, game.sessionId, null);
+            const [first = '', second = ''] = row.state.teams.map(members => members[0] ?? '');
+            yield* changeDraft({ sessionId: game.sessionId, version: row.version, key: 'w', actorPersonId: null }, state =>
+                Effect.succeed(swapPlayers(state, first, second))
+            );
+            blocked.set(-7601, refusal('editMessageText', 'Bad Request: message can not be edited'));
+            blocked.set(-7602, refusal('editMessageText', 'Bad Request: message can not be edited'));
+            yield* publishPlanned(game);
+            blocked.delete(-7601);
+            blocked.delete(-7602);
+            const ranks = yield* db.select({ rank: team.rank }).from(team).where(eq(team.sessionId, game.sessionId)).orderBy(team.ordinal);
+            const events = yield* db.select().from(ratingEvent).where(eq(ratingEvent.sessionId, game.sessionId));
+
+            expect(ranks.map(entry => entry.rank)).toEqual([1, 2]);
+            expect(events).toHaveLength(8);
+        })
+    );
+
+    it.effect('treats a fresh claim as busy without a retry, runs one publish of a game at a time and refuses a cancelled game', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-busy', [-7701, -7702], 77_000);
+            yield* db
+                .update(teamDraft)
+                .set({ publishToken: '00000000-0000-4000-8000-000000000001', publishAt: new Date(0) })
+                .where(eq(teamDraft.sessionId, game.sessionId));
+            const held = yield* publishPlanned(game);
+            yield* TestClock.adjust('61 seconds');
+            blocked.set(-7702, new Error('socket hang up'));
+            yield* publishPlanned(game);
+            blocked.delete(-7702);
+            yield* db
+                .update(lineupDelivery)
+                .set({ status: 'claimed', updatedAt: new Date(61_000) })
+                .where(eq(lineupDelivery.chatId, -7702n));
+            const plan = yield* planLineup({ ...game, locale: 'uk', privateChatId: null, fallback: Option.none() });
+            const ticket = (plan.deliveries.find(delivery => delivery.chatId === -7702n)?.token ?? '').slice(0, 8);
+            const busy = yield* publishPlanned(game, ticket);
+            yield* TestClock.adjust('61 seconds');
+            const retried = yield* publishPlanned(game, ticket);
+            yield* db.update(session).set({ status: 'cancelled' }).where(eq(session.id, game.sessionId));
+            const cancelled = yield* publishPlanned(game).pipe(Effect.flip);
+
+            expect(held.deliveries.map(delivery => delivery.status)).toEqual(['busy', 'busy']);
+            expect(plan.deliveries.map(delivery => delivery.stored)).toEqual(['sent', 'busy']);
+            expect(busy.deliveries.map(delivery => delivery.status)).toEqual(['unchanged', 'busy']);
+            expect(retried.deliveries.map(delivery => delivery.status)).toEqual(['unchanged', 'sent']);
+            expect(sendsTo(-7701)).toEqual(['sendMessage']);
+            expect(cancelled).toMatchObject({ reason: 'the game is already over or cancelled' });
+        })
+    );
+
+    it.effect('shows in the assistant confirmation every destination, the exact post and that the result will be cleared', () =>
+        Effect.gen(function* () {
+            const game = yield* twoGroupGame('delivery-assistant-preview', [-7801, -7802], 78_000);
+            yield* publishPlanned(game);
+            yield* recordResult({ ...game, winner: 1, actorPersonId: null, now: new Date('2026-12-04T20:30:00Z') });
+            const { row } = yield* openDraft(game.communityId, game.sessionId, null);
+            const { teams } = row.state;
+            const action = yield* teamsActionAsOwner(game.communityId, game.sessionId, [
+                { ordinal: 1, players: [...(teams[1] ?? [])].map(personId => ({ personId, displayName: '', isGk: false })) },
+                { ordinal: 2, players: [...(teams[0] ?? [])].map(personId => ({ personId, displayName: '', isGk: false })) }
+            ]);
+            const summary = yield* describeAction(action, 'uk', game.communityId);
+
+            expect(summary).toContain('Надішлю в «Group 1» і в «Group 2»:');
+            expect(summary).toContain('Player0');
+            expect(summary).not.toContain('<');
+            expect(summary).toContain('⚠️ Склади змінилися після результату: результат вечора скинеться.');
         })
     );
 });

@@ -45,7 +45,7 @@ their team sizes) over the weighted games (W):
 
 ## Offline evaluation
 
-`evaluateTeams(rows, last = 65)` in `evaluate-teams.ts` replays a history: for each of the last games it learns habits from
+`evaluateTeams(rows, last = 65)`, a test helper in `packages/core/test/support/evaluate-teams.ts`, replays a history: for each of the last games it learns habits from
 earlier rows only, proposes teams with the same team count and compares them with what the organizer did. Rows are plain
 objects, one per player per game:
 

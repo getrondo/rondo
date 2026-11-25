@@ -47,23 +47,3 @@ export interface HistoryRow extends LineupRow {
     readonly strength?: number;
     readonly isGk?: boolean;
 }
-
-export interface GameEvaluation {
-    readonly game: string;
-    readonly players: number;
-    readonly pairMatch: number;
-    readonly randomPairMatch: number;
-    readonly moves: number;
-    readonly spread: number;
-    readonly actualSpread: number;
-}
-
-export interface Evaluation {
-    readonly games: number;
-    readonly pairMatch: number;
-    readonly randomPairMatch: number;
-    readonly medianMoves: number;
-    readonly meanSpread: number;
-    readonly meanActualSpread: number;
-    readonly perGame: readonly GameEvaluation[];
-}

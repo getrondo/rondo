@@ -1,8 +1,8 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
-import { team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
+import { lineupEntry, team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { formatSessionLabel } from '../i18n/messages';
@@ -78,8 +78,35 @@ export const publishedPlacement = Effect.fn('Core.publishedPlacement')(function*
     }));
 });
 
+export const squadOf = Effect.fn('Core.squadOf')(function* (sessionId: string) {
+    const db = yield* Db;
+    const posted = yield* db
+        .select({
+            ordinal: team.ordinal,
+            personId: teamMember.personId,
+            isGk: teamMember.isGk,
+            isGuest: sql<boolean>`exists (select 1 from scheduling.signup guest where guest.session_id = ${sessionId}::uuid
+                and guest.person_id = ${teamMember.personId} and guest.is_guest)`
+        })
+        .from(teamMember)
+        .innerJoin(team, eq(team.id, teamMember.teamId))
+        .where(eq(teamMember.sessionId, sessionId));
+
+    if (isNotEmptyArray(posted)) {
+        return posted;
+    }
+
+    const imported = yield* db
+        .select({ ordinal: lineupEntry.teamOrdinal, personId: lineupEntry.personId, isGk: lineupEntry.isGk })
+        .from(lineupEntry)
+        .where(and(eq(lineupEntry.sessionId, sessionId), gt(lineupEntry.teamOrdinal, 0), eq(lineupEntry.isGuest, false)));
+
+    return imported.flatMap(row => (isDefined(row.personId) ? [{ ...row, personId: row.personId, isGuest: false }] : []));
+});
+
 export const storedTeams = Effect.fn('Core.storedTeams')(function* (sessionId: string) {
     const db = yield* Db;
+    const squad = yield* squadOf(sessionId);
     const rows = yield* db
         .select({ ordinal: team.ordinal, rank: team.rank, emoji: teamColor.emoji, colour: teamColor.name })
         .from(team)
@@ -87,9 +114,11 @@ export const storedTeams = Effect.fn('Core.storedTeams')(function* (sessionId: s
         .where(eq(team.sessionId, sessionId))
         .orderBy(asc(team.ordinal));
 
-    return rows.map(row => ({
-        ordinal: row.ordinal,
-        rank: row.rank,
-        badge: badgeOfRow({ emoji: row.emoji, name: row.colour ?? '' })?.badge ?? `${row.ordinal}.`
-    }));
+    return rows
+        .flatMap(row => (squad.some(entry => entry.ordinal === row.ordinal && !entry.isGuest) ? [row] : []))
+        .map(row => ({
+            ordinal: row.ordinal,
+            rank: row.rank,
+            badge: badgeOfRow({ emoji: row.emoji, name: row.colour ?? '' })?.badge ?? `${row.ordinal}.`
+        }));
 });

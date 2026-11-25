@@ -68,7 +68,8 @@ const PublishTeamsAction = Schema.TaggedStruct('publish_teams', {
     sessionId: Schema.String,
     teams: Schema.Array(Team),
     version: Schema.Int,
-    fingerprint: Schema.String
+    fingerprint: Schema.String,
+    preview: Schema.Struct({ text: Schema.String, to: Schema.Array(Schema.NullOr(Schema.String)), clearsResult: Schema.Boolean })
 });
 
 const MergePeopleAction = Schema.TaggedStruct('merge_people', { fromPersonId: Schema.String, intoPersonId: Schema.String });

@@ -1,6 +1,6 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
-import { rating, ratingEvent, team, teamMember } from '@rondo/db/schema/play.schema';
-import { session, signup } from '@rondo/db/schema/scheduling.schema';
+import { rating, ratingEvent, team } from '@rondo/db/schema/play.schema';
+import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import { and, asc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
@@ -10,6 +10,7 @@ import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 import { requireSession } from '../sessions/session.service';
 
+import { squadOf } from './lineup-of-draft';
 import { rateResult } from './rate-result';
 import { ratingsOf } from './team-inputs';
 
@@ -101,20 +102,12 @@ export const recordResult = Effect.fn('Core.recordResult')(
 
                 const [game] = yield* db.select({ activityId: session.activityId }).from(session).where(eq(session.id, input.sessionId));
                 const activityId = game?.activityId ?? '';
-                const members = yield* db
-                    .select({
-                        teamId: teamMember.teamId,
-                        personId: teamMember.personId,
-                        isGuest: sql<boolean>`coalesce(${signup.isGuest}, false)`
-                    })
-                    .from(teamMember)
-                    .leftJoin(signup, and(eq(signup.sessionId, teamMember.sessionId), eq(signup.personId, teamMember.personId)))
-                    .where(eq(teamMember.sessionId, input.sessionId));
+                const members = yield* squadOf(input.sessionId);
                 const { strengthOf } = yield* ratingsOf(
                     activityId,
                     members.map(member => member.personId)
                 );
-                const rosters = teams.map(entry => members.filter(member => member.teamId === entry.id));
+                const rosters = teams.map(entry => members.filter(member => member.ordinal === entry.ordinal));
                 const rated = rateResult(
                     rosters.map(roster => roster.map(member => strengthOf(member.personId))),
                     ranks

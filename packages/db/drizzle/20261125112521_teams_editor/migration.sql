@@ -16,11 +16,12 @@ CREATE TABLE "play"."team_draft" (
 	"community_id" uuid NOT NULL,
 	"version" integer DEFAULT 1 NOT NULL,
 	"state" jsonb NOT NULL,
-	"proposed" jsonb,
 	"proposed_at" timestamp with time zone,
 	"changed_at" timestamp with time zone,
 	"notified_at" timestamp with time zone,
 	"published_at" timestamp with time zone,
+	"publish_token" uuid,
+	"publish_at" timestamp with time zone,
 	"updated_by" uuid,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );

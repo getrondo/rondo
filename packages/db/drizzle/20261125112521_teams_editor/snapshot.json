@@ -2,7 +2,7 @@
     "type": "diff",
     "version": "10",
     "dialect": "postgres",
-    "id": "c8af40f1-d2cf-4f9b-aa7a-6a58bd9320ab",
+    "id": "cef656a8-a49c-4130-8354-81574fe5ce46",
     "prevIds": ["0d3fc089-69ba-48a9-8598-1b00e39f30d7"],
     "footprints": [
         {
@@ -417,22 +417,6 @@
             "row": {
                 "schema": "play",
                 "table": "team_draft",
-                "name": "proposed",
-                "type": "jsonb",
-                "typeSchema": null,
-                "notNull": false,
-                "dimensions": 0,
-                "default": null,
-                "generated": null,
-                "identity": null,
-                "entityType": "columns"
-            }
-        },
-        {
-            "op": "create",
-            "row": {
-                "schema": "play",
-                "table": "team_draft",
                 "name": "proposed_at",
                 "type": "timestamp with time zone",
                 "typeSchema": null,
@@ -482,6 +466,38 @@
                 "schema": "play",
                 "table": "team_draft",
                 "name": "published_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "publish_token",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "publish_at",
                 "type": "timestamp with time zone",
                 "typeSchema": null,
                 "notNull": false,
