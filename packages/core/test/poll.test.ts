@@ -6,7 +6,8 @@ import { eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { describeAction } from '../src/actions/describe-action';
-import { pollFor } from '../src/signups/poll-for';
+import { placeHtml } from '../src/signups/place-block';
+import { pollFor, previewOf } from '../src/signups/poll-for';
 import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 import { updateVenue } from '../src/venues/venue.service';
@@ -45,7 +46,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the poll in the style of th
             const noStation = yield* pollFor(communityId, { ...game, venueShortName: null, venueStation: null, fieldsPlanned: null }, null);
             const nothing = yield* pollFor(communityId, bare, null);
 
-            expect(full).toEqual({
+            expect(full).toMatchObject({
                 question: 'Пятница, 20 ноября, 19.00 Sport Arena, U9 Station!\n\n1 поле, 20 мест\nБез телеграма: двое',
                 answers: ['👍', '👎']
             });
@@ -60,7 +61,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the poll in the style of th
             const communityId = yield* seed('poll-default-fc', 'de');
             const poll = yield* pollFor(communityId, { ...game, fieldsPlanned: 5, capacityMax: 22 }, null);
 
-            expect(poll).toEqual({
+            expect(poll).toMatchObject({
                 question: '⚽ Пʼятниця, 20 листопада, 19.00 Sport Arena, U9 Station\n\n5 полів, 22 місця',
                 answers: ['✅ Граю', '❌ Не граю']
             });
@@ -88,6 +89,52 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the poll in the style of th
 
             expect(fits.question).toHaveLength(300);
             expect(refused.map(error => error._tag)).toEqual(Array.from({ length: 5 }, () => 'ActionFailedError'));
+        })
+    );
+
+    it.effect('puts the place, its address and a route into the poll, with nothing empty', () =>
+        Effect.gen(function* () {
+            const communityId = yield* seed('poll-place-fc', 'ru', template);
+            const located = { ...game, venueAddress: 'Main Street 1 & Co', venueLat: 48.2, venueLng: 16.4, venueMapUrl: null };
+            const linked = {
+                ...game,
+                venueStation: null,
+                venueAddress: null,
+                venueLat: null,
+                venueLng: null,
+                venueMapUrl: 'https://maps.app.goo.gl/abc'
+            };
+            const poll = yield* pollFor(communityId, located, null);
+            const onlyLink = yield* pollFor(communityId, linked, null);
+            const bareVenue = yield* pollFor(communityId, { ...game, venueStation: null }, null);
+            const none = yield* pollFor(communityId, bare, null);
+            const url = 'https://www.google.com/maps/search/?api=1&query=48.2,16.4';
+
+            expect(poll.route).toEqual({ label: '🗺 Маршрут', url });
+            expect(placeHtml(poll.place)).toBe(
+                `📍 <b>Sport Arena Vienna North</b>\n<a href="${url.replace('&', '&amp;')}"><b>Main Street 1 &amp; Co</b></a>\n🚇 U9 Station`
+            );
+            expect(previewOf(poll)).toBe(
+                [
+                    'Пятница, 20 ноября, 19.00 Sport Arena, U9 Station!',
+                    '',
+                    '1 поле, 20 мест',
+                    '',
+                    '▫️ 👍',
+                    '▫️ 👎',
+                    '',
+                    '📍 Sport Arena Vienna North',
+                    'Main Street 1 & Co',
+                    '🚇 U9 Station',
+                    `🗺 Маршрут: ${url}`
+                ].join('\n')
+            );
+            expect(placeHtml(onlyLink.place)).toBe('📍 <b>Sport Arena Vienna North</b>');
+            expect(onlyLink.route?.url).toBe('https://maps.app.goo.gl/abc');
+            expect(placeHtml(bareVenue.place)).toBe('📍 <b>Sport Arena Vienna North</b>');
+            expect(bareVenue.route).toBeNull();
+            expect(none.place).toBeNull();
+            expect(previewOf(none)).toBe('Пятница, 20 ноября, 19.00!\n\n▫️ 👍\n▫️ 👎');
         })
     );
 
@@ -123,7 +170,10 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the poll in the style of th
                     'Мячи есть',
                     '',
                     '▫️ 👍',
-                    '▫️ 👎'
+                    '▫️ 👎',
+                    '',
+                    '📍 Park Field',
+                    '🚇 U9 Park'
                 ].join('\n')
             );
             expect(silent).toBe('➕ Нова гра: Пт 20.11 19:00 · Park Field, 1 поле, 20 місць');

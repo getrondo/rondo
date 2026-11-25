@@ -9,6 +9,7 @@ import * as Effect from 'effect/Effect';
 
 import { cancelReasonText, formatSessionLabel, text } from '../i18n/messages';
 import { primaryAccount } from '../identity/primary-account';
+import { placeHtml, placeOf } from '../signups/place-block';
 import { topicOptions } from '../utils/topic-options.util';
 
 import type { Locale } from '../i18n/locale';
@@ -29,6 +30,12 @@ const mentionsOf = Effect.fn('Core.mentionsOf')(function* (sessionId: string) {
     return rows.map(row => mentionHtml(row.tgUserId, row.name)).join(', ');
 });
 
+const placeLines = (target: SessionView): string[] => {
+    const html = placeHtml(placeOf(target));
+
+    return isEmptyString(html) ? [] : [html];
+};
+
 const post = Effect.fn('Core.post')(function* (group: GroupTarget, html: string) {
     const telegram = yield* Telegram;
 
@@ -46,6 +53,7 @@ export const notifySessionChanged = Effect.fn('Core.notifySessionChanged')(funct
         `<b>${text(input.locale, 'changed')}</b>`,
         `<s>${escapeHtml(formatSessionLabel(input.locale, input.before))}</s>`,
         `➡️ <b>${escapeHtml(formatSessionLabel(input.locale, input.after))}</b>`,
+        ...placeLines(input.after),
         ...(isEmptyString(mentions) ? [] : [mentions])
     ];
 

@@ -18,6 +18,7 @@ export interface VenueDetails {
     readonly indoor?: boolean;
     readonly lat?: number | null;
     readonly lng?: number | null;
+    readonly mapUrl?: string | null;
 }
 
 export interface VenuePatch extends VenueDetails {

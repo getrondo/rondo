@@ -1,4 +1,4 @@
-import { isNotEmptyArray } from '@rnw-community/shared';
+import { isEmptyString, isNotEmptyArray } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
 import { messageRef } from '@rondo/db/schema/platform.schema';
 import { rating, team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
@@ -17,6 +17,7 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { formatSessionLabel, text } from '../i18n/messages';
 import { arePeopleOf } from '../people/people.service';
 import { footballActivity, requireSession } from '../sessions/session.service';
+import { placeHtml, placeOf } from '../signups/place-block';
 import { topicOptions } from '../utils/topic-options.util';
 
 import { balanceTeams, type BalancedTeam, type BalancePlayer } from './balance-teams';
@@ -99,7 +100,13 @@ const lineupText = (locale: Locale, target: SessionView, teams: readonly Balance
         return `${emojis[index] ?? `${entry.ordinal}.`} ${names}`;
     });
 
-    return [`<b>${text(locale, 'lineups')}: ${escapeHtml(formatSessionLabel(locale, target))}</b>`, ...lines].join('\n');
+    const place = placeHtml(placeOf(target));
+
+    return [
+        `<b>${text(locale, 'lineups')}: ${escapeHtml(formatSessionLabel(locale, target))}</b>`,
+        ...(isEmptyString(place) ? [] : [place]),
+        ...lines
+    ].join('\n');
 };
 
 interface PublishInput {

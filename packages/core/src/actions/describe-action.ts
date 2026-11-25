@@ -32,7 +32,15 @@ const nickname = Effect.fn('Core.nickname')(function* (aliasId: string) {
     return row?.alias ?? aliasId;
 });
 
-const noVenue = { venueName: null, venueShortName: null, venueStation: null };
+const noVenue = {
+    venueName: null,
+    venueShortName: null,
+    venueStation: null,
+    venueAddress: null,
+    venueLat: null,
+    venueLng: null,
+    venueMapUrl: null
+};
 
 const displayOfVenue = Effect.fn('Core.displayOfVenue')(function* (venueId: string | null | undefined) {
     const db = yield* Db;
@@ -42,7 +50,15 @@ const displayOfVenue = Effect.fn('Core.displayOfVenue')(function* (venueId: stri
     }
 
     const [row] = yield* db
-        .select({ venueName: venue.name, venueShortName: venue.shortName, venueStation: venue.station })
+        .select({
+            venueName: venue.name,
+            venueShortName: venue.shortName,
+            venueStation: venue.station,
+            venueAddress: venue.address,
+            venueLat: venue.lat,
+            venueLng: venue.lng,
+            venueMapUrl: venue.mapUrl
+        })
         .from(venue)
         .where(eq(venue.id, venueId));
 

@@ -9,6 +9,8 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { resolveLocale, type Locale } from '../i18n/locale';
 import { countOf, text } from '../i18n/messages';
 
+import { placeOf, placePlain, routeOf } from './place-block';
+
 import type { PollGame, PollText } from '../interface/poll.interface';
 
 const questionLimit = 300;
@@ -74,7 +76,16 @@ export const pollFor = Effect.fn('Core.pollFor')(function* (communityId: string,
         return yield* ActionFailedError.make({ reason: `a poll answer is longer than ${answerLimit} characters` });
     }
 
-    return { question, answers: template.answers } satisfies PollText;
+    const place = placeOf(game);
+
+    return { question, answers: template.answers, place, route: routeOf(place) } satisfies PollText;
 });
 
-export const previewOf = ({ question, answers }: PollText): string => [question, '', ...answers.map(answer => `▫️ ${answer}`)].join('\n');
+export const previewOf = ({ question, answers, place, route }: PollText): string =>
+    [
+        question,
+        '',
+        ...answers.map(answer => `▫️ ${answer}`),
+        ...(isDefined(place) ? ['', ...placePlain(place)] : []),
+        ...(isDefined(route) ? [`${route.label}: ${route.url}`] : [])
+    ].join('\n');
