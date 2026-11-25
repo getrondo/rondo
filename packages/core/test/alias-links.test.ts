@@ -1,10 +1,10 @@
 import { expect, layer } from '@effect/vitest';
 import { aliasLink, person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { auditLog, pollVote } from '@rondo/db/schema/platform.schema';
-import { lineupEntry } from '@rondo/db/schema/play.schema';
+import { homeColour, lineupEntry } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 import * as Option from 'effect/Option';
@@ -20,6 +20,7 @@ import { applyPollAnswer } from '../src/signups/signup.service';
 import { personStatistics, topPlayers } from '../src/stats/participation.service';
 import { inactivePlayers } from '../src/stats/stats.service';
 import { publishLineup } from '../src/teams/publish-lineup';
+import { setHomeColour } from '../src/teams/team.service';
 import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -248,11 +249,26 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
             const merge = (fromPersonId: string, intoPersonId: string) =>
                 mergePeople({ communityId, fromPersonId, intoPersonId, actorPersonId: null });
 
+            yield* setHomeColour({ communityId, personId: second, colour: 'red', actorPersonId: null });
+            yield* setHomeColour({ communityId, personId: account, colour: 'green', actorPersonId: null });
             yield* merge(second, account);
+            const third = yield* syncMember(communityId, { id: 138n, firstName: 'Third' }, 'active');
+            yield* setHomeColour({ communityId, personId: third, colour: 'blue', actorPersonId: null });
+            const fourth = yield* syncMember(communityId, { id: 137n, firstName: 'Fourth' }, 'active');
+            yield* merge(third, fourth);
+            const colours = yield* db
+                .select({ personId: homeColour.personId, colour: homeColour.colour })
+                .from(homeColour)
+                .where(inArray(homeColour.personId, [second, account, third, fourth]))
+                .orderBy(homeColour.colour);
             const accounts = yield* db.select().from(telegramAccount).where(eq(telegramAccount.personId, account));
             const found = yield* searchPeople(communityId, 'Tele', 10);
             const conflict = yield* Effect.flip(merge(inGame?.personId ?? '', organizer));
 
+            expect(colours).toEqual([
+                { personId: fourth, colour: 'blue' },
+                { personId: account, colour: 'green' }
+            ]);
             expect(accounts).toHaveLength(2);
             expect(found).toHaveLength(1);
             expect(conflict._tag).toBe('ActionFailedError');

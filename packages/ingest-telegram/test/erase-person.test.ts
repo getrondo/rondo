@@ -6,13 +6,14 @@ import { linkAlias, linkEntry } from '@rondo/core/people/alias-links.service';
 import { erasePerson, previewErasure } from '@rondo/core/people/erase-person';
 import { mergePeople, renamePerson } from '@rondo/core/people/people.service';
 import { addGuests } from '@rondo/core/signups/roster.service';
+import { setHomeColour } from '@rondo/core/teams/team.service';
 import { recordedTelegramDbLayer } from '@rondo/core/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
 import { seedGame } from '@rondo/core/testing/seed-game';
 import { person, personAlias, telegramAccount, telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { community } from '@rondo/db/schema/org.schema';
 import { adminState, auditLog, pendingAction, pollVote } from '@rondo/db/schema/platform.schema';
-import { lineupDelivery, lineupEntry } from '@rondo/db/schema/play.schema';
+import { homeColour, lineupDelivery, lineupEntry } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
@@ -296,10 +297,17 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('erasing a person', it => {
             const { communityId } = yield* seedCommunity(seedConfig('erase-rename-fc'));
             const personId = yield* syncMember(communityId, { id: 981n, firstName: 'Erased' }, 'active');
             const neighbourId = yield* syncMember(communityId, { id: 982n, firstName: 'Kept' }, 'active');
+            yield* setHomeColour({ communityId, personId, colour: 'red', actorPersonId: null });
+            yield* setHomeColour({ communityId, personId: neighbourId, colour: 'green', actorPersonId: null });
             yield* erasePerson({ communityId, personId });
+            const colours = yield* db
+                .select({ personId: homeColour.personId })
+                .from(homeColour)
+                .where(inArray(homeColour.personId, [personId, neighbourId]));
             const rename = (id: string) => renamePerson({ communityId, personId: id, displayName: 'Again', actorPersonId: null });
             const refused = { failure: { code: 'person_not_found' } };
 
+            expect(colours).toEqual([{ personId: neighbourId }]);
             expect(yield* Effect.flip(rename(personId))).toMatchObject(refused);
             for (const [fromPersonId, intoPersonId] of [
                 [personId, neighbourId],

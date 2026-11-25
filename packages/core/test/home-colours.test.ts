@@ -125,6 +125,44 @@ describe('home colours', () => {
         }
     });
 
+    it('keeps a strong regular in his colour over several occasional players', () => {
+        const occasional = ['a', 'b', 'c'];
+        const affinities = regulars([['home', times('red', 10)], ...occasional.map(id => [id, times('green', 1)] as const)]);
+        const players = ['home', ...occasional, 'w', 'x', 'y', 'z'].map(id => player(id));
+        const habits = new Map(occasional.map(id => [`${id}|home`, 20] as const));
+        const [best] = solveColoured({ ...inputOf(players, 2), habits, proposals: 1 }, { colours: ['red', 'green'], affinities });
+
+        expect(best?.teams[0]?.toSorted()).toEqual(['a', 'b', 'c', 'home']);
+    });
+
+    it('never lets learned colours make «Сили рівні» into less when an even split exists', () => {
+        const random = (seed: number) => {
+            let current = seed % 2_147_483_647;
+
+            return () => {
+                current = (current * 48_271) % 2_147_483_647;
+
+                return current / 2_147_483_647;
+            };
+        };
+
+        for (let index = 1; index <= 150; index += 1) {
+            const next = random(index * 15_485_863);
+            const teamCount = 2 + (index % 3);
+            const colours = [...rgb, 'yellow' as const].slice(0, teamCount);
+            const offsets = colours.map(() => next() * 0.8);
+            const players = Array.from({ length: teamCount * (4 + (index % 6)) }, (_, entry) =>
+                player(`p${String(entry).padStart(2, '0')}`, 25 + (offsets[entry % teamCount] ?? 0) + (next() - 0.5) * 0.4 * (index % 5))
+            );
+            const affinities = regulars(players.map(({ id }, entry) => [id, times(colours[entry % teamCount] ?? 'red', 10)]));
+            const input = { ...inputOf(players, teamCount), proposals: 1 };
+            const [plain] = solveColoured(input, { colours, affinities: new Map() });
+            const [coloured] = solveColoured(input, { colours, affinities });
+
+            expect({ index, even: (coloured?.balance ?? 0) >= 0.85 }).toEqual({ index, even: (plain?.balance ?? 0) >= 0.85 });
+        }
+    });
+
     it('gives colours to five and six teams within a second', () => {
         const all: readonly BadgeColour[] = ['red', 'blue', 'green', 'yellow', 'white', 'orange'];
         const players = Array.from({ length: 36 }, (_, index) => player(`p${String(index).padStart(2, '0')}`));

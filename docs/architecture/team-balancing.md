@@ -52,16 +52,21 @@ worn in at least 80% of at least 8 squads; guests have none. An admin may fix on
 
 - **Colours of the evening:** the most frequent set worn by that many teams in the last 50 such games of the community, else
   the most worn colours. Colours in the draft, the admin's among them, stay for the same number of teams.
-- **Who wears which:** the order of the teams with the greatest total share (all permutations, 720 at six teams), except with
-  locks or a placed line-up, where a player must keep his team.
-- **Solver:** a home colour costs 30 in any other team (60 when fixed), below a strength difference of one point (100) and
-  the cost of moving a placed player (250); habits stop counting only for a pair with a fixed colour, and a fixed player decides who wears which before shares do. A late joiner follows it too.
-  On 183 real games of a year this kept the match with the organizer's pairs (43.6%, 43.4% without colours) and put 60% of the
-  players, 87% of those with a home colour, in their colour. Ignoring habits for every home colour gave 38% and 53%.
+- **Who wears which:** the order of the teams with the greatest total share (all permutations, 720 at six teams), a home colour
+  counted twice, except with locks or a placed line-up, where a player must keep his team. Another variant is ordered again
+  for the colours and players of that moment.
+- **Solver:** a home colour costs 15 in any other team (60 when fixed), below a strength difference of one point (100) and
+  the cost of moving a placed player (250). Habits stop counting only for a pair with a fixed colour, and a fixed player
+  decides who wears which before shares do. A late joiner follows it too. On 183 real games of a year this matches the
+  organizer's pairs (43.8%, 43.4% without colours) and puts 60.5% of the players, 87.4% of those with a home colour, in
+  their colour. Ignoring habits for every home colour gave 38% and 53%.
 
-The benchmark (12 players) keeps its gap to the optimum with a home colour for everyone. Over 40 synthetic games the mean
-strength spread stayed 2.10 with tiers and 0.00 without levels, and went from 0.15 to 0.29 (at most 0.78, «Сили рівні» up to 1.5)
-with learned ratings; home colours were met for 90%, 95% and 62% (31%, 30% and 38% before). Median time of three proposals on a busy machine:
+A learned colour must not take the split over the 1.5 points of «Сили рівні»: in 3000 synthetic games with a home for
+everyone a weight of 30 did so 46 times, 20 twice and 15 never (at most 1.41). A fixed colour is the admin's choice.
+When two people are merged the colour of the one who stays wins, and erasing a person removes it.
+
+The benchmark (12 players) keeps its gap to the optimum with a home colour for everyone. Median time of three proposals on a
+busy machine:
 
 | Players / teams | without homes | a home for everyone |
 | --------------- | ------------- | ------------------- |

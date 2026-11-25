@@ -29,7 +29,7 @@ export const baseWeights: Weights = {
     variety: 8,
     host: 30,
     move: 250,
-    home: 30,
+    home: 15,
     diversity: 0
 };
 
@@ -134,7 +134,7 @@ export const buildModel = (input: SolverInput, weights: Weights, previous: reado
                     { length: teamCount },
                     (_, team) =>
                         (isDefined(anchor[player]) && anchor[player] !== team ? weights.move : 0) +
-                        (isDefined(home) && home.team !== team ? weights.home * (home.isFixed ? 2 : 1) : 0)
+                        (isDefined(home) && home.team !== team ? weights.home * (home.isFixed ? 4 : 1) : 0)
                 );
             })
         ),

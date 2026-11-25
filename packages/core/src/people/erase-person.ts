@@ -2,7 +2,7 @@ import { isDefined, isEmptyArray, isNotEmptyString } from '@rnw-community/shared
 import { person, personAlias, telegramAccount, telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { membership, roleGrant } from '@rondo/db/schema/org.schema';
 import { adminState, assistantMessage, pendingAction } from '@rondo/db/schema/platform.schema';
-import { lineupDelivery, lineupEntry, teamDraft } from '@rondo/db/schema/play.schema';
+import { homeColour, lineupDelivery, lineupEntry, teamDraft } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import { and, eq, inArray, isNotNull, isNull, ne, not, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
@@ -271,6 +271,7 @@ const eraseInLock = Effect.fn('Core.eraseInLock')(function* ({ communityId, pers
         ...authors,
         ...nicknames.map(({ alias }) => alias)
     ]);
+    yield* db.delete(homeColour).where(inArray(homeColour.personId, personIds));
     yield* db.delete(roleGrant).where(inArray(roleGrant.personId, personIds));
     yield* db
         .update(membership)

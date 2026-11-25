@@ -9,12 +9,11 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { footballActivity } from '../sessions/session.service';
 import { plainText } from '../utils/plain-text.util';
 
-import { paddedColours } from './badges';
 import { initialState, syncRoster, withChange, type DraftState } from './draft-state';
 import { solveColoured } from './home-colours';
 import { planLineup } from './lineup-plan';
 import { publishLineup } from './publish-lineup';
-import { changeDraft, openDraft, solverInputFor, usualTeamCount } from './team-draft.service';
+import { changeDraft, coloursOf, openDraft, solverInputFor, usualTeamCount } from './team-draft.service';
 import { loadTeamInputs, tierLevel } from './team-inputs';
 
 import type { Action } from '../actions/action.model';
@@ -34,7 +33,7 @@ const solvedTeams = (inputs: TeamInputs, draftColours: readonly string[], teamCo
     const count = teamCount ?? usualTeamCount(inputs.players.length);
     const empty = initialState({ variants: [], reasons: [], colours: [], keepers });
     const [best] = solveColoured(solverInputFor(inputs, empty, { teamCount: count, proposals: 1 }), {
-        colours: paddedColours(draftColours, count),
+        colours: coloursOf(inputs, draftColours, count),
         affinities: inputs.affinities
     });
     const nameOf = new Map(inputs.members.map(member => [member.personId, member.displayName]));
@@ -45,13 +44,13 @@ const solvedTeams = (inputs: TeamInputs, draftColours: readonly string[], teamCo
     }));
 };
 
-const withProposed = (state: DraftState, teams: readonly ProposedTeam[]): DraftState =>
+const withProposed = (inputs: TeamInputs, state: DraftState, teams: readonly ProposedTeam[]): DraftState =>
     withChange(state, {
         teams: teams.map(entry => entry.players.map(player => player.personId)),
         keepers: teams.flatMap(entry => entry.players.filter(player => player.isGk).map(player => player.personId)),
         pending: [],
         locks: [],
-        colours: paddedColours(state.colours, teams.length)
+        colours: coloursOf(inputs, state.colours, teams.length)
     });
 
 export const publishTeamsAction = Effect.fn('Core.publishTeamsAction')(function* (input: {
@@ -66,7 +65,7 @@ export const publishTeamsAction = Effect.fn('Core.publishTeamsAction')(function*
 }) {
     const opened = yield* openDraft(input.communityId, input.sessionId, input.actorPersonId);
     const teams = input.teams ?? solvedTeams(opened.inputs, opened.row.state.colours, input.teamCount);
-    const plan = yield* planLineup({ ...input, loaded: opened, state: withProposed(opened.row.state, teams) });
+    const plan = yield* planLineup({ ...input, loaded: opened, state: withProposed(opened.inputs, opened.row.state, teams) });
     const due = plan.deliveries.filter(delivery => delivery.isDue);
 
     return {
@@ -93,10 +92,11 @@ export const executePublishTeams = Effect.fn('Core.executePublishTeams')(functio
         readonly fallback: Option.Option<GroupTarget>;
     }
 ) {
-    const roster = (yield* loadTeamInputs(context.communityId, action.sessionId)).members.map(member => member.personId);
+    const inputs = yield* loadTeamInputs(context.communityId, action.sessionId);
+    const roster = inputs.members.map(member => member.personId);
     const change = yield* changeDraft(
         { sessionId: action.sessionId, version: action.version, key: 'assistant', actorPersonId: context.actorPersonId },
-        state => Effect.succeed(syncRoster(withProposed(state, action.teams), roster))
+        state => Effect.succeed(syncRoster(withProposed(inputs, state, action.teams), roster))
     );
 
     if (change._tag !== 'changed') {

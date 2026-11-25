@@ -12,6 +12,7 @@ const recentGames = 50;
 const smoothing = 1;
 const strongSquads = 8;
 const strongShare = 0.8;
+const homeFit = 2;
 // One player fixed by an admin decides who wears which before the shares of a whole team do
 const fixedShare = 20;
 
@@ -92,9 +93,15 @@ interface ColourContext {
     readonly affinities: ReadonlyMap<string, Affinity>;
 }
 
-const arranged = (teams: Proposal['teams'], { colours, affinities }: ColourContext): Proposal['teams'] => {
+export const arranged = (teams: Proposal['teams'], { colours, affinities }: ColourContext): Proposal['teams'] => {
     const fit = teams.map(members =>
-        colours.map(colour => members.reduce((sum, id) => sum + (affinities.get(id)?.shares.get(colour) ?? 0), 0))
+        colours.map(colour =>
+            members.reduce((sum, id) => {
+                const affinity = affinities.get(id);
+
+                return sum + (affinity?.shares.get(colour) ?? 0) * (affinity?.home === colour ? homeFit : 1);
+            }, 0)
+        )
     );
     let best: readonly number[] = teams.map((_members, team) => team);
     let bestFit = -Infinity;
