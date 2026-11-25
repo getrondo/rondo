@@ -1,17 +1,46 @@
 {
-    "version": 1,
+    "version": 2,
     "skills": {
+        "ai-sdk": {
+            "source": "vercel/ai",
+            "commit": "a457990a33491a9bfd6e7a48318d23a16c0ac95d",
+            "sourceType": "github",
+            "skillPath": "skills/ai-sdk/SKILL.md",
+            "computedHash": "59cd2dc82c5458f2819992fc3d27204ed16edfc9170870c6f8f04c44bac17772"
+        },
         "effect-ts": {
             "source": "Effect-TS/skills",
+            "commit": "155c50c911f9c99c294ef8a4461981c5bbe6453e",
             "sourceType": "github",
             "skillPath": "skills/effect-ts/SKILL.md",
-            "computedHash": "cb225ba5dda169883dfee680fba6c570c89245ba19242a9bc5c3f2ac8218a55f"
+            "computedHash": "0e5d926566561f7fe206f5f60c1c53e21d1519fd6de8408a7e3c9934d55ad04f"
         },
         "effect-v3-to-v4": {
             "source": "Effect-TS/skills",
             "sourceType": "github",
             "skillPath": "skills/effect-v3-to-v4/SKILL.md",
-            "computedHash": "0f4d927beabf2d53d07de7c7fd42e68d4100ead4129ed06e13b92986ff55713f"
+            "computedHash": "df1435662eee2663a39a051d6933fa854eb206ffa6ce24500325e3c7ee183386"
+        },
+        "neon-postgres": {
+            "source": "neondatabase/agent-skills",
+            "commit": "d3601d9e1f9398b96a1ee25047bafba5f04199eb",
+            "sourceType": "github",
+            "skillPath": "skills/neon-postgres/SKILL.md",
+            "computedHash": "0e1db49f25e9208cb24fa2084a542d52d60a85c09271b915acc3dad6901de6a0"
+        },
+        "supabase-postgres-best-practices": {
+            "source": "supabase/agent-skills",
+            "commit": "c9be0e931b7930f7d02126d04774d904c381e7d7",
+            "sourceType": "github",
+            "skillPath": "skills/supabase-postgres-best-practices/SKILL.md",
+            "computedHash": "3eb972c2d7c818e544e35cc33ea8d7147d4d78ae08142ef40037b0fbac7a2505"
+        },
+        "turborepo": {
+            "source": "vercel/turborepo",
+            "commit": "51d6ddfcbb35d7cc264ee9b6e0ef8f4f82fc23d1",
+            "sourceType": "github",
+            "skillPath": "skills/turborepo/SKILL.md",
+            "computedHash": "49bb6427015253ce5d93f15dfa6c9ade3f8528f0fbe54769b6da1e1458f058d4"
         }
     }
 }
