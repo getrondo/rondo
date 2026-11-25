@@ -1,8 +1,8 @@
-// Only this poll, the line-up of publishTeams and the stopPoll of deleteSession run inside a transaction. The Telegram client limits each call to 10 seconds
+// This poll and the stopPoll of deleteSession run inside a transaction: each ends within 10 seconds and waits at most 3 for a rate limit
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
+import { maxWaitInTransaction, Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, eq, isNull } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -71,16 +71,19 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
         }
 
         const options = poll.answers.map(answer => ({ text: answer }));
-        const sent = yield* telegram.call('sendPoll', api =>
-            api.sendPoll(Number(chatId), poll.question, options, {
-                is_anonymous: false,
-                allows_multiple_answers: false,
-                ...(isDefined(poll.description) ? { description: poll.description, description_parse_mode: 'HTML' } : {}),
-                ...(isDefined(poll.route)
-                    ? { reply_markup: { inline_keyboard: [[{ text: poll.route.label, url: poll.route.url }]] } }
-                    : {}),
-                ...topicOptions(input.group)
-            })
+        const sent = yield* telegram.call(
+            'sendPoll',
+            api =>
+                api.sendPoll(Number(chatId), poll.question, options, {
+                    is_anonymous: false,
+                    allows_multiple_answers: false,
+                    ...(isDefined(poll.description) ? { description: poll.description, description_parse_mode: 'HTML' } : {}),
+                    ...(isDefined(poll.route)
+                        ? { reply_markup: { inline_keyboard: [[{ text: poll.route.label, url: poll.route.url }]] } }
+                        : {}),
+                    ...topicOptions(input.group)
+                }),
+            maxWaitInTransaction
         );
         const messageId = sent.message_id;
         yield* Ref.set(sentMessage, messageId);

@@ -1,15 +1,13 @@
 import { describe, expect, it } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
-import * as ConfigProvider from 'effect/ConfigProvider';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 import * as Fiber from 'effect/Fiber';
-import * as Layer from 'effect/Layer';
 import * as Redacted from 'effect/Redacted';
 import * as TestClock from 'effect/testing/TestClock';
 
 import { escapeHtml, mentionHtml } from '../src/format/html';
-import { Telegram } from '../src/service/telegram.service';
+import { maxWaitInTransaction, Telegram, type CallOptions } from '../src/service/telegram.service';
 import { makeRecorder, recordingTelegramLayer, refusal } from '../src/testing/recording-telegram.layer';
 import { verifyWebhookSecret } from '../src/webhook/verify-webhook-secret';
 
@@ -65,22 +63,15 @@ describe('telegram failures', () => {
             expect(silent.isUncertain).toBe(true);
         })
     );
-
-    it.effect('gives up on a request after 10 seconds', () =>
-        Effect.gen(function* () {
-            const telegram = yield* Telegram;
-
-            expect(telegram.api.options?.timeoutSeconds).toBe(10);
-        }).pipe(
-            Effect.provide(
-                Telegram.layer.pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ TELEGRAM_BOT_TOKEN: '0:test' }))))
-            )
-        )
-    );
 });
 
 describe('telegram rate limit', () => {
-    const sendAfter = (failures: Error[], wait: '0 seconds' | '3 seconds' | '10 seconds') => {
+    const sendAfter = (
+        failures: Error[],
+        wait: '0 seconds' | '3 seconds' | '10 seconds',
+        method = 'sendMessage',
+        options?: CallOptions
+    ) => {
         const recorder = makeRecorder(() => {
             const failure = failures.shift();
 
@@ -94,7 +85,7 @@ describe('telegram rate limit', () => {
 
         return Effect.gen(function* () {
             const telegram = yield* Telegram;
-            const fiber = yield* Effect.forkChild(Effect.exit(telegram.call('sendMessage', api => api.sendMessage(1, 'hi'))));
+            const fiber = yield* Effect.forkChild(Effect.exit(telegram.call(method, api => api.sendMessage(1, 'hi'), options)));
             yield* TestClock.adjust(wait);
             const exit = yield* Fiber.join(fiber);
 
@@ -123,5 +114,39 @@ describe('telegram rate limit', () => {
                 expect(yield* sendAfter([failure, failure], '10 seconds')).toEqual({ isSent: false, tries: 1 });
             }
         })
+    );
+
+    it.effect('never waits for a best-effort call and at most as long as the caller allows', () =>
+        Effect.gen(function* () {
+            for (const method of ['pinChatMessage', 'answerCallbackQuery', 'sendChatAction', 'setMyCommands']) {
+                expect(yield* sendAfter([limited(1), limited(1)], '10 seconds', method)).toEqual({ isSent: false, tries: 1 });
+            }
+
+            expect(yield* sendAfter([limited(4)], '10 seconds', 'sendPoll', maxWaitInTransaction)).toEqual({ isSent: false, tries: 1 });
+            expect((yield* sendAfter([limited(3)], '10 seconds', 'sendPoll', maxWaitInTransaction)).isSent).toBe(true);
+            expect(yield* sendAfter([limited(2), limited(2)], '10 seconds', 'sendPoll', maxWaitInTransaction)).toEqual({
+                isSent: false,
+                tries: 2
+            });
+        })
+    );
+
+    it.effect('starts no attempt with too little time left and ends all attempts together after 10 seconds', () =>
+        Effect.gen(function* () {
+            const telegram = yield* Telegram;
+            let tries = 0;
+            const answer = async (): Promise<boolean> => {
+                tries += 1;
+
+                return tries === 1 ? await Promise.reject(limited(6)) : await Promise.withResolvers<boolean>().promise;
+            };
+            const fiber = yield* Effect.forkChild(Effect.flip(telegram.call('sendMessage', answer)));
+            yield* TestClock.adjust('10 seconds');
+            const error = yield* Fiber.join(fiber);
+
+            expect(tries).toBe(2);
+            expect(error).toMatchObject({ isUncertain: true, retryAfterSeconds: null });
+            expect(yield* sendAfter([limited(9)], '10 seconds')).toEqual({ isSent: false, tries: 1 });
+        }).pipe(Effect.provide(recordingTelegramLayer(makeRecorder())))
     );
 });

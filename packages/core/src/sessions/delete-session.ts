@@ -4,7 +4,7 @@ import { importedPoll, messageRef, pendingAction, pollVote, telegramPoll } from 
 import { lineupEntry, teamMember } from '@rondo/db/schema/play.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
+import { maxWaitInTransaction, Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, count, eq, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -80,7 +80,7 @@ const stopForDelete = Effect.fn('Core.stopForDelete')(function* (poll: typeof te
     const db = yield* Db;
     const telegram = yield* Telegram;
     const stopped = yield* telegram
-        .call('stopPoll', api => api.stopPoll(Number(poll.chatId), poll.messageId))
+        .call('stopPoll', api => api.stopPoll(Number(poll.chatId), poll.messageId), maxWaitInTransaction)
         .pipe(
             Effect.map(result => (Predicate.isNumber(result.total_voter_count) ? result.total_voter_count : null)),
             Effect.catch(error =>
