@@ -1,4 +1,5 @@
 import { expect, layer } from '@effect/vitest';
+import { createSession } from '@rondo/core/sessions/session.service';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder, refusal } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -90,6 +91,31 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect(labelsOf(withLineup).some(label => label.startsWith('🗑'))).toBe(false);
             expect(labelsOf(saved).some(label => label.startsWith('🗑'))).toBe(false);
+        })
+    );
+
+    it.effect('offers no delete for a game the menu did not create, even after the bot posted its poll', () =>
+        Effect.gen(function* () {
+            const { communityId, north } = yield* seedSeason('r4-delete-provenance', { groupChatId: -22_005, adminId: 2205 });
+            yield* createSession({
+                communityId,
+                timezone: 'Europe/Vienna',
+                localDate: '2026-11-28',
+                localTime: '18:00',
+                venueId: north,
+                capacityMax: 14,
+                title: null,
+                actorPersonId: null
+            });
+            const admin = conversation(recorder, adminNumbered(2205));
+            yield* admin.type('/games');
+            yield* admin.tap('Сб 28.11 18:00');
+            yield* admin.tap('📣 Надіслати в «Games»');
+            yield* admin.tap('✅ Надіслати в «Games»');
+            const card = admin.screen();
+
+            expect(lastPollId(recorder, -22_005)).not.toBe('');
+            expect(labelsOf(card).some(label => label.startsWith('🗑'))).toBe(false);
         })
     );
 });

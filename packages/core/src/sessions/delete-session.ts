@@ -1,11 +1,11 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { telegramAccount } from '@rondo/db/schema/identity.schema';
-import { importedPoll, messageRef, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { importedPoll, messageRef, pendingAction, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, teamMember } from '@rondo/db/schema/play.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
-import { and, count, eq } from 'drizzle-orm';
+import { and, count, eq, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
@@ -44,8 +44,18 @@ const isDeletableGame = Effect.fn('Core.isDeletableGame')(function* (communityId
         .from(session)
         .where(and(eq(session.id, sessionId), eq(session.communityId, communityId)));
     const [foreign] = yield* db.select({ count: count() }).from(importedPoll).where(eq(importedPoll.sessionId, sessionId));
+    const [created] = yield* db
+        .select({ count: count() })
+        .from(pendingAction)
+        .where(
+            and(
+                eq(pendingAction.communityId, communityId),
+                eq(pendingAction.kind, 'create_session'),
+                sql`${pendingAction.result} ->> 'sessionId' = ${sessionId}`
+            )
+        );
 
-    if (!isDefined(row) || row.source !== 'bot' || row.localDate < today || (foreign?.count ?? 0) > 0) {
+    if (!isDefined(row) || row.source !== 'bot' || row.localDate < today || (foreign?.count ?? 0) > 0 || (created?.count ?? 0) === 0) {
         return false;
     }
 
@@ -82,13 +92,7 @@ const stopForDelete = Effect.fn('Core.stopForDelete')(function* (poll: typeof te
     yield* db.update(telegramPoll).set({ closedAt }).where(eq(telegramPoll.pollId, poll.pollId));
     const [stored] = yield* db.select({ count: count() }).from(pollVote).where(eq(pollVote.pollId, poll.pollId));
 
-    if (isDefined(stopped) && stopped > (stored?.count ?? 0)) {
-        return yield* ActionFailedError.make({
-            reason: 'the poll has votes the bot has not seen, so the game is kept and the poll is closed'
-        });
-    }
-
-    return poll.pollId;
+    return isDefined(stopped) && stopped > (stored?.count ?? 0);
 });
 
 export const deleteSession = Effect.fn('Core.deleteSession')(function* (input: {
@@ -98,42 +102,33 @@ export const deleteSession = Effect.fn('Core.deleteSession')(function* (input: {
     readonly actorPersonId: string | null;
 }) {
     const db = yield* Db;
-
-    if (!(yield* isDeletableSession(input.communityId, input.sessionId, input.today))) {
-        return yield* refusedDelete;
-    }
-
-    const polls = yield* db.select().from(telegramPoll).where(eq(telegramPoll.sessionId, input.sessionId));
-
-    for (const poll of polls) {
-        yield* stopForDelete(poll);
-    }
-
-    yield* db.transaction(() =>
+    const outcome = yield* db.transaction(() =>
         Effect.gen(function* () {
             const [game] = yield* db
                 .select({ localDate: session.localDate })
                 .from(session)
-                .where(eq(session.id, input.sessionId))
+                .where(and(eq(session.id, input.sessionId), eq(session.communityId, input.communityId)))
                 .for('update');
 
-            if (!isDefined(game)) {
-                return yield* ActionFailedError.make({ reason: 'the game is already gone' });
+            if (!isDefined(game) || !(yield* isDeletableSession(input.communityId, input.sessionId, input.today))) {
+                return yield* refusedDelete;
             }
 
-            if (!(yield* isDeletableGame(input.communityId, input.sessionId, input.today))) {
-                return yield* refusedDelete;
+            const polls = yield* db.select().from(telegramPoll).where(eq(telegramPoll.sessionId, input.sessionId));
+            let hasUnseenVotes = false;
+
+            for (const poll of polls) {
+                hasUnseenVotes = (yield* stopForDelete(poll)) || hasUnseenVotes;
+            }
+
+            if (hasUnseenVotes) {
+                return 'kept' as const;
             }
 
             yield* db.delete(pollVote).where(eq(pollVote.sessionId, input.sessionId));
             yield* db.delete(messageRef).where(and(eq(messageRef.entityType, 'session'), eq(messageRef.entityId, input.sessionId)));
-            const deleted = yield* db.delete(session).where(eq(session.id, input.sessionId)).returning({ id: session.id });
-
-            if (!isNotEmptyArray(deleted)) {
-                return yield* ActionFailedError.make({ reason: 'the game is already gone' });
-            }
-
-            return yield* recordAudit({
+            yield* db.delete(session).where(eq(session.id, input.sessionId));
+            yield* recordAudit({
                 communityId: input.communityId,
                 actorPersonId: input.actorPersonId,
                 action: 'session.delete',
@@ -141,8 +136,16 @@ export const deleteSession = Effect.fn('Core.deleteSession')(function* (input: {
                 entityId: input.sessionId,
                 diff: { localDate: game.localDate, polls: polls.length }
             });
+
+            return 'deleted' as const;
         })
     );
+
+    if (outcome === 'kept') {
+        return yield* ActionFailedError.make({
+            reason: 'the poll has votes the bot has not seen, so the game is kept and the poll is closed'
+        });
+    }
 
     return input.sessionId;
 });

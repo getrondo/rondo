@@ -158,8 +158,10 @@ without the bot still arrive as poll answers with public voters.
 | 145 | CREATE | Typed hint as written | «пн 19:30, 18 місць», «Пт 20:00, 16 мест» | — | Values read with commas and the word for places | — | unit | `reads the hint as written, with commas and the word for places` |
 | 146 | SEND SAFETY | Unknown poll send on the card | 💾 game → 📣 → ✅ times out → ✅ Немає, надіслати в | Poll after the second tap | «Не знаю, чи дійшло… Є — спершу видали його там…», one ✅ button instead of 📣 | Poll ref | update | `offers one text and one ✅ button after an unknown poll send on the card` |
 | 147 | SEND SAFETY | Drafts at once | Eight writes over one loaded draft, saves and clears at the same time (Postgres) | — | — | One write lands; no revision handed out twice | service | `lands one of many writes over the same loaded draft and never hands a revision out twice` |
-| 148 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 149 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 150 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 151 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 152 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 148 | ADMIN AFTER | No delete without menu provenance | A game the menu did not create, then 📣 posts its poll | Poll | No 🗑 | — | update | `offers no delete for a game the menu did not create, even after the bot posted its poll` |
+| 149 | SEND SAFETY | Deletes at once | Four deletes of one game at the same moment (Postgres) | Poll stopped once | — | One delete | service | `stops the poll once when two deletes of one game run at the same time` |
+| 150 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 151 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 152 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 153 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 154 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |

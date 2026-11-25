@@ -1,7 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined, isEmptyString } from '@rnw-community/shared';
 import { runMigrations } from '@rondo/db/migration/migrate.effect';
-import { telegramPoll } from '@rondo/db/schema/platform.schema';
+import { pendingAction, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { assertLocal } from '@rondo/ingest-telegram/rehearsal/assert-local';
@@ -11,6 +11,7 @@ import * as ConfigProvider from 'effect/ConfigProvider';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Option from 'effect/Option';
+import * as Predicate from 'effect/Predicate';
 
 import { Access } from '../src/access/admin-access';
 import { describeAction } from '../src/actions/describe-action';
@@ -37,6 +38,23 @@ const confirmAll = (actionIds: readonly string[]) =>
         actionIds.map(actionId => decideAction({ actionId, tgUserId: 42n, confirm: true, context: withoutGroup, now })),
         { concurrency: 'unbounded' }
     );
+const menuGame = Effect.fn('test.menuGame')(function* (communityId: string, localTime: string) {
+    const db = yield* Db;
+    const action: Action = {
+        _tag: 'create_session',
+        localDate: '2030-12-04',
+        localTime,
+        venueId: null,
+        capacityMax: 14,
+        title: null,
+        announce: false
+    };
+    const actionId = yield* proposeAction({ communityId, tgUserId: 42n, action, summary: 'menu game', now });
+    yield* decideAction({ actionId, tgUserId: 42n, confirm: true, context: withoutGroup, now });
+    const [row] = yield* db.select({ result: pendingAction.result }).from(pendingAction).where(eq(pendingAction.id, actionId));
+
+    return Predicate.hasProperty(row?.result, 'sessionId') && Predicate.isString(row.result.sessionId) ? row.result.sessionId : '';
+});
 const unique = () => `${Math.floor(performance.now() * 1000)}-${Math.random().toString(36).slice(2, 8)}`;
 
 const postgresLayer = Layer.mergeAll(
@@ -93,11 +111,10 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig(`race-delete-${unique()}`));
-            const base = { communityId, timezone: 'Europe/Vienna', title: null, actorPersonId: null, venueId: null, capacityMax: 14 };
             const outcomes = yield* Effect.all(
                 Array.from({ length: rounds }, (_, round) =>
                     Effect.gen(function* () {
-                        const sessionId = yield* createSession({ ...base, localDate: '2030-12-04', localTime: `1${round % 10}:00` });
+                        const sessionId = yield* menuGame(communityId, `${10 + round}:00`);
                         const pollId = `race-delete-${unique()}-${round}`;
                         yield* db
                             .insert(telegramPoll)
@@ -208,6 +225,28 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
             expect(writes.filter(entry => Option.isSome(entry))).toHaveLength(1);
             expect(new Set(revisions).size).toBe(revisions.length);
             expect(revisions.every(revision => revision > loaded.revision)).toBe(true);
+        })
+    );
+
+    it.effect.skipIf(withoutPostgres)('stops the poll once when two deletes of one game run at the same time', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig(`race-delete-twice-${unique()}`));
+            const sessionId = yield* menuGame(communityId, '19:00');
+            const messageId = Math.floor(performance.now());
+            yield* db
+                .insert(telegramPoll)
+                .values({ pollId: `race-twice-${unique()}`, chatId: -2n, messageId, sessionId, options: ['in', 'out'] });
+            const outcomes = yield* Effect.all(
+                Array.from({ length: 4 }, () =>
+                    deleteSession({ communityId, sessionId, today: '2030-01-01', actorPersonId: null }).pipe(Effect.exit)
+                ),
+                { concurrency: 'unbounded' }
+            );
+            const stops = raceRecorder.calls.filter(call => call.method === 'stopPoll' && call.payload.message_id === messageId);
+
+            expect(outcomes.filter(outcome => outcome._tag === 'Success')).toHaveLength(1);
+            expect(stops).toHaveLength(1);
         })
     );
 });
