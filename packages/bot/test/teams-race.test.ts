@@ -7,8 +7,9 @@ import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Predicate from 'effect/Predicate';
+import * as Random from 'effect/Random';
 
-import { conversation } from './support/conversation';
+import { conversation, startUpdatesAt } from './support/conversation';
 import { teamsGame } from './support/teams-game';
 import { buttonData, openEditor } from './support/teams-screen';
 import { adminNumbered, raceMenuLayer } from './support/test-layer';
@@ -20,7 +21,8 @@ layer(raceMenuLayer(recorder), { timeout: 120_000, excludeTestServices: true })(
     it.effect.skipIf(withoutPostgres)('takes one answer when the same pasted question is answered twice at once', () =>
         Effect.gen(function* () {
             const db = yield* Db;
-            const adminId = 39_000 + (Math.floor(performance.now()) % 900);
+            const adminId = yield* Random.nextIntBetween(100_000, 900_000);
+            yield* startUpdatesAt(adminId * 1000);
             yield* teamsGame(`teams-race-paste-${performance.now()}`, { groupChatId: -adminId, adminId, players: 23 });
             const admin = conversation(recorder, adminNumbered(adminId));
             yield* openEditor(admin);
