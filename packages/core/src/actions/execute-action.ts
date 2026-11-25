@@ -2,6 +2,7 @@ import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
+import * as Predicate from 'effect/Predicate';
 
 import { grantAdmin, isAdminOf } from '../access/admin-access';
 import { linkedChatsOf } from '../community/community.repository';
@@ -56,7 +57,15 @@ const toAudience = Effect.fn('Core.toAudience')(function* <Value, Failure, Requi
     }
 });
 
-const linkedTarget = Effect.fn('Core.linkedTarget')(function* (context: ActionContext, chatId: string | undefined, requester?: bigint) {
+interface Destination {
+    readonly chatId?: string | undefined;
+    readonly topicId?: number | null | undefined;
+}
+
+// A previewed destination is checked against the current links and never swapped for another chat
+const linkedTarget = Effect.fn('Core.linkedTarget')(function* (context: ActionContext, destination: Destination, requester?: bigint) {
+    const { chatId, topicId } = destination;
+
     if (!isDefined(chatId)) {
         return yield* requireGroup(context);
     }
@@ -68,9 +77,15 @@ const linkedTarget = Effect.fn('Core.linkedTarget')(function* (context: ActionCo
     const chats = yield* linkedChatsOf(context.communityId);
     const found = chats.find(chat => String(chat.chatId) === chatId);
 
-    return isDefined(found)
-        ? { chatId: found.chatId, topicId: found.topicId }
-        : yield* ActionFailedError.make({ reason: 'this chat is not linked to the community' });
+    if (!isDefined(found)) {
+        return yield* ActionFailedError.make({ reason: 'this chat is not linked to the community' });
+    }
+
+    if (!Predicate.isUndefined(topicId) && found.topicId !== topicId) {
+        return yield* ActionFailedError.make({ reason: 'the group link changed after the preview, ask for a new one' });
+    }
+
+    return { chatId: found.chatId, topicId: found.topicId };
 });
 
 type ActionResult = Readonly<Record<string, string | number>>;
@@ -144,7 +159,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
         }
         case 'forward_poll': {
             return yield* Effect.gen(function* () {
-                const target = yield* linkedTarget(context, action.chatId, context.requester);
+                const target = yield* linkedTarget(context, { chatId: action.chatId }, context.requester);
                 const forwarded = yield* forwardPoll(action.sessionId, target);
 
                 return { sessionId: action.sessionId, messageId: forwarded.messageId };
@@ -266,11 +281,11 @@ export const runAdminAction = Effect.fn('Core.runAdminAction')(function* <Failur
     yield* requireActionScope(action, context.communityId);
 
     if ('chatId' in action && isDefined(action.chatId)) {
-        yield* linkedTarget(context, action.chatId, tgUserId);
+        yield* linkedTarget(context, action, tgUserId);
     }
 
     if (action._tag === 'announce_session' || (action._tag === 'create_session' && action.announce)) {
-        const group = yield* linkedTarget(context, action.chatId, tgUserId);
+        const group = yield* linkedTarget(context, action, tgUserId);
         const prepare = action._tag === 'create_session' ? createFrom(action, context) : Effect.succeed(action.sessionId);
 
         return yield* publishPoll({

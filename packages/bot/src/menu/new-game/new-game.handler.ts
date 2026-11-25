@@ -35,7 +35,11 @@ import type { AdminStateRow } from '@rondo/core/menu/admin-state.interface';
 const decodeDraft = Schema.decodeUnknownOption(DraftSchema);
 
 const targetsOf = (draft: Draft, data: NewGameData): Draft['targets'] =>
-    audienceOfDraft(draft, data).map(id => ({ id, title: data.chats.find(chat => chat.id === id)?.title ?? '' }));
+    audienceOfDraft(draft, data).map(id => {
+        const chat = data.chats.find(entry => entry.id === id);
+
+        return { id, title: chat?.title ?? '', topicId: chat?.topicId ?? null };
+    });
 
 const presentNewGame = Effect.fn('Bot.presentNewGame')(function* (
     user: MenuUser,

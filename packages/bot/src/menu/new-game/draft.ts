@@ -18,7 +18,7 @@ const gameFields = {
 
 const RestoreSchema = Schema.Struct(gameFields);
 
-const TargetSchema = Schema.Struct({ id: Schema.String, title: Schema.String });
+const TargetSchema = Schema.Struct({ id: Schema.String, title: Schema.String, topicId: Schema.NullOr(Schema.Int) });
 
 export const DoneSchema = Schema.Struct({
     flow: Schema.Literal('done'),
@@ -61,7 +61,7 @@ export interface NewGameData {
     readonly today: string;
     readonly nowTime: string;
     readonly hasGroup: boolean;
-    readonly chats: readonly { readonly id: string; readonly title: string }[];
+    readonly chats: readonly { readonly id: string; readonly title: string; readonly topicId: number | null }[];
     readonly selfChatId: string;
     readonly lastChatId: string | null;
     readonly typingHint: boolean;

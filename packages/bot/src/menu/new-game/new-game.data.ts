@@ -15,7 +15,7 @@ export const loadNewGameData = Effect.fn('Bot.loadNewGameData')(function* (user:
     const planned = yield* plannedFootball(user.communityId, user.today);
     const venues = yield* venueChoices(user.communityId, weeklyKinds);
     const linked = yield* linkedChatsOf(user.communityId);
-    const chats = linked.map(chat => ({ id: String(chat.chatId), title: chat.title }));
+    const chats = linked.map(chat => ({ id: String(chat.chatId), title: chat.title, topicId: chat.topicId }));
     const lastChatId = yield* lastPollChatOf(user.tgUserId);
     const created = yield* createdGamesBy(user.tgUserId);
 

@@ -17,7 +17,8 @@ const CreateSessionAction = Schema.TaggedStruct('create_session', {
     title: Schema.NullOr(Schema.String),
     note: Schema.optional(Schema.NullOr(Schema.String)),
     announce: Schema.Boolean,
-    chatId: Schema.optional(Schema.String)
+    chatId: Schema.optional(Schema.String),
+    topicId: Schema.optional(Schema.NullOr(Schema.Int))
 });
 
 const UpdateSessionAction = Schema.TaggedStruct('update_session', {
@@ -39,7 +40,8 @@ const CancelSessionAction = Schema.TaggedStruct('cancel_session', {
 const AnnounceSessionAction = Schema.TaggedStruct('announce_session', {
     sessionId: Schema.String,
     note: Schema.optional(Schema.NullOr(Schema.String)),
-    chatId: Schema.optional(Schema.String)
+    chatId: Schema.optional(Schema.String),
+    topicId: Schema.optional(Schema.NullOr(Schema.Int))
 });
 
 const DeleteSessionAction = Schema.TaggedStruct('delete_session', { sessionId: Schema.String });

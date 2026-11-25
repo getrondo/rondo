@@ -31,8 +31,9 @@ const prompts: Partial<Record<Draft['view'], MenuKey>> = {
 };
 
 export const actionOf = (draft: Draft, announce: boolean, data: NewGameData): Action => {
-    const [chatId] = isNotEmptyArray(draft.targets) ? draft.targets.map(target => target.id) : audienceOfDraft(draft, data);
-    const target = isDefined(chatId) && (data.chats.length > 1 || chatId === data.selfChatId) ? { chatId } : {};
+    const [first] = draft.targets;
+    const chatId = first?.id ?? audienceOfDraft(draft, data)[0] ?? data.selfChatId;
+    const target = chatId === data.selfChatId ? { chatId } : { chatId, topicId: first?.topicId ?? null };
 
     return isDefined(draft.sessionId)
         ? { _tag: 'announce_session', sessionId: draft.sessionId, ...target }
