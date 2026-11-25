@@ -37,20 +37,30 @@ export const hasOnlyAdminVotes = Effect.fn('Core.hasOnlyAdminVotes')(function* (
     );
 });
 
-export const isDeletableSession = Effect.fn('Core.isDeletableSession')(function* (communityId: string, sessionId: string, today: string) {
+const isDeletableGame = Effect.fn('Core.isDeletableGame')(function* (communityId: string, sessionId: string, today: string) {
     const db = yield* Db;
     const [row] = yield* db
         .select({ source: session.source, localDate: session.localDate })
         .from(session)
         .where(and(eq(session.id, sessionId), eq(session.communityId, communityId)));
-    const [polls] = yield* db.select({ count: count() }).from(telegramPoll).where(eq(telegramPoll.sessionId, sessionId));
     const [foreign] = yield* db.select({ count: count() }).from(importedPoll).where(eq(importedPoll.sessionId, sessionId));
 
-    if (!isDefined(row) || row.source !== 'bot' || row.localDate < today || (polls?.count ?? 0) === 0 || (foreign?.count ?? 0) > 0) {
+    if (!isDefined(row) || row.source !== 'bot' || row.localDate < today || (foreign?.count ?? 0) > 0) {
         return false;
     }
 
     return yield* hasOnlyAdminVotes(communityId, sessionId);
+});
+
+export const isDeletableSession = Effect.fn('Core.isDeletableSession')(function* (communityId: string, sessionId: string, today: string) {
+    const db = yield* Db;
+    const polls = yield* db.select({ closedAt: telegramPoll.closedAt }).from(telegramPoll).where(eq(telegramPoll.sessionId, sessionId));
+
+    if (!isNotEmptyArray(polls) || polls.some(poll => isDefined(poll.closedAt))) {
+        return false;
+    }
+
+    return yield* isDeletableGame(communityId, sessionId, today);
 });
 
 const refusedDelete = ActionFailedError.make({ reason: 'only a future game made by the bot without votes of players can be deleted' });
@@ -111,7 +121,7 @@ export const deleteSession = Effect.fn('Core.deleteSession')(function* (input: {
                 return yield* ActionFailedError.make({ reason: 'the game is already gone' });
             }
 
-            if (!(yield* isDeletableSession(input.communityId, input.sessionId, input.today))) {
+            if (!(yield* isDeletableGame(input.communityId, input.sessionId, input.today))) {
                 return yield* refusedDelete;
             }
 

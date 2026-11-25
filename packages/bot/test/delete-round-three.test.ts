@@ -55,12 +55,14 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* unseen.admin.tap('🗑 Видалити назавжди');
             voters.total = 0;
             const extra = unseen.admin.screen().text;
+            const afterRefusal = labelsOf(unseen.admin.screen());
             const keptUnseen = yield* gamesOn(unseen.communityId, '2026-11-27');
 
             expect(notClosed).toContain('⚠️ Не вдалося закрити опитування, гру не видалено.');
             expect(keptRefused).toHaveLength(1);
             expect(extra).toContain('⚠️ В опитуванні є голоси, яких бот не бачив. Гру не видалено, опитування закрито.');
             expect(keptUnseen).toHaveLength(1);
+            expect(afterRefusal.some(label => label.startsWith('🗑'))).toBe(false);
         })
     );
 
