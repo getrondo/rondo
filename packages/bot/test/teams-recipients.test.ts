@@ -84,4 +84,22 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(row?.notifiedAt).toEqual(at('17:31'));
         })
     );
+
+    it.effect('clears the late changes before the note and gives its buttons the version that is stored', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* teamsGame('teams-note-version', { groupChatId: -3403, adminId: 345, players: 10 });
+            yield* runTeamsTick(at('17:05'));
+            const personId = yield* syncMember(communityId, { id: 34_599n, firstName: 'Later' }, 'active');
+            yield* db.insert(signup).values({ sessionId, personId, status: 'in' });
+            yield* markRosterChanged(sessionId, at('17:20'));
+            yield* notifyRosterChange(sessionId, at('17:30'));
+            const [row] = yield* db.select().from(teamDraft).where(eq(teamDraft.sessionId, sessionId));
+            const note = reached(345).at(-1)?.payload.reply_markup;
+            const versions = JSON.stringify(note).match(/t:[\w-]{22}:(\d+):/gu) ?? [];
+
+            expect(versions.length).toBeGreaterThan(0);
+            expect(versions.every(entry => entry.endsWith(`:${row?.version}:`))).toBe(true);
+        })
+    );
 });

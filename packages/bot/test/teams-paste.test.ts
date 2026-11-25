@@ -1,5 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { syncMember } from '@rondo/core/identity/telegram-user';
+import { addGuests } from '@rondo/core/signups/roster.service';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -176,6 +177,27 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             for (const shown of variants) {
                 expect(shown.teams[1]).toContain(locked);
             }
+        })
+    );
+
+    it.effect('places a guest named twice, by his host and by his own name, only in the first team', () =>
+        Effect.gen(function* () {
+            const { sessionId, communityId, people } = yield* teamsGame('teams-paste-guest-twice', {
+                groupChatId: -3307,
+                adminId: 337,
+                players: 8
+            });
+            yield* addGuests(
+                { communityId, sessionId, actorPersonId: null },
+                { hostPersonId: people[0] ?? '', count: 1, name: 'Friend Mark' }
+            );
+            const admin = conversation(recorder, adminNumbered(337));
+            yield* openEditor(admin);
+            yield* admin.type('🔴 Andriy +1, Bohdan, Vasyl, Hryhoriy\n🔵 Friend Mark, Dmytro, Yevhen, Zakhar, Ivan');
+            const { teams } = yield* draftTeams(sessionId);
+
+            expect(teams.flat().filter(name => name === 'Friend Mark')).toHaveLength(1);
+            expect(teams[0]).toContain('Friend Mark');
         })
     );
 });

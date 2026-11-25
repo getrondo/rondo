@@ -13,6 +13,13 @@ import { addGuests, joinCandidates, joinGame } from '../src/signups/roster.servi
 import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer';
 import { seedGame } from '../src/testing/seed-game';
 
+const attendedAfterFinishing = Effect.fn('test.attendedAfterFinishing')(function* (sessionId: string) {
+    const db = yield* Db;
+    yield* finishPastSessions(new Date('2026-12-05T00:00:00Z'));
+
+    return yield* db.select({ personId: attendance.personId }).from(attendance).where(eq(attendance.sessionId, sessionId));
+});
+
 layer(recordedTelegramDbLayer, { timeout: 60_000 })('guests of one game', it => {
     it.effect('keeps a guest inside his game: not found, not joinable elsewhere and never counted as attended', () =>
         Effect.gen(function* () {
@@ -38,11 +45,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('guests of one game', it => 
             const candidates = yield* joinCandidates(communityId, other, 50);
             const elsewhere = yield* joinGame({ communityId, sessionId: other, actorPersonId: null }, [guestId]).pipe(Effect.flip);
             const again = yield* joinGame(change, [guestId, host]);
-            yield* finishPastSessions(new Date('2026-12-05T00:00:00Z'));
-            const attended = yield* db
-                .select({ personId: attendance.personId })
-                .from(attendance)
-                .where(eq(attendance.sessionId, sessionId));
+            const attended = yield* attendedAfterFinishing(sessionId);
 
             expect(found).toEqual([]);
             expect(inScope).toBe(false);
@@ -74,11 +77,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('guests of one game', it => 
             yield* db
                 .insert(lineupEntry)
                 .values({ sessionId, messageId: 1, teamOrdinal: 1, position: 1, personId: imported, resolvedBy: 'manual' });
-            yield* finishPastSessions(new Date('2026-12-05T00:00:00Z'));
-            const attended = yield* db
-                .select({ personId: attendance.personId })
-                .from(attendance)
-                .where(eq(attendance.sessionId, sessionId));
+            const attended = yield* attendedAfterFinishing(sessionId);
 
             expect(attended.map(row => row.personId)).toEqual([stayed]);
         })

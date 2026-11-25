@@ -4,6 +4,7 @@ import { roleGrant } from '@rondo/db/schema/org.schema';
 import { team, teamDraft } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
+import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import { and, desc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
@@ -60,12 +61,15 @@ export const releaseProposal = Effect.fn('Core.releaseProposal')(function* (sess
 
 export const claimFewNotice = Effect.fn('Core.claimFewNotice')(function* (communityId: string, sessionId: string) {
     const db = yield* Db;
-    const inserted = yield* db.execute(sql`
+    const inserted = yield* withCommunityLock(
+        { id: communityId },
+        db.execute(sql`
         insert into audit.log (id, actor_kind, community_id, action, entity_type, entity_id)
         select gen_random_uuid(), 'bot', ${communityId}::uuid, 'teams.few', 'session', ${sessionId}
         where not exists (select 1 from audit.log where action = 'teams.few' and entity_id = ${sessionId})
         returning id
-    `);
+    `)
+    );
 
     return isNotEmptyArray(inserted.rows);
 });

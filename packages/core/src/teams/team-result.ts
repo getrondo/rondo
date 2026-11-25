@@ -74,10 +74,25 @@ export const recordResult = Effect.fn('Core.recordResult')(
             Effect.gen(function* () {
                 const db = yield* Db;
                 const target = yield* requireSession(input.communityId, input.sessionId);
-                const teams = yield* db.select().from(team).where(eq(team.sessionId, input.sessionId)).orderBy(asc(team.ordinal));
+                const members = yield* squadOf(input.sessionId);
+                const teams = (yield* db.select().from(team).where(eq(team.sessionId, input.sessionId)).orderBy(asc(team.ordinal))).filter(
+                    entry => members.some(member => member.ordinal === entry.ordinal)
+                );
+
+                if (target.status === 'cancelled' || target.status === 'moved') {
+                    return yield* ActionFailedError.make({ reason: 'the game is already over or cancelled' });
+                }
+
+                if (input.now.getTime() < target.startsAt.getTime()) {
+                    return yield* ActionFailedError.make({ reason: 'the game has not started yet' });
+                }
 
                 if (!isNotEmptyArray(teams)) {
                     return yield* ActionFailedError.make({ reason: 'the game has no teams' });
+                }
+
+                if (isDefined(input.winner) && !teams.some(entry => entry.ordinal === input.winner)) {
+                    return yield* ActionFailedError.make({ reason: 'the game has no such team' });
                 }
 
                 const ranks = teams.map(entry => (!isDefined(input.winner) || entry.ordinal === input.winner ? 1 : 2));
@@ -102,7 +117,6 @@ export const recordResult = Effect.fn('Core.recordResult')(
 
                 const [game] = yield* db.select({ activityId: session.activityId }).from(session).where(eq(session.id, input.sessionId));
                 const activityId = game?.activityId ?? '';
-                const members = yield* squadOf(input.sessionId);
                 const { strengthOf } = yield* ratingsOf(
                     activityId,
                     members.map(member => member.personId)

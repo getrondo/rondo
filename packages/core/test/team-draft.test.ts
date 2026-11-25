@@ -311,4 +311,69 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
             expect(events.map(event => event.personId).toSorted()).toEqual([...people].toSorted());
         })
     );
+
+    it.effect('starts the draft of an imported line-up from its entries', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId, people } = yield* playedGame('draft-from-import', 8, 89_500);
+            yield* db.insert(team).values([1, 2].map(ordinal => ({ sessionId, ordinal })));
+            yield* db.insert(lineupEntry).values(
+                people.map((personId, index) => ({
+                    sessionId,
+                    messageId: 1,
+                    teamOrdinal: index < 4 ? 1 : 2,
+                    position: index + 1,
+                    personId,
+                    resolvedBy: 'manual' as const
+                }))
+            );
+            const { row } = yield* openDraft(communityId, sessionId, null);
+
+            expect(row.state.teams.map(members => members.toSorted())).toEqual([people.slice(0, 4).toSorted(), people.slice(4).toSorted()]);
+        })
+    );
+
+    it.effect('records a result only after the kick-off, for a game that is on and for a team of its squad', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* playedGame('draft-result-checks', 8, 89_700);
+            const { row } = yield* openDraft(communityId, sessionId, null);
+            const input = {
+                communityId,
+                sessionId,
+                locale: 'uk' as const,
+                actorPersonId: null,
+                privateChatId: null,
+                fallback: Option.some({ chatId: -897n, topicId: null })
+            };
+            const plan = yield* planLineup(input);
+            yield* publishLineup({ ...input, version: row.version, fingerprint: plan.fingerprint });
+            const early = yield* recordResult({
+                communityId,
+                sessionId,
+                winner: 1,
+                actorPersonId: null,
+                now: new Date('2026-12-04T17:00:00Z')
+            }).pipe(Effect.flip);
+            const unknown = yield* recordResult({
+                communityId,
+                sessionId,
+                winner: 5,
+                actorPersonId: null,
+                now: new Date('2026-12-04T20:30:00Z')
+            }).pipe(Effect.flip);
+            yield* db.update(session).set({ status: 'cancelled' }).where(eq(session.id, sessionId));
+            const cancelled = yield* recordResult({
+                communityId,
+                sessionId,
+                winner: 1,
+                actorPersonId: null,
+                now: new Date('2026-12-04T20:30:00Z')
+            }).pipe(Effect.flip);
+
+            expect(early).toMatchObject({ reason: 'the game has not started yet' });
+            expect(unknown).toMatchObject({ reason: 'the game has no such team' });
+            expect(cancelled).toMatchObject({ reason: 'the game is already over or cancelled' });
+        })
+    );
 });

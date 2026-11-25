@@ -1,13 +1,14 @@
 import { isDefined, isEmptyArray, isNotEmptyArray } from '@rnw-community/shared';
-import { team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
+import { team, teamColor, teamDraft } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 
 import { badgeOfRow, defaultColours, paddedColours } from './badges';
 import { DraftStateSchema, initialState, playersOf, syncRoster, teamIndexOf, withChange, type DraftState } from './draft-state';
+import { squadOf } from './lineup-of-draft';
 import { solveTeams } from './solve-teams';
 import { loadTeamInputs } from './team-inputs';
 
@@ -122,20 +123,27 @@ export const shuffled = (inputs: TeamInputs, state: DraftState): DraftState => {
 
 const storedSquad = Effect.fn('Core.storedSquad')(function* (sessionId: string) {
     const db = yield* Db;
-
-    return yield* db
-        .select({
-            ordinal: team.ordinal,
-            personId: teamMember.personId,
-            isGk: teamMember.isGk,
-            emoji: teamColor.emoji,
-            name: teamColor.name
-        })
+    const teams = yield* db
+        .select({ ordinal: team.ordinal, emoji: teamColor.emoji, name: teamColor.name })
         .from(team)
-        .leftJoin(teamMember, eq(teamMember.teamId, team.id))
         .leftJoin(teamColor, eq(teamColor.id, team.colorId))
-        .where(eq(team.sessionId, sessionId))
-        .orderBy(asc(team.ordinal));
+        .where(eq(team.sessionId, sessionId));
+    const members = yield* squadOf(sessionId);
+
+    return [
+        ...teams.map((row): StoredRow => ({ ...row, personId: null, isGk: null })),
+        ...members.map((member): StoredRow => {
+            const colour = teams.find(row => row.ordinal === member.ordinal);
+
+            return {
+                ordinal: member.ordinal,
+                personId: member.personId,
+                isGk: member.isGk,
+                emoji: colour?.emoji ?? null,
+                name: colour?.name ?? null
+            };
+        })
+    ];
 });
 
 const seededState = (inputs: TeamInputs, rows: readonly StoredRow[]): DraftState | null => {

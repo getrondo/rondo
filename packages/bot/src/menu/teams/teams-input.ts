@@ -15,6 +15,7 @@ import {
 } from '@rondo/core/teams/paste-lineup';
 import { changeDraft, loadDraft } from '@rondo/core/teams/team-draft.service';
 import { loadTeamInputs } from '@rondo/core/teams/team-inputs';
+import { Db } from '@rondo/db/service/db.service';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -117,26 +118,17 @@ const questionScreen = (
         : null;
 };
 
-const finishPaste = Effect.fn('Bot.finishPaste')(function* (
-    user: MenuUser,
-    sessionId: string,
-    paste: Paste,
-    options: { readonly addUnknown: boolean | null; readonly messageId: number | null }
-) {
+const placePaste = Effect.fn('Bot.placePaste')(function* (user: MenuUser, sessionId: string, paste: Paste, addUnknown: boolean | null) {
     const { ambiguous, unknown } = openQuestion(paste);
 
-    if (ambiguous >= 0 || (isNotEmptyArray(unknown) && !isDefined(options.addUnknown))) {
-        const view = yield* loadView(user, sessionId);
-        const screen = questionScreen(user, paste, { sessionId, version: view.row.version, page: 0 });
-        yield* showTeams(user, options.messageId, { sessionId, screen: screen ?? editorScreen(user, view), draft: { paste } });
-
-        return;
+    if (ambiguous >= 0 || (isNotEmptyArray(unknown) && !isDefined(addUnknown))) {
+        return { _tag: 'question' as const, paste };
     }
 
     const placed = yield* applyPaste(
         { communityId: user.communityId, sessionId, actorPersonId: yield* actorOf(user) },
         paste,
-        options.addUnknown ?? false
+        addUnknown ?? false
     );
     yield* changeLatest(user, sessionId, state => {
         const playing = new Set([...state.teams.flat(), ...state.pending, ...placed.teams.flat()]);
@@ -154,16 +146,37 @@ const finishPaste = Effect.fn('Bot.finishPaste')(function* (
             next
         );
     });
-    yield* showEditor(user, sessionId, options.messageId, [
-        teamsText(user.locale, 'pasted'),
-        ...(isNotEmptyArray(placed.queued) ? [teamsText(user.locale, 'queued', { names: escapeHtml(placed.queued.join(', ')) })] : []),
-        ...placed.twice.map(entry =>
-            teamsText(user.locale, 'twice', {
-                name: escapeHtml(entry.name),
-                badge: badgeOfColour(placed.colours[entry.team])?.badge ?? `${entry.team + 1}.`
-            })
-        )
-    ]);
+
+    return {
+        _tag: 'placed' as const,
+        notes: [
+            teamsText(user.locale, 'pasted'),
+            ...(isNotEmptyArray(placed.queued) ? [teamsText(user.locale, 'queued', { names: escapeHtml(placed.queued.join(', ')) })] : []),
+            ...placed.twice.map(entry =>
+                teamsText(user.locale, 'twice', {
+                    name: escapeHtml(entry.name),
+                    badge: badgeOfColour(placed.colours[entry.team])?.badge ?? `${entry.team + 1}.`
+                })
+            )
+        ]
+    };
+});
+
+const showPasted = Effect.fn('Bot.showPasted')(function* (
+    user: MenuUser,
+    sessionId: string,
+    messageId: number | null,
+    outcome: Effect.Success<ReturnType<typeof placePaste>>
+) {
+    if (outcome._tag === 'placed') {
+        yield* showEditor(user, sessionId, messageId, outcome.notes);
+
+        return;
+    }
+
+    const view = yield* loadView(user, sessionId);
+    const screen = questionScreen(user, outcome.paste, { sessionId, version: view.row.version, page: 0 });
+    yield* showTeams(user, messageId, { sessionId, screen: screen ?? editorScreen(user, view), draft: { paste: outcome.paste } });
 });
 
 const typedInput = Effect.fn('Bot.teamsTypedInput')(function* (user: MenuUser, row: AdminStateRow, text: string) {
@@ -204,7 +217,8 @@ const typedInput = Effect.fn('Bot.teamsTypedInput')(function* (user: MenuUser, r
     }
 
     const paste = yield* resolvePaste(user.communityId, sessionId, teams);
-    yield* finishPaste(user, sessionId, paste, { addUnknown: null, messageId: null });
+    const outcome = yield* placePaste(user, sessionId, paste, null);
+    yield* showPasted(user, sessionId, null, outcome);
 
     return true;
 });
@@ -246,18 +260,20 @@ export const handlePasteTap = Effect.fn('Bot.handlePasteTap')(function* (user: M
         return;
     }
 
-    const claimed = yield* replaceAdminState({ ...state.value, now: user.now }, state.value.revision);
+    const answered = tap.op === 'U' ? paste.value : choose(paste.value, index, member?.candidates[Number(second)]?.personId ?? null);
+    const outcome = yield* Db.use(db =>
+        db.transaction(() =>
+            replaceAdminState({ ...state.value, now: user.now }, state.value.revision).pipe(
+                Effect.flatMap(claimed =>
+                    Option.isSome(claimed)
+                        ? placePaste(user, tap.sessionId, answered, tap.op === 'U' ? first === '1' : null)
+                        : Effect.succeed(null)
+                )
+            )
+        )
+    );
 
-    if (Option.isNone(claimed)) {
-        return;
+    if (isDefined(outcome)) {
+        yield* showPasted(user, tap.sessionId, messageId, outcome);
     }
-
-    if (tap.op === 'U') {
-        yield* finishPaste(user, tap.sessionId, paste.value, { addUnknown: first === '1', messageId });
-
-        return;
-    }
-
-    const chosen = member?.candidates[Number(second)]?.personId ?? null;
-    yield* finishPaste(user, tap.sessionId, choose(paste.value, index, chosen), { addUnknown: null, messageId });
 });

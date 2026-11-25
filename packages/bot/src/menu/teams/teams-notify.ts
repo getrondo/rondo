@@ -128,11 +128,13 @@ export const proposeTeamsFor = Effect.fn('Bot.proposeTeamsFor')(function* (game:
         const reached: boolean[] = [];
 
         for (const admin of admins) {
-            const view = yield* loadView(admin, game.id, {
+            const isReached = yield* loadView(admin, game.id, {
                 offerLevels: true,
                 notes: [teamsText(admin.locale, 'auto', { label: labelOf(admin.locale, inputs.game) })]
-            });
-            const isReached = yield* sendScreen(admin, editorScreen(admin, view));
+            }).pipe(
+                Effect.flatMap(view => sendScreen(admin, editorScreen(admin, view))),
+                Effect.catchCause(cause => Effect.logError('[teams] proposal screen failed', cause).pipe(Effect.as(false)))
+            );
             reached.push(isReached);
         }
 
@@ -177,10 +179,21 @@ export const notifyRosterChange = Effect.fn('Bot.notifyRosterChange')(function* 
         return false;
     }
 
-    const proposal = rebalanced(opened.inputs, { ...opened.row.state, joined: [], left: [] });
+    const cleared = yield* changeDraft(
+        { sessionId, version: opened.row.version, key: `notice:${now.getTime()}`, actorPersonId: null },
+        state => Effect.succeed({ ...state, joined: [], left: [] })
+    );
+
+    if (cleared._tag !== 'changed') {
+        yield* releaseNotice(sessionId, now, previous);
+
+        return false;
+    }
+
+    const proposal = rebalanced(opened.inputs, cleared.row.state);
     const known = yield* personNames([...joined, ...left, ...opened.inputs.members.map(member => member.personId)]);
     const names = (personId: string) => escapeHtml(known.get(personId) ?? '?');
-    const base = { sessionId, version: opened.row.version + 1, page: 0 };
+    const base = { sessionId, version: cleared.row.version, page: 0 };
     const reached: boolean[] = [];
 
     for (const admin of yield* adminUsers(game.value.communityId, now)) {
@@ -213,14 +226,13 @@ export const notifyRosterChange = Effect.fn('Bot.notifyRosterChange')(function* 
     }
 
     if (!reached.includes(true)) {
+        yield* changeDraft({ sessionId, version: cleared.row.version, key: `unheard:${now.getTime()}`, actorPersonId: null }, state =>
+            Effect.succeed({ ...state, joined: [...joined, ...state.joined], left: [...left, ...state.left] })
+        );
         yield* releaseNotice(sessionId, now, previous);
 
         return false;
     }
-
-    yield* changeDraft({ sessionId, version: opened.row.version, key: `notice:${now.getTime()}`, actorPersonId: null }, state =>
-        Effect.succeed({ ...state, joined: [], left: [] })
-    );
 
     return true;
 });

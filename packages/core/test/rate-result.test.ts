@@ -25,4 +25,38 @@ describe('team results and badges', () => {
         expect(badgeOfRow({ emoji: null, name: 'b-blue' })?.colour).toBe('blue');
         expect(defaultColours(3, ['green', 'white'])).toEqual(['green', 'white', 'red']);
     });
+
+    it('matches the numbers of openSkill BradleyTerryFull with its default gamma, sqrt(sigma²) / c', () => {
+        const fresh = { mu: 25, sigma: 25 / 3 };
+        const rated = [
+            ...rateResult(
+                [
+                    [fresh, fresh],
+                    [fresh, fresh]
+                ],
+                [1, 2]
+            ),
+            ...rateResult(
+                [
+                    [{ mu: 30, sigma: 5 }, fresh],
+                    [
+                        { mu: 20, sigma: 4 },
+                        { mu: 25, sigma: 6 }
+                    ],
+                    [fresh]
+                ],
+                [2, 1, 2]
+            )
+        ].flatMap(squad => squad.flatMap(player => [player.mu, player.sigma]));
+        const reference = [
+            26.9642, 8.1776, 26.9642, 8.1776, 23.0358, 8.1776, 23.0358, 8.1776, 28.043, 4.9244, 19.564, 7.9784, 21.0205, 3.9626, 27.2962,
+            5.8731, 26.0067, 8.0748
+        ];
+
+        expect(rated).toHaveLength(reference.length);
+
+        for (const [index, value] of reference.entries()) {
+            expect(rated[index]).toBeCloseTo(value, 3);
+        }
+    });
 });

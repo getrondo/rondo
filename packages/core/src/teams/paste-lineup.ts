@@ -182,6 +182,13 @@ export const applyPaste = Effect.fn('Core.applyPaste')(function* (
     const twice: { readonly name: string; readonly team: number }[] = [];
     const queued: string[] = [];
     const firstTeam = new Map<string, number>();
+    const fresh = (personIds: readonly string[], team: number): string[] =>
+        personIds.filter(personId => {
+            const isNew = !firstTeam.has(personId);
+            firstTeam.set(personId, firstTeam.get(personId) ?? team);
+
+            return isNew;
+        });
 
     for (const [index, team] of paste.teams.entries()) {
         const placed: string[] = [];
@@ -194,13 +201,14 @@ export const applyPaste = Effect.fn('Core.applyPaste')(function* (
             } else if (waiting.includes(member.personId ?? '')) {
                 queued.push(member.name);
             } else if (isDefined(member.personId)) {
-                firstTeam.set(member.personId, index);
-                placed.push(member.personId, ...(yield* placeGuests(change, member.personId, member.guests)));
+                const guests = yield* placeGuests(change, member.personId, member.guests);
+                placed.push(...fresh([member.personId, ...guests], index));
             } else if (member.isGuest) {
-                placed.push(...(yield* placeGuests(change, hostOf(member.hostName), member.guests)));
+                const guests = yield* placeGuests(change, hostOf(member.hostName), member.guests);
+                placed.push(...fresh(guests, index));
             } else if (addUnknown) {
                 const [guest] = yield* addGuests(change, { hostPersonId: null, count: 1, name: member.name });
-                placed.push(...(guest?.status === 'in' ? [guest.personId] : []));
+                placed.push(...fresh(guest?.status === 'in' ? [guest.personId] : [], index));
             }
 
             if (member.isGk && isDefined(member.personId) && !isDefined(earlier)) {
