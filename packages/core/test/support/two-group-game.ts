@@ -2,6 +2,7 @@ import { telegramChat } from '@rondo/db/schema/org.schema';
 import { messageRef } from '@rondo/db/schema/platform.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
+import { Telegram } from '@rondo/telegram/service/telegram.service';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -41,3 +42,23 @@ export const publishPlanned = Effect.fn('test.publishPlanned')(function* (
 
     return yield* publishLineup({ ...input, version: plan.version, fingerprint: plan.fingerprint });
 });
+
+// The competing write ends before the first send starts
+export const publishWhile = <Value, Failure>(
+    target: { readonly communityId: string; readonly sessionId: string },
+    during: Effect.Effect<Value, Failure, Db>
+) =>
+    Effect.gen(function* () {
+        const db = yield* Db;
+        const telegram = yield* Telegram;
+        const once = yield* Effect.cached(during.pipe(Effect.provideService(Db, db)));
+        const published = yield* publishPlanned(target).pipe(
+            Effect.provideService(Telegram, {
+                ...telegram,
+                call: (method, request) => Effect.exit(once).pipe(Effect.andThen(telegram.call(method, request)))
+            }),
+            Effect.result
+        );
+
+        return { published, during: yield* Effect.exit(once) };
+    });

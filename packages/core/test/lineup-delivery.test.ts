@@ -24,14 +24,12 @@ import { changeDraft, openDraft } from '../src/teams/team-draft.service';
 import { recordResult } from '../src/teams/team-result';
 import { confirmAsOwner, teamsActionAsOwner } from '../src/testing/confirm-action';
 
-import { publishPlanned, twoGroupGame } from './support/two-group-game';
+import { publishPlanned, publishWhile, twoGroupGame } from './support/two-group-game';
 
 const blocked = new Map<number, Error>();
-const afterSend = new Map<number, () => void>();
 let messageId = 50_000;
 const recorder = makeRecorder((method, payload) => {
     const failure = blocked.get(Number(payload.chat_id));
-    afterSend.get(Number(payload.chat_id))?.();
 
     if (isDefined(failure)) {
         throw failure;
@@ -356,25 +354,15 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             const db = yield* Db;
             const game = yield* twoGroupGame('delivery-taken-over', [-7901, -7902], 79_000);
             const newer = '00000000-0000-4000-8000-000000000002';
-            const run = Effect.runPromiseWith(yield* Effect.context());
-            const writes: Promise<unknown>[] = [];
-            afterSend.set(-7901, () => {
-                writes.push(
-                    run(
-                        db
-                            .update(teamDraft)
-                            .set({ publishToken: newer, publishAt: new Date(0) })
-                            .where(eq(teamDraft.sessionId, game.sessionId))
-                    )
-                );
-            });
-            const published = yield* publishPlanned(game);
-            afterSend.delete(-7901);
-            yield* Effect.promise(() => Promise.all(writes));
+            const takeOver = db
+                .update(teamDraft)
+                .set({ publishToken: newer, publishAt: new Date(0) })
+                .where(eq(teamDraft.sessionId, game.sessionId));
+            const { published } = yield* publishWhile(game, takeOver);
             const [draft] = yield* db.select().from(teamDraft).where(eq(teamDraft.sessionId, game.sessionId));
             const members = yield* db.select().from(teamMember).where(eq(teamMember.sessionId, game.sessionId));
 
-            expect(published.deliveries.map(delivery => delivery.status)).toEqual(['sent', 'busy']);
+            expect(published).toMatchObject({ _tag: 'Success', success: { deliveries: [{ status: 'sent' }, { status: 'busy' }] } });
             expect(sendsTo(-7902)).toEqual([]);
             expect(draft?.publishToken).toBe(newer);
             expect(draft?.publishedAt).toBeNull();
@@ -386,17 +374,13 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
         Effect.gen(function* () {
             const db = yield* Db;
             const game = yield* twoGroupGame('delivery-cancelled-midway', [-7911, -7912], 79_100);
-            const run = Effect.runPromiseWith(yield* Effect.context());
-            const writes: Promise<unknown>[] = [];
-            afterSend.set(-7911, () => {
-                writes.push(run(db.update(session).set({ status: 'cancelled' }).where(eq(session.id, game.sessionId))));
-            });
-            const published = yield* publishPlanned(game);
-            afterSend.delete(-7911);
-            yield* Effect.promise(() => Promise.all(writes));
+            const cancel = db.update(session).set({ status: 'cancelled' }).where(eq(session.id, game.sessionId));
+            const { published } = yield* publishWhile(game, cancel);
 
-            expect(published.deliveries.map(delivery => delivery.status)).toEqual(['sent', 'refused']);
-            expect(published.deliveries[1]?.failure).toEqual({ code: 'game_over' });
+            expect(published).toMatchObject({
+                _tag: 'Success',
+                success: { deliveries: [{ status: 'sent' }, { status: 'refused', failure: { code: 'game_over' } }] }
+            });
             expect(sendsTo(-7912)).toEqual([]);
         })
     );

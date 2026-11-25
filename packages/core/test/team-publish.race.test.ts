@@ -20,7 +20,7 @@ import { changeDraft, openDraft } from '../src/teams/team-draft.service';
 import { recordResult } from '../src/teams/team-result';
 import { localPostgresLayer, raceDatabaseUrl } from '../src/testing/local-postgres.layer';
 
-import { publishPlanned, twoGroupGame } from './support/two-group-game';
+import { publishPlanned, publishWhile, twoGroupGame } from './support/two-group-game';
 
 const recorder = makeRecorder();
 const postgresLayer = Layer.mergeAll(localPostgresLayer(raceDatabaseUrl), recordingTelegramLayer(recorder));
@@ -46,22 +46,6 @@ const swapped = Effect.fn('test.swapped')(function* (target: Game) {
 
     return second;
 });
-
-const publishWhile = <Value, Failure>(target: Game, during: Effect.Effect<Value, Failure, Db>) =>
-    Effect.gen(function* () {
-        const db = yield* Db;
-        const telegram = yield* Telegram;
-        const once = yield* Effect.cached(during.pipe(Effect.provideService(Db, db)));
-        const published = yield* publishPlanned(target).pipe(
-            Effect.provideService(Telegram, {
-                ...telegram,
-                call: (method, request) => Effect.exit(once).pipe(Effect.andThen(telegram.call(method, request)))
-            }),
-            Effect.result
-        );
-
-        return { published, during: yield* Effect.exit(once) };
-    });
 
 const resultOf = (target: Game) => recordResult({ ...target, winner: 1, actorPersonId: null, now: afterKickoff });
 
