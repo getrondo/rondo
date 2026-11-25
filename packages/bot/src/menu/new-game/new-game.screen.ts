@@ -9,6 +9,7 @@ import * as Option from 'effect/Option';
 import { buttonBudget } from '../../utils/button-budget.util';
 import { dayLabel } from '../../utils/day-label.util';
 import { labelWidth } from '../../utils/label-width.util';
+import { failureText } from '../failure-text';
 import { isMenuKey, menuText, type MenuKey } from '../menu-text';
 
 import { audienceOfDraft, destinationTitles, isSelfAudience, quotedTitles } from './audience';
@@ -58,7 +59,7 @@ const pollOf = Effect.fn('Bot.pollOf')(function* (user: MenuUser, draft: Draft) 
         return yield* pollFor(user.communityId, target, null);
     }
 
-    const display = yield* displayOfVenue(draft.venueId);
+    const display = yield* displayOfVenue(draft.venueId, user.communityId);
     const game = {
         localDate: draft.localDate ?? '',
         localTime: draft.localTime ?? '',
@@ -82,7 +83,13 @@ export const withSummary = Effect.fn('Bot.withSummary')(function* (user: MenuUse
 
     return yield* describeAction(actionOf(draft, true, data), user.locale, user.communityId).pipe(
         Effect.map(summary => ({ ...draft, summary })),
-        Effect.catchTag('ActionFailedError', error => Effect.succeed({ ...draft, summary: null, notice: error.reason }))
+        Effect.catchTag('ActionFailedError', error =>
+            Effect.succeed({
+                ...draft,
+                summary: null,
+                notice: failureText(user.locale, error.reason, { where: '', isPrivate: false }).text
+            })
+        )
     );
 });
 

@@ -136,6 +136,7 @@ const catalogue = {
         nobodyYet: 'Поки ніхто не записався',
         postCard: '📣 Надіслати в {where}',
         sentMe: '✅ Опитування в тебе.',
+        placeGone: 'Цього місця вже немає.',
         sendMeShort: '✅ Надіслати мені'
     },
     ru: {
@@ -273,6 +274,7 @@ const catalogue = {
         nobodyYet: 'Пока никто не записался',
         postCard: '📣 Отправить в {where}',
         sentMe: '✅ Опрос у тебя.',
+        placeGone: 'Этого места уже нет.',
         sendMeShort: '✅ Отправить мне'
     }
 } as const satisfies Record<Locale, Record<string, string>>;

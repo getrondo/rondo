@@ -11,7 +11,7 @@ import type { Action } from '@rondo/core/actions/action.model';
 import type { SessionView } from '@rondo/core/sessions/session.model';
 
 export const afterChange = Effect.fn('Bot.afterChange')(function* (game: SessionView, action: Extract<Action, { _tag: 'update_session' }>) {
-    const display = isDefined(action.venueId) ? yield* displayOfVenue(action.venueId) : {};
+    const display = isDefined(action.venueId) ? yield* displayOfVenue(action.venueId, game.communityId) : {};
 
     return {
         ...game,

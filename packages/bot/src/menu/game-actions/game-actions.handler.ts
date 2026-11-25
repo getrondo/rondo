@@ -3,6 +3,7 @@ import { ActionSchema, type Action } from '@rondo/core/actions/action.model';
 import { consumeAdminState, loadAdminState } from '@rondo/core/menu/admin-state.repository';
 import { requireSession } from '@rondo/core/sessions/session.service';
 import { proposeTeams } from '@rondo/core/teams/team.service';
+import { requireVenue } from '@rondo/core/venues/venue.service';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -50,6 +51,8 @@ const changeOf = (user: MenuUser, sessionId: string, tap: { readonly op: string;
 
     return changes[tap.op]?.() ?? null;
 };
+
+const ownVenue = (user: MenuUser, venueId: string) => requireVenue(user.communityId, venueId).pipe(Effect.option);
 
 const teamsOf = Effect.fn('Bot.teamsOf')(function* (sessionId: string, count: number) {
     const teams = yield* proposeTeams(sessionId, count);
@@ -192,6 +195,12 @@ export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: Men
 
     if (!isDefined(action)) {
         return Option.some(menuText(user.locale, op === 'kn' ? 'noTeams' : 'stale'));
+    }
+
+    const venue = action._tag === 'update_session' && isDefined(action.venueId) ? yield* ownVenue(user, action.venueId) : Option.some(null);
+
+    if (Option.isNone(venue)) {
+        return Option.some(menuText(user.locale, 'placeGone'));
     }
 
     yield* showConfirm(user, action, { messageId, expected: null });

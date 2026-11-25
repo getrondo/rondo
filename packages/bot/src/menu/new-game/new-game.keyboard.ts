@@ -86,7 +86,7 @@ const mainRows = (draft: Draft, data: NewGameData, locale: Locale, button: Butto
         button(menuText(locale, 'manual'), 'm'),
         button(menuText(locale, 'home_'), 'x')
     ];
-    const first = [[button(postLabel(draft, data, locale), 'ok')]];
+    const first = isDefined(draft.summary) ? [[button(postLabel(draft, data, locale), 'ok')]] : [];
 
     if (isDefined(draft.sessionId)) {
         return [...first, ...otherRows(draft, data, locale, button), last];

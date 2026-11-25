@@ -26,7 +26,8 @@ export const failureText = (locale: Locale, reason: string, target: FailureTarge
         [/already has an open poll/u, () => menuText(locale, 'reasonOpenPoll')],
         [refused, () => menuText(locale, target.isPrivate ? 'reasonRefusedPrivate' : 'reasonRefused')],
         [/changed after the preview/u, () => menuText(locale, 'reasonChanged')],
-        [/already over or cancelled/u, () => menuText(locale, 'reasonOver')]
+        [/already over or cancelled/u, () => menuText(locale, 'reasonOver')],
+        [/no longer available/u, () => menuText(locale, 'placeGone')]
     ];
     const match = known.find(([pattern]) => pattern.test(reason));
 
