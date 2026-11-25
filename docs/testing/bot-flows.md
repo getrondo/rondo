@@ -104,7 +104,9 @@ without the bot still arrive as poll answers with public voters.
 | 91 | ADMIN AFTER | Notices of a game posted to myself | Card → ✖️ → ✅ notify | Nothing | Cancellation with the hint to forward it | Game cancelled | update | `posts to myself without a group, counts votes from a forwarded copy and sends notices to my private chat` |
 | 92 | ADMIN AFTER | Delete a test game | Card → 🗑 → ✅ Видалити (twice) | Nothing; the poll is stopped | Games list: game deleted | Game, polls, votes, sign-ups, refs gone; audit without names | update | `deletes a future test game without player votes once and refuses one with them` |
 | 93 | ADMIN AFTER | Delete refused after a player voted | Card of a game with a player vote | — | Only ✖️ cancel offered | Nothing | update | `deletes a future test game without player votes once and refuses one with them` |
-| 94 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 95 | PLANNED | Who has not answered | — | — | — | — | — | planned (issue to file) |
-| 96 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 97 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 94 | LAYOUT | Buttons fit a 390 px phone | Whole journey in uk and ru with long place and group names | — | No label wider than its row allows (34 / 15 / 9) | — | update | `keeps every button within its row width in Ukrainian and Russian, with long names` |
+| 95 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 96 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 97 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 98 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 99 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
