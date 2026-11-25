@@ -17,7 +17,7 @@ import { loadNewGameData } from '../new-game/new-game.data';
 import { showSelfReceipt } from '../new-game/self-receipt';
 import { runConfirmed } from '../run-confirmed';
 import { showScreen } from '../show-screen';
-import { rememberDone, replyStale } from '../stale-reply';
+import { plainReceipt, rememberDone, replyStale, showAfterSuccess } from '../stale-reply';
 
 import { GameDraftSchema, listViews, sessionOf } from './game-draft';
 import { targetOfAction } from './game-target';
@@ -103,7 +103,12 @@ const runGameAction = Effect.fn('Bot.runGameAction')(function* (
             { messageId: tap.messageId, expected: tap.expected },
             { sessionId: sessionOf(action), created: false, self: isToMe(user, action), revision: tap.revision }
         );
-        yield* afterDone(user, action, tap.messageId, target.where);
+        yield* showAfterSuccess(
+            user,
+            tap.messageId,
+            afterDone(user, action, tap.messageId, target.where),
+            plainReceipt(user, sessionOf(action), 'changedDone')
+        );
 
         return Option.none<string>();
     }

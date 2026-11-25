@@ -150,8 +150,9 @@ without the bot still arrive as poll answers with public voters.
 | 137 | SEND SAFETY | Forwards at once | Eight forwards of one poll to one group (Postgres) | One forward | — | One claim | service | `forwards a poll to a group once when it is sent many times at once` |
 | 138 | GROUP SOURCE | Copy of a bot poll | Admin forwards the bot poll into a linked group; same poll in a group of another community | — | — | Copy recorded on its game; nothing in the other community; never read as an organizer poll | update | `records a copy of a bot poll on its game and never reads it as an organizer poll` |
 | 139 | SEND SAFETY | Kickoff checked at ✅ | Today 10:15 previewed, ✅ at 10:20; 28.3.2027 2:30 | Nothing | «Час гри вже минув…»; «Такого часу цього дня немає…» | No game | update | `checks the kickoff again at ✅ and refuses a time the clock change skips` |
-| 140 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 141 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 142 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 143 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 144 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 140 | SEND SAFETY | Screen after a sent poll fails | ✅ sends, then showing the receipt fails; the admin taps ✅ again | One poll | «✅ Гру вже створено…», never «нічого не надіслано» | One game | update | `never says nothing was sent when the screen after a sent poll could not be shown` |
+| 141 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 142 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 143 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 144 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 145 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |

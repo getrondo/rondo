@@ -16,7 +16,7 @@ import { homeScreen } from '../home.screen';
 import { menuText } from '../menu-text';
 import { runConfirmed } from '../run-confirmed';
 import { clearKeyboard, showScreen } from '../show-screen';
-import { rememberDone, replyStale } from '../stale-reply';
+import { plainReceipt, rememberDone, replyStale, showAfterSuccess } from '../stale-reply';
 import { writeState } from '../write-state';
 
 import { audienceOfDraft } from './audience';
@@ -179,15 +179,24 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
 
     if (self) {
         yield* rememberDone(user, at, { ...done, self: true });
-        yield* showSelfReceipt(user, messageId, { sessionId: outcome.sessionId, status: done.created ? 'receiptMe' : 'sentMe' });
+        const status = done.created ? 'receiptMe' : 'sentMe';
+        yield* showAfterSuccess(
+            user,
+            messageId,
+            showSelfReceipt(user, messageId, { sessionId: outcome.sessionId, status }),
+            plainReceipt(user, outcome.sessionId, status)
+        );
 
         return Option.none<string>();
     }
 
     yield* rememberDone(user, at, { ...done, self: false });
     const lines = withPoll ? yield* resultLines(user, draft, outcome.sessionId) : [menuText(user.locale, 'createdQuiet')];
-    const card = yield* gameCardScreen(user, outcome.sessionId, { text: lines.join('\n'), saysPoll: withPoll });
-    yield* showScreen(user.chatId, messageId, card);
+    const card = gameCardScreen(user, outcome.sessionId, { text: lines.join('\n'), saysPoll: withPoll });
+    yield* showAfterSuccess(user, messageId, card.pipe(Effect.flatMap(screen => showScreen(user.chatId, messageId, screen))), {
+        ...plainReceipt(user, outcome.sessionId, 'changedDone'),
+        text: lines.join('\n')
+    });
 
     return Option.none<string>();
 });
