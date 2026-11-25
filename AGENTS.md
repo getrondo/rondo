@@ -33,12 +33,14 @@ Run `pnpm fmt && pnpm ts && pnpm lint:check && pnpm deadcode && pnpm cpd && pnpm
 
 ```
 apps/
-  bot/                  Telegram bot (grammY or similar edge), runs the Effect runtime
-  miniapp/              Telegram Mini App (future)
+  web/                  Next.js edge on Vercel: webhook, cron, the Effect runtime
 packages/
+  assistant/            AI assistant (Vercel AI SDK) and its tools
+  bot/                  Update handlers, menus and jobs
+  core/                 Domain logic
   db/                   Drizzle schema per bounded context, migrations, DB layer
-  ingest-telegram/      Telegram export importer (HTML export to domain rows)
-  domain/               Domain services and Schema types (future)
+  ingest-telegram/      Telegram history importer
+  telegram/             Telegram client layer and webhook
 tests/
   test-kit/             @rondo/test-kit: vitest config factory and shared test helpers (the PGlite layer lives in @rondo/db/testing)
 lint-rules/             Local oxlint plugin (effect-fn-name, effect-service-id, effect-no-run, ...)
@@ -57,6 +59,11 @@ Links: [vision](docs/vision.md), [epics](docs/epics), [data model](docs/architec
 | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | any logic: services, repositories, errors, validation, logging, time, concurrency, database access, unit tests | `.agents/skills/effect/SKILL.md`                 |
 | the Effect v4 API surface (`Context.Service`, `Schema`, `Layer`, `Effect.fn`)                                  | `node_modules/effect/AGENTS.md`                  |
+| setting up Effect in a new workspace | `.agents/skills/effect-ts/SKILL.md` |
+| the AI assistant, models, tools (Vercel AI SDK) | `.agents/skills/ai-sdk/SKILL.md` |
+| Neon: connections, branches, compute cost (connection strings only through `isec`, never `.env`) | `.agents/skills/neon-postgres/SKILL.md` |
+| SQL, indexes, locks, query cost | `.agents/skills/supabase-postgres-best-practices/SKILL.md` |
+| turbo.json, pipelines, caching | `.agents/skills/turborepo/SKILL.md` |
 | migrating leftover Effect v3 code                                                                              | `.agents/skills/effect-v3-to-v4/SKILL.md`        |
 | the schema, a migration, or a new bounded context                                                              | `docs/architecture/data-model.md` and `docs/adr` |
 | a product or scope question                                                                                    | `docs/vision.md` and `docs/epics`                |
@@ -75,9 +82,28 @@ Links: [vision](docs/vision.md), [epics](docs/epics), [data model](docs/architec
 10. **One utility per file** with the `.util.ts` suffix, in the module `utils/` folder. No single-consumer utilities, wrappers or single-field interfaces.
 11. **Never force-add ignored files.** Never commit raw Telegram exports, community configs (organizer names, squad tags) or personal data (`data/`, `exports/`, `ChatExport*/` are ignored); keep them outside the repo. Test fixtures are synthetic.
 
+## Effect first
+
+State-of-the-art Effect v4 is the default for every line of logic, not an option. Use the feature that removes a class of bugs; never a feature for show.
+
+| Need | Use |
+| --- | --- |
+| dependencies | `Context.Service` and `Layer`, composed once at the edge; tests swap layers, never mocks |
+| failures | typed errors (`Schema.TaggedError`) visible in the signature; `catchTag`, not `catchCause`, inside services; defects only for bugs |
+| outside data (Telegram updates, JSON columns, model output, env, files) | `Schema.decodeUnknownEffect` at the boundary, `Config` and `Redacted`; never a cast, never `process.env` |
+| ids and units | branded `Schema` types, so ids of different things do not mix |
+| variants | tagged unions with exhaustive handling that fails to compile when a case is missing |
+| missing values | `Option` in domain code |
+| retries, limits, time | `Schedule`, `Effect.timeout`, `Semaphore`, `DateTime`, `Clock`; never retry a Telegram send with an unknown result |
+| resources | `acquireRelease`, `Scope` |
+| observability | `Effect.fn` spans, structured logs and metrics without personal data |
+| tests | `@effect/vitest`, `TestClock`, layers, property tests for pure logic |
+
+Not wanted without a real need: Stream, STM, Queue, PubSub, RPC, Cluster, Workflow. A change that breaks this table needs the reason in the pull request.
+
 ## Effect
 
-All effectful logic runs on Effect v4 (`effect`, pinned exactly). Load the `effect` skill first. The installed `node_modules/effect/dist/*.d.ts` is authoritative for API names.
+All effectful logic runs on Effect v4 (`effect`, pinned exactly). Load the `effect` skill first. Third-party skills are advice: this file, `Critical rules` and the secrets rules win. The installed `node_modules/effect/dist/*.d.ts` is authoritative for API names.
 
 ```ts
 import * as Context from 'effect/Context';
