@@ -20,6 +20,7 @@ import { planLineup } from '../src/teams/lineup-plan';
 import { lineupChanged, publishLineup } from '../src/teams/publish-lineup';
 import { changeDraft, openDraft } from '../src/teams/team-draft.service';
 import { recordResult } from '../src/teams/team-result';
+import { confirmAsOwner, teamsActionAsOwner } from '../src/testing/confirm-action';
 import { seedGame } from '../src/testing/seed-game';
 
 const blocked = new Map<number, Error>();
@@ -190,6 +191,26 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
                     .flatMap((personIds, index) => personIds.map(personId => [personId, index + 1]))
                     .toSorted((left, right) => String(left[0]).localeCompare(String(right[0])))
             );
+        })
+    );
+
+    it.effect('posts the assistant proposal only over the draft it showed and only with the players still in the game', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-assistant', [-7501, -7502], 75_000);
+            const action = yield* teamsActionAsOwner(game.communityId, game.sessionId, null);
+            const [row] = yield* db.select().from(teamDraft).where(eq(teamDraft.sessionId, game.sessionId));
+            const [first = '', second = ''] = action.teams.map(entry => entry.players[0]?.personId);
+            yield* changeDraft({ sessionId: game.sessionId, version: row?.version ?? 0, key: 'w', actorPersonId: null }, state =>
+                Effect.succeed(swapPlayers(state, first, second))
+            );
+            const stale = yield* confirmAsOwner(game.communityId, action);
+            const fresh = yield* teamsActionAsOwner(game.communityId, game.sessionId, null);
+            const done = yield* confirmAsOwner(game.communityId, fresh);
+
+            expect(stale).toMatchObject({ _tag: 'failed' });
+            expect(done).toMatchObject({ _tag: 'done' });
+            expect(sendsTo(-7501)).toEqual(['sendMessage']);
         })
     );
 });

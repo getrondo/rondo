@@ -50,7 +50,14 @@ export const loadDraft = Effect.fn('Core.loadDraft')(function* (sessionId: strin
     const [row] = yield* db.select().from(teamDraft).where(eq(teamDraft.sessionId, sessionId));
 
     return Option.fromNullishOr(row).pipe(
-        Option.flatMap(found => decodeState(found.state).pipe(Option.map((state): DraftRow => ({ ...found, state }))))
+        Option.flatMap(found =>
+            decodeState(found.state).pipe(
+                Option.map((state): DraftRow => ({
+                    ...found,
+                    state: { ...state, colours: paddedColours(state.colours, state.teams.length) }
+                }))
+            )
+        )
     );
 });
 

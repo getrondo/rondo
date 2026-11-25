@@ -1,6 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { auditLog } from '@rondo/db/schema/platform.schema';
-import { rating, ratingEvent, team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
+import { rating, ratingEvent, team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, asc, eq } from 'drizzle-orm';
@@ -11,7 +11,7 @@ import { syncMember } from '../src/identity/telegram-user';
 import { playersOf, swapPlayers, undo } from '../src/teams/draft-state';
 import { planLineup } from '../src/teams/lineup-plan';
 import { publishLineup } from '../src/teams/publish-lineup';
-import { changeDraft, openDraft, rebalanced } from '../src/teams/team-draft.service';
+import { changeDraft, loadDraft, openDraft, rebalanced } from '../src/teams/team-draft.service';
 import { recordResult } from '../src/teams/team-result';
 import { setTier } from '../src/teams/team.service';
 import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer';
@@ -164,6 +164,27 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
             expect(row.state.teams[0]).toEqual(expect.arrayContaining(stored[0] ?? []));
             expect(row.state.teams[1]).toEqual(expect.arrayContaining(stored[1] ?? []));
             expect(row.state.teams.flat()).toContain(people[8]);
+        })
+    );
+
+    it.effect('gives every team a colour of its own even when the stored draft has fewer colours than teams', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* playedGame('draft-colours', 18, 86_000);
+            const { row } = yield* openDraft(communityId, sessionId, null);
+            yield* db
+                .update(teamDraft)
+                .set({
+                    state: {
+                        ...row.state,
+                        teams: [row.state.teams.flat().slice(0, 6), row.state.teams.flat().slice(6, 12), row.state.teams.flat().slice(12)],
+                        colours: ['blue']
+                    }
+                })
+                .where(eq(teamDraft.sessionId, sessionId));
+            const loaded = yield* loadDraft(sessionId);
+
+            expect(Option.getOrNull(loaded)?.state.colours).toEqual(['blue', 'red', 'green']);
         })
     );
 });
