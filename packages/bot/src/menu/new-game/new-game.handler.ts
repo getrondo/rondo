@@ -220,7 +220,10 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
     if (outcome._tag === 'asked') {
         const rest = draft.targets.length > 1 ? [menuText(user.locale, 'askedRest')] : [];
         const home = yield* homeScreen(user);
-        yield* showScreen(user.chatId, messageId, { ...home, text: [outcome.text, ...rest].join('\n') });
+        yield* showScreen(user.chatId, messageId, {
+            text: [outcome.text, ...rest].join('\n'),
+            keyboard: [...outcome.rows, ...home.keyboard]
+        });
 
         return Option.none<string>();
     }

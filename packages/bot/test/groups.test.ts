@@ -23,7 +23,7 @@ import { adminNumbered, menuTestLayer } from './support/test-layer';
 const titles = new Map<unknown, string>();
 const recorder = makeRecorder((method, payload) =>
     method === 'getChat' && titles.has(payload.chat_id)
-        ? { id: payload.chat_id, type: 'supergroup', title: titles.get(payload.chat_id) }
+        ? { id: payload.chat_id, type: 'group', title: titles.get(payload.chat_id) }
         : defaultReply(method, payload)
 );
 // Reading the title is no write
@@ -324,7 +324,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(listed).toContain('➕ Football');
             expect(asked).toContain('👋 Мене додали в «&lt;b&gt;Other&lt;/b&gt;».');
             expect(asked).toContain('⚠️ У налаштуваннях вона називається «Football». Перевір, чи це та група.');
-            expect((yield* chatRow(-41_074))?.title).toBe('<b>Other</b>');
+            expect(yield* chatRow(-41_074)).toMatchObject({ title: '<b>Other</b>', kind: 'group' });
             expect(admin.screen().text).toContain('Мене немає в «Football». Спершу додай мене в групу.');
         })
     );

@@ -89,7 +89,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the approver', it => {
             const [row] = yield* db.select().from(community).where(eq(community.id, communityId));
             yield* loadGroups({ slug: 'guard-load', approverTgUserId: 9021, chats: [chat(-9024)] });
             yield* linkGroup(foreignId, { chatId: -9024 }, 9022);
-            const stolen = yield* linkChat({ communityId, chatId: -9024n, title: 'G', actorPersonId: null }).pipe(Effect.flip);
+            const stolen = yield* linkChat({ communityId, chatId: -9024n, title: 'G', type: 'supergroup', actorPersonId: null }).pipe(
+                Effect.flip
+            );
             const [after] = yield* db.select().from(community).where(eq(community.id, communityId));
 
             expect([unknown, outsider].map(error => 'failure' in error && error.failure.code)).toEqual([
@@ -190,7 +192,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('closing a poll', it => {
             yield* closeFinishedPolls();
 
             expect(copy).toHaveLength(1);
-            expect(shown).toContain('«Main», закрию після гри');
+            expect(shown).toContain('«Main», закріплю й закрию після гри');
             expect(whileOff).toBe(0);
             expect(created).toBe(1);
             expect(forwarded._tag).toBe('done');

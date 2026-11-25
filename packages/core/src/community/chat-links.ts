@@ -1,5 +1,5 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
-import { community, telegramChat } from '@rondo/db/schema/org.schema';
+import { chatKindEnum, community, telegramChat } from '@rondo/db/schema/org.schema';
 import { pendingAction } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/db/service/with-community-lock';
@@ -23,6 +23,12 @@ interface ChatOf {
     readonly actorPersonId: string | null;
 }
 
+interface Link extends ChatOf {
+    readonly title: string;
+    readonly type: string;
+    readonly topicId?: number | null;
+}
+
 const audited = ({ communityId, chatId, actorPersonId }: ChatOf, action: string, diff: unknown = null) =>
     recordAudit({ communityId, actorPersonId, action, entityType: 'telegram_chat', entityId: String(chatId), diff });
 
@@ -35,7 +41,7 @@ const dropProposals = Effect.fn('Core.dropProposals')(function* (communityId: st
     const proposed = yield* db
         .select({ id: pendingAction.id, payload: pendingAction.payload })
         .from(pendingAction)
-        .where(and(eq(pendingAction.communityId, communityId), eq(pendingAction.status, 'proposed')));
+        .where(and(eq(pendingAction.communityId, communityId), eq(pendingAction.status, 'proposed'), ne(pendingAction.kind, 'close_poll')));
 
     for (const { id, payload } of proposed) {
         const action = decodeAction(payload);
@@ -50,7 +56,7 @@ const dropProposals = Effect.fn('Core.dropProposals')(function* (communityId: st
     }
 });
 
-export const linkChat = Effect.fn('Core.linkChat')((input: ChatOf & { readonly title: string; readonly topicId?: number | null }) =>
+export const linkChat = Effect.fn('Core.linkChat')((input: Link) =>
     withCommunityLock(
         { id: input.communityId },
         Effect.gen(function* () {
@@ -63,6 +69,7 @@ export const linkChat = Effect.fn('Core.linkChat')((input: ChatOf & { readonly t
 
             const { purpose } = known.chat;
             const { title } = input;
+            const kind = chatKindEnum.enumValues.find(value => value === input.type) ?? 'supergroup';
             const topicId = Predicate.isUndefined(input.topicId) ? (known.chat.topicId ?? null) : input.topicId;
 
             if (purpose === 'main') {
@@ -80,10 +87,10 @@ export const linkChat = Effect.fn('Core.linkChat')((input: ChatOf & { readonly t
 
             const linked = yield* db
                 .insert(telegramChat)
-                .values({ chatId, communityId, kind: 'supergroup', purpose, title, topicId })
+                .values({ chatId, communityId, kind, purpose, title, topicId })
                 .onConflictDoUpdate({
                     target: telegramChat.chatId,
-                    set: { purpose, title, ...(Predicate.isUndefined(input.topicId) ? {} : { topicId }) },
+                    set: { kind, purpose, title, ...(Predicate.isUndefined(input.topicId) ? {} : { topicId }) },
                     setWhere: eq(telegramChat.communityId, communityId)
                 })
                 .returning({ chatId: telegramChat.chatId });

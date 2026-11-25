@@ -63,11 +63,11 @@ export const confirmAsOwner = Effect.fn('Testing.confirmAsOwner')(function* (com
     });
 });
 
-export const decideAs = (actionId: string, tgUserId: bigint, now?: Date) =>
+const answerAs = (actionId: string, tgUserId: bigint, confirm: boolean, now?: Date) =>
     decideAction({
         actionId,
         tgUserId,
-        confirm: true,
+        confirm,
         ...(isDefined(now) ? { now } : {}),
         context: (communityId, requester) =>
             mainGroupOf(communityId).pipe(
@@ -82,3 +82,7 @@ export const decideAs = (actionId: string, tgUserId: bigint, now?: Date) =>
                 }))
             )
     });
+
+export const decideAs = (actionId: string, tgUserId: bigint, now?: Date) => answerAs(actionId, tgUserId, true, now);
+
+export const withdrawAs = (actionId: string, tgUserId: bigint, now?: Date) => answerAs(actionId, tgUserId, false, now);

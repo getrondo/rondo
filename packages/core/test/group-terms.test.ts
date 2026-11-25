@@ -6,14 +6,18 @@ import { Db } from '@rondo/db/service/db.service';
 import { refusal } from '@rondo/telegram/testing/recording-telegram.layer';
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 import * as TestClock from 'effect/testing/TestClock';
 
 import { grantAdmin } from '../src/access/admin-access';
+import { describeAction } from '../src/actions/describe-action';
+import { groupsTouched } from '../src/actions/groups-touched';
 import { linkChat } from '../src/community/chat-links';
 import { loadGroups } from '../src/community/group-settings';
 import { syncMember } from '../src/identity/telegram-user';
 import { closeFinishedPolls } from '../src/signups/signup.service';
 import { writeToChat } from '../src/telegram/write-to-chat';
+import { withdrawAs } from '../src/testing/confirm-action';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
 import {
@@ -31,6 +35,8 @@ import {
 } from './support/helped-group';
 
 import type { Action } from '../src/actions/action.model';
+
+const decidedAt = new Date('2026-12-01T10:00:00Z');
 
 const cancelOf = (sessionId: string, notify = false): Action => ({ _tag: 'cancel_session', sessionId, reason: 'weather', notify });
 
@@ -171,17 +177,18 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the settings of the groups'
             const [before] = yield* db.select().from(community).where(eq(community.id, communityId));
             yield* grantAdmin({ communityId, personId, grantedBy: null });
             yield* loadGroups(file);
-            const link = { communityId, chatId: -9241n, title: 'G', actorPersonId: null };
+            const link = { communityId, chatId: -9241n, title: 'G', type: 'supergroup', actorPersonId: null };
             yield* linkChat(link);
             const [first] = yield* db.select().from(telegramChat).where(eq(telegramChat.chatId, -9241n));
             yield* linkChat({ ...link, topicId: 8 });
-            yield* linkChat(link);
+            yield* linkChat({ ...link, type: 'group' });
             const [again] = yield* db.select().from(telegramChat).where(eq(telegramChat.chatId, -9241n));
 
             expect(member).toMatchObject({ failure: { code: 'not_admin' } });
             expect(before?.approverTgUserId).toBeNull();
             expect(before?.settings).not.toHaveProperty('groups');
             expect([first?.topicId, again?.topicId]).toEqual([3, 8]);
+            expect([first?.kind, again?.kind]).toEqual(['supergroup', 'group']);
         })
     );
 });
@@ -211,6 +218,79 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('a passed-on notice', it => 
             expect([stale._tag, mine._tag]).toEqual(['expired', 'missing']);
             expect(done).toMatchObject({ _tag: 'done', requestedBy: 9251n });
             expect(sentTo(-9251, 'sendMessage')).toBe(1);
+        })
+    );
+});
+
+layer(recordedTelegramDbLayer, { timeout: 60_000 })('a closure of its own', it => {
+    it.effect('opens a switched off group for the closing of the shown poll only', () =>
+        Effect.gen(function* () {
+            const { communityId, sessionId } = yield* helped('terms-own', -9271, 9271);
+            yield* confirmAsOwner(communityId, { _tag: 'announce_session', sessionId, chatId: '-9271' });
+            const quiet = yield* describeAction({ _tag: 'delete_session', sessionId }, 'uk', communityId);
+            yield* linkGroup(communityId, { chatId: -9271, isPosting: false });
+            const closed = cancelOf(sessionId);
+            const row = yield* proposeAs(communityId, 42n, closed).pipe(Effect.flatMap(actionId => actionRow(actionId)));
+            const target = { chatId: -9271n, topicId: null };
+            const approval = { ...ownerApproval, isClosure: true, closes: { pollIds: ['x'], chatIds: ['-9271'] } };
+            const text = { _tag: 'text', html: 'x', hasLinkPreview: false } as const;
+            const refusals = yield* Effect.all([
+                writeToChat({ target, approval, content: text }).pipe(Effect.flip),
+                writeToChat({ target, approval, content: { _tag: 'pin', messageId: 1 } }).pipe(Effect.flip),
+                writeToChat({ target, approval: { ...approval, tgUserId: 9271n }, content: { _tag: 'stop_poll', messageId: 1 } }).pipe(
+                    Effect.flip
+                )
+            ]);
+
+            expect(refusals).toMatchObject([
+                { failure: { code: 'group_off' } },
+                { failure: { code: 'group_off' } },
+                { failure: { code: 'not_approved' } }
+            ]);
+            expect(quiet).not.toMatch(/опитування/iu);
+            expect(row?.summary).toContain('Опитування лишиться відкритим: «Main»');
+        })
+    );
+
+    it.effect('and line-ups are matched to their groups by id, also when two groups have one name', () =>
+        Effect.gen(function* () {
+            const { communityId, sessionId } = yield* helped('terms-names', -9281, 9281);
+            yield* linkGroup(communityId, { chatId: -9282, purpose: 'other' });
+            const action: Action = {
+                _tag: 'publish_teams',
+                sessionId,
+                teams: [],
+                version: 1,
+                fingerprint: '',
+                preview: { text: '', to: ['Main'], chatIds: ['-9282'], clearsResult: false }
+            };
+            const touched = yield* groupsTouched(action, { communityId, group: Option.none() });
+
+            expect(touched.map(({ chatId }) => chatId)).toEqual([-9282n]);
+        })
+    );
+
+    it.effect('and a request that was refreshed can still be withdrawn, by who asked only', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId, ask } = yield* helped('terms-withdraw', -9291, 9291);
+            yield* confirmAsOwner(communityId, { _tag: 'announce_session', sessionId, chatId: '-9291' });
+            const old = yield* ask(cancelOf(sessionId, true));
+            yield* decide(old, 9291n);
+            const personId = yield* syncMember(communityId, { id: 9292n, firstName: 'Newcomer' }, 'active');
+            yield* db.insert(signup).values({ sessionId, personId, status: 'in' });
+            const fresh = yield* decide(old, 42n);
+            const again = fresh._tag === 'awaiting' ? fresh.request.actionId : old;
+            const guest = yield* syncMember(communityId, { id: 9293n, firstName: 'Second' }, 'active');
+            yield* db.insert(signup).values({ sessionId, personId: guest, status: 'in' });
+            const latest = yield* decide(again, 42n);
+            const foreign = yield* withdrawAs(old, 9292n, decidedAt);
+            const own = yield* withdrawAs(old, 9291n, decidedAt);
+            const late = yield* decide(latest._tag === 'awaiting' ? latest.request.actionId : old, 42n);
+
+            expect([fresh._tag, latest._tag, foreign._tag, late._tag]).toEqual(['awaiting', 'awaiting', 'missing', 'missing']);
+            expect(own).toMatchObject({ _tag: 'rejected', requestedBy: 9291n });
+            expect(sentTo(-9291, 'sendMessage')).toBe(0);
         })
     );
 });

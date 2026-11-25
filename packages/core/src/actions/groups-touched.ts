@@ -2,7 +2,7 @@ import { isDefined } from '@rnw-community/shared';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
-import { postingChatsOf } from '../community/community.repository';
+import { linkedChatsOf, postingChatsOf } from '../community/community.repository';
 import { closureOf } from '../signups/poll-chats';
 
 import type { Action } from './action.model';
@@ -34,15 +34,17 @@ const chatsOf = Effect.fn('Core.chatsOfAction')(function* (action: Action, conte
         return [...noticeChats(action), ...(yield* closureOf(action.sessionId)).chatIds];
     }
 
-    return action._tag === 'delete_session' ? (yield* closureOf(action.sessionId)).chatIds : [];
+    if (action._tag === 'publish_teams') {
+        return action.preview.chatIds ?? [];
+    }
+
+    return action._tag === 'delete_session' || action._tag === 'close_poll' ? (yield* closureOf(action.sessionId)).chatIds : [];
 });
 
 // The groups the action writes to, none for an action that stays private
 export const groupsTouched = Effect.fn('Core.groupsTouched')(function* (action: Action, context: Place) {
-    const posting = yield* postingChatsOf(context.communityId);
-    const chats = action._tag === 'publish_teams' ? [] : yield* chatsOf(action, context);
+    const groups = yield* (action._tag === 'close_poll' ? linkedChatsOf : postingChatsOf)(context.communityId);
+    const chats = yield* chatsOf(action, context);
 
-    return posting.filter(
-        ({ chatId, title }) => chats.includes(String(chatId)) || (action._tag === 'publish_teams' && action.preview.to.includes(title))
-    );
+    return groups.filter(({ chatId }) => chats.includes(String(chatId)));
 });

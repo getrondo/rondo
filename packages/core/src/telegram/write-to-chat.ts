@@ -21,7 +21,13 @@ import type { PollText } from '../interface/poll.interface';
 
 // Who allowed a write to a group: the approver with a ✅, or a switch of the group
 export type Approval =
-    | { readonly _tag: 'approver'; readonly tgUserId: bigint; readonly expiresAt?: Date; readonly closes?: Closes | undefined }
+    | {
+          readonly _tag: 'approver';
+          readonly tgUserId: bigint;
+          readonly expiresAt?: Date;
+          readonly closes?: Closes | undefined;
+          readonly isClosure?: boolean | undefined;
+      }
     | { readonly _tag: 'mention' };
 
 type ChatContent =
@@ -70,7 +76,10 @@ const requireChat = Effect.fn('Core.requireGroupPass')(function* (
     chat: typeof telegramChat.$inferSelect | undefined,
     { target, approval, content }: ChatWrite
 ) {
-    if (!isDefined(chat) || !chat.isPosting) {
+    // Closing a poll is all that a ✅ of its own may do in a group that is switched off
+    const isOwnClosure = content._tag === 'stop_poll' && approval?._tag === 'approver' && approval.isClosure === true;
+
+    if (!isDefined(chat) || !(chat.isPosting || isOwnClosure)) {
         return yield* refused('group_off');
     }
 

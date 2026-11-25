@@ -17,7 +17,7 @@ import { instantOf, localTimeOf, todayIn } from '../sessions/local-time';
 import { cancelSession, createSession, findSameGame, requireSession, updateSession } from '../sessions/session.service';
 import { forwardPoll } from '../signups/forward-poll';
 import { publishPoll } from '../signups/publish-poll';
-import { closePollsOf } from '../signups/signup.service';
+import { closePollsOf, requirePollClosed } from '../signups/signup.service';
 import { executePublishTeams, setSeedRating } from '../teams/team.service';
 import { createVenue, requireVenue, updateVenue } from '../venues/venue.service';
 
@@ -157,8 +157,13 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
                 sessionId: action.sessionId,
                 today: todayIn(context.timezone, now),
                 actorPersonId,
-                approval: { ...approval, closes: action.closes }
+                approval: { ...approval, closes: action.closes, isClosure: action.isClosure }
             }).pipe(Effect.as({ sessionId: action.sessionId }), asResult);
+        }
+        case 'close_poll': {
+            yield* requirePollClosed(action.sessionId, { ...approval, closes: action.closes, isClosure: true });
+
+            return { sessionId: action.sessionId };
         }
         case 'forward_poll': {
             return yield* Effect.gen(function* () {

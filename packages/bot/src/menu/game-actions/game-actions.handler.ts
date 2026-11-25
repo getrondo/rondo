@@ -137,7 +137,7 @@ const runGameAction = Effect.fn('Bot.runGameAction')(function* (
 
     if (outcome._tag === 'asked') {
         const card = yield* gameCardScreen(user, sessionOf(action), { text: outcome.text, saysPoll: false });
-        yield* showScreen(user.chatId, tap.messageId, card);
+        yield* showScreen(user.chatId, tap.messageId, { ...card, keyboard: [...outcome.rows, ...card.keyboard] });
 
         return Option.none<string>();
     }

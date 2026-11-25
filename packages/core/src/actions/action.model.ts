@@ -63,8 +63,11 @@ const AnnounceSessionAction = Schema.TaggedStruct('announce_session', {
 
 const DeleteSessionAction = Schema.TaggedStruct('delete_session', {
     sessionId: Schema.String,
+    isClosure: Schema.optional(Schema.Boolean),
     closes: Schema.optional(ClosesSchema)
 });
+
+const ClosePollAction = Schema.TaggedStruct('close_poll', { sessionId: Schema.String, closes: Schema.optional(ClosesSchema) });
 
 const ForwardPollAction = Schema.TaggedStruct('forward_poll', {
     sessionId: Schema.String,
@@ -79,7 +82,12 @@ const PublishTeamsAction = Schema.TaggedStruct('publish_teams', {
     teams: Schema.Array(Team),
     version: Schema.Int,
     fingerprint: Schema.String,
-    preview: Schema.Struct({ text: Schema.String, to: Schema.Array(Schema.NullOr(Schema.String)), clearsResult: Schema.Boolean })
+    preview: Schema.Struct({
+        text: Schema.String,
+        to: Schema.Array(Schema.NullOr(Schema.String)),
+        chatIds: Schema.optional(Schema.Array(Schema.String)),
+        clearsResult: Schema.Boolean
+    })
 });
 
 const MergePeopleAction = Schema.TaggedStruct('merge_people', { fromPersonId: Schema.String, intoPersonId: Schema.String });
@@ -128,6 +136,7 @@ export const ActionSchema = Schema.Union([
     AnnounceSessionAction,
     ForwardPollAction,
     DeleteSessionAction,
+    ClosePollAction,
     PublishTeamsAction,
     MergePeopleAction,
     LinkAliasAction,

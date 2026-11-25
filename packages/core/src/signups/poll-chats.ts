@@ -2,7 +2,7 @@ import { isNotEmptyArray } from '@rnw-community/shared';
 import { telegramChat } from '@rondo/db/schema/org.schema';
 import { messageRef, pollForward, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -55,4 +55,17 @@ export const titlesOfChats = Effect.fn('Core.titlesOfChats')(function* (chatIds:
         : [];
 
     return [...rows.map(({ title }) => `«${title}»`), ...(rows.length < chatIds.length ? ['❓'] : [])].join(', ');
+});
+
+// Whether the poll closes where it is, or a group that is switched off or gone keeps it open
+export const closureOutlook = Effect.fn('Core.closureOutlook')(function* (closes: Closes | null | undefined) {
+    const db = yield* Db;
+    const chatIds = closes?.chatIds ?? [];
+    const where = yield* titlesOfChats(chatIds);
+    const open = yield* db
+        .select({ chatId: telegramChat.chatId })
+        .from(telegramChat)
+        .where(and(eq(telegramChat.isPosting, true), inArray(telegramChat.chatId, chatIds.map(BigInt))));
+
+    return { hasPoll: isNotEmptyArray([...(closes?.pollIds ?? [])]), isBlocked: open.length < chatIds.length, where };
 });

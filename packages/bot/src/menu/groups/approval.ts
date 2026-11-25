@@ -1,5 +1,6 @@
-import { isNotEmptyString } from '@rnw-community/shared';
+import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { recipientsOf } from '@rondo/core/access/recipients-of';
+import { ActionSchema } from '@rondo/core/actions/action.model';
 import {
     closeUnheard,
     expireStaleActions,
@@ -8,8 +9,13 @@ import {
     type DecisionOutcome
 } from '@rondo/core/actions/pending-action.service';
 import { accountNamesOf } from '@rondo/core/identity/telegram-user';
+import { pendingAction } from '@rondo/db/schema/platform.schema';
+import { Db } from '@rondo/db/service/db.service';
 import { escapeHtml } from '@rondo/telegram/format/html';
+import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
+import * as Schema from 'effect/Schema';
 
 import { sendPrivate } from '../../context/private-chat';
 import { buttonBudget } from '../../utils/button-budget.util';
@@ -20,8 +26,10 @@ import { showPoll } from '../game-actions/show-confirm';
 import { menuText } from '../menu-text';
 import { quotedTitles } from '../new-game/audience';
 
+import { offerClosure } from './closure-offer';
 import { tellNoApprover } from './tell';
 
+import type { MenuButton } from '../screen.interface';
 import type { Locale } from '@rondo/core/i18n/locale';
 
 // Telegram refuses a message over 4096 characters, and the words around the summary need the rest
@@ -30,7 +38,7 @@ const summaryLimit = 3500;
 const headOf = (summary: string): string => summary.split('\n')[0] ?? '';
 
 const yesLabel = ({ action, approver, groups }: ApprovalRequest): string => {
-    const isQuiet = action._tag === 'delete_session' || ('notify' in action && !action.notify);
+    const isQuiet = action._tag === 'delete_session' || action._tag === 'close_poll' || ('notify' in action && !action.notify);
     const where = fitLabel(
         quotedTitles(groups, approver.locale),
         buttonBudget(1) - labelWidth(menuText(approver.locale, 'sendTo', { where: '' }))
@@ -69,7 +77,7 @@ const sendRequest = Effect.fn('Bot.sendRequest')(function* (request: ApprovalReq
     );
 });
 
-// The words for the one who asked, whether the approver got the request or could not be reached
+// The words and the button for the one who asked, whether the approver got the request or could not be reached
 export const askApprover = Effect.fn('Bot.askApprover')(function* (request: ApprovalRequest, locale: Locale) {
     const isHeard = yield* sendRequest(request).pipe(
         Effect.as(true),
@@ -81,16 +89,20 @@ export const askApprover = Effect.fn('Bot.askApprover')(function* (request: Appr
     );
 
     if (isHeard) {
-        return menuText(locale, 'asked', { name: escapeHtml(request.approver.name) });
+        const withdraw = { text: menuText(locale, 'withdraw'), callback_data: `act:${request.actionId}:n` };
+
+        return { text: menuText(locale, 'asked', { name: escapeHtml(request.approver.name) }), rows: [[withdraw]] };
     }
 
     const failure = yield* closeUnheard(request.actionId);
     yield* tellNoApprover;
 
-    return failureText(locale, failure).text;
+    const rows: MenuButton[][] = [];
+
+    return { text: failureText(locale, failure).text, rows };
 });
 
-const tellRequester = Effect.fn('Bot.tellRequester')(function* (
+const tellAbout = Effect.fn('Bot.tellAbout')(function* (
     { requestedBy, summary }: { readonly requestedBy: bigint; readonly summary: string },
     words: (locale: Locale) => string
 ) {
@@ -103,7 +115,7 @@ const tellRequester = Effect.fn('Bot.tellRequester')(function* (
 
 const tellTaken = Effect.gen(function* () {
     for (const request of yield* takeExpiredRequests()) {
-        yield* tellRequester(request, locale => menuText(locale, 'requestExpired'));
+        yield* tellAbout(request, locale => menuText(locale, 'requestExpired'));
     }
 });
 
@@ -112,10 +124,30 @@ export const tellExpired = (now: Date) => expireStaleActions(now).pipe(Effect.an
 export const staysOpen = (locale: Locale, openIn: string | null): string =>
     isNotEmptyString(openIn) ? `\n${menuText(locale, 'pollStaysOpen', { where: openIn })}` : '';
 
+const decodeAction = Schema.decodeUnknownOption(ActionSchema);
+
+// What the gate kept open is offered to the approver, and again after a ✅ that did not close it
+const offerAfter = Effect.fn('Bot.offerAfterOutcome')(function* (outcome: DecisionOutcome, payload: unknown) {
+    const action = Option.getOrNull(decodeAction(payload));
+    const code = outcome._tag === 'failed' ? outcome.failure.code : null;
+
+    if (action?._tag === 'delete_session' && code === 'poll_left_open') {
+        yield* offerClosure(action.sessionId, true);
+    } else if (action?._tag === 'close_poll' && isDefined(code)) {
+        yield* offerClosure(action.sessionId, false);
+    } else if (action?._tag === 'cancel_session' && outcome._tag === 'done' && isNotEmptyString(outcome.openIn)) {
+        yield* offerClosure(action.sessionId, false);
+    }
+});
+
 export const noteOutcome = Effect.fn('Bot.noteOutcome')(function* (
     outcome: DecisionOutcome,
-    { decidedBy, isEdited }: { readonly decidedBy: bigint; readonly isEdited: boolean }
+    { actionId, decidedBy, isEdited }: { readonly actionId: string; readonly decidedBy: bigint; readonly isEdited: boolean }
 ) {
+    const db = yield* Db;
+    const [row] = yield* db.select().from(pendingAction).where(eq(pendingAction.id, actionId));
+    yield* offerAfter(outcome, row?.payload);
+
     if (outcome._tag === 'expired') {
         yield* tellTaken;
     }
@@ -124,11 +156,15 @@ export const noteOutcome = Effect.fn('Bot.noteOutcome')(function* (
         yield* tellNoApprover;
     }
 
+    if (outcome._tag === 'rejected' && outcome.requestedBy === decidedBy && isDefined(row?.approverTgUserId)) {
+        yield* tellAbout({ ...outcome, requestedBy: row.approverTgUserId }, locale => menuText(locale, 'withdrawn'));
+    }
+
     if ((outcome._tag !== 'done' && outcome._tag !== 'failed' && outcome._tag !== 'rejected') || outcome.requestedBy === decidedBy) {
         return;
     }
 
-    yield* tellRequester(outcome, locale => {
+    yield* tellAbout(outcome, locale => {
         if (outcome._tag === 'done') {
             return `${menuText(locale, 'requestDone')}${staysOpen(locale, outcome.openIn)}`;
         }

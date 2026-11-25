@@ -35,6 +35,7 @@ const ActionFailureSchema = Schema.Union([
             'poll_already_in_chat',
             'poll_empty',
             'poll_not_closed',
+            'poll_left_open',
             'poll_open',
             'poll_template_invalid',
             'poll_unsaved_closed',

@@ -1,7 +1,7 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { pendingAction } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import * as Cause from 'effect/Cause';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -51,6 +51,7 @@ export const proposeAction = Effect.fn('Core.proposeAction')(function* (input: {
     readonly action: Action;
     readonly summary: string;
     readonly now?: Date;
+    readonly windowMs?: number;
 }) {
     const db = yield* Db;
     const now = input.now ?? (yield* DateTime.nowAsDate);
@@ -63,7 +64,7 @@ export const proposeAction = Effect.fn('Core.proposeAction')(function* (input: {
             kind: input.action._tag,
             payload,
             summary: input.summary,
-            expiresAt: addMillis(now, confirmationWindowMs)
+            expiresAt: addMillis(now, input.windowMs ?? confirmationWindowMs)
         })
         .returning({ id: pendingAction.id });
 
@@ -73,6 +74,13 @@ export const proposeAction = Effect.fn('Core.proposeAction')(function* (input: {
 // The approver decides a request that was passed on to them, and the requester no longer
 const decidedBy = (tgUserId: bigint) =>
     sql`coalesce(${pendingAction.approverTgUserId}, ${pendingAction.requestedByTgUserId}) = ${tgUserId}`;
+
+// Who asked takes a request back, also after it was refreshed under another id
+const latestOf = (actionId: string) =>
+    sql`coalesce((select old.result ->> 'fresh' from ${pendingAction} old where old.id = ${actionId}::uuid), ${actionId})`;
+
+const withdrawnBy = (tgUserId: bigint, actionId: string) =>
+    and(eq(pendingAction.requestedByTgUserId, tgUserId), sql`${pendingAction.id}::text = ${latestOf(actionId)}`);
 
 const uncertain: ActionFailure = { code: 'result_uncertain' };
 
@@ -221,6 +229,9 @@ const refresh = Effect.fn('Core.refreshRequest')(function* (
     const actionId = yield* proposeAction({ communityId: proposed.communityId, tgUserId: requestedBy, action: fresh, summary, now });
     const { approverTgUserId, expiresAt } = proposed;
     yield* db.update(pendingAction).set({ approverTgUserId, expiresAt }).where(eq(pendingAction.id, actionId));
+    const older = sql`${id} in (${pendingAction.id}::text, ${pendingAction.result} ->> 'fresh')`;
+    const result = { told: true, fresh: actionId };
+    yield* db.update(pendingAction).set({ result }).where(older);
     const groups = (yield* groupsTouched(fresh, context)).map(({ title }) => title);
 
     return { _tag: 'awaiting', request: { actionId, action: fresh, summary, requestedBy, groups, approver: approver.value } } as const;
@@ -235,7 +246,9 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
 }) {
     const db = yield* Db;
     const now = input.now ?? (yield* DateTime.nowAsDate);
-    const open = and(eq(pendingAction.id, input.actionId), decidedBy(input.tgUserId), eq(pendingAction.status, 'proposed'));
+    const decided = and(eq(pendingAction.id, input.actionId), decidedBy(input.tgUserId));
+    const answered = input.confirm ? decided : or(decided, withdrawnBy(input.tgUserId, input.actionId));
+    const open = and(answered, eq(pendingAction.status, 'proposed'));
     const [proposed] = yield* db.select().from(pendingAction).where(open);
     const action = decodeAction(proposed?.payload);
 
@@ -334,18 +347,4 @@ export const takeExpiredRequests = Effect.fn('Core.takeExpiredRequests')(functio
         .set({ result: { told: true } })
         .where(and(eq(pendingAction.status, 'expired'), isNotNull(pendingAction.approverTgUserId), isNull(pendingAction.result)))
         .returning({ requestedBy: pendingAction.requestedByTgUserId, summary: pendingAction.summary });
-});
-
-export const removeActionTexts = Effect.fn('Core.removeActionTexts')(function* (createdBefore: Date) {
-    const db = yield* Db;
-    const kept = sql`(
-        select coalesce(jsonb_object_agg(key, value), '{}'::jsonb)
-        from jsonb_each(${pendingAction.payload})
-        where key in ('_tag', 'chatId', 'topicId', 'sessionId', 'closes')
-    )`;
-
-    yield* db
-        .update(pendingAction)
-        .set({ summary: '', payload: kept })
-        .where(and(ne(pendingAction.status, 'proposed'), ne(pendingAction.summary, ''), lt(pendingAction.createdAt, createdBefore)));
 });
