@@ -1,5 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { syncMember } from '@rondo/core/identity/telegram-user';
+import { person } from '@rondo/db/schema/identity.schema';
 import { rating } from '@rondo/db/schema/play.schema';
 import { attendance, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -228,6 +229,34 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(admin.screen().text).toContain('⏳ Гра повна — у черзі: Pasted. Понад ліміт: ➕ Прийшов ще.');
             expect(yield* statusOf(sessionId, late)).toBe('waitlisted');
             expect((yield* draftTeams(sessionId)).teams.flat()).not.toContain('Pasted');
+        })
+    );
+
+    it.effect('tells the guests of a host with a long name apart on their buttons', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { people } = yield* teamsGame('teams-guest-labels', { groupChatId: -3112, adminId: 316, players: 10 });
+            yield* db
+                .update(person)
+                .set({ displayName: 'Lev Polishchuk' })
+                .where(eq(person.id, people[9] ?? ''));
+            const admin = conversation(recorder, adminNumbered(316));
+            yield* openEditor(admin);
+            yield* admin.tap('➕');
+            yield* admin.tap('Lev Polishchuk');
+            yield* admin.tap('+2');
+            yield* admin.press(
+                admin
+                    .screen()
+                    .buttons.flat()
+                    .find(button => button.text.includes('Lev'))?.callback_data ?? ''
+            );
+            const guests = labelsOf(admin.screen())
+                .flat()
+                .filter(label => label.startsWith('+'));
+
+            expect(guests).toHaveLength(2);
+            expect(new Set(guests).size).toBe(2);
         })
     );
 });

@@ -23,7 +23,14 @@ const columnsShown = 3;
 const pageSize = 2;
 const buttonName = 12;
 
-export const shortName = (name: string, limit = buttonName): string => (name.length > limit ? `${name.slice(0, limit - 1)}…` : name);
+const guestNumber = /^(?<host>.+) (?<number>\+\d+)$/u;
+
+export const shortName = (name: string, limit = buttonName): string => {
+    const guest = guestNumber.exec(name)?.groups;
+    const shown = isDefined(guest) ? `${guest.number} ${guest.host}` : name;
+
+    return shown.length > limit ? `${shown.slice(0, limit - 1)}…` : shown;
+};
 
 const chunkRows = (buttons: readonly MenuButton[], size: number): MenuButton[][] =>
     Array.from({ length: Math.ceil(buttons.length / size) }, (_row, index) => buttons.slice(index * size, index * size + size));
