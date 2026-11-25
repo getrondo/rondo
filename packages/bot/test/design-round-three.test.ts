@@ -1,12 +1,14 @@
 import { expect, layer } from '@effect/vitest';
+import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { conversation, deliver, lastPollId } from './support/conversation';
-import { seedSeason } from './support/season';
+import { conversation, deliver, labelsOf, lastPollId, walkManual } from './support/conversation';
+import { advanceNow, setNow } from './support/fixed-clock';
+import { grantOrganizer, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
@@ -91,6 +93,51 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect(time).toBe('<b>📢 Зміни</b>\n<b>Пт 27.11 · North Arena</b>\n🕐 Час: 19:00 → 19:30');
             expect(place).toBe('<b>📢 Зміни</b>\n<b>Пт 27.11 · North Arena</b>\n📍 Місце: North Arena → Park Field\n📍 <b>Park Lane 5</b>');
+        })
+    );
+
+    it.effect('labels the preview, the lists, the wizard and the card the way the design council asked', () =>
+        Effect.gen(function* () {
+            yield* seedSeason('r3-labels', { groupChatId: -29_004, adminId: 2904 });
+            const admin = conversation(recorder, adminNumbered(2904));
+            yield* admin.type('/newgame');
+            const preview = admin.screen();
+            yield* admin.tap('📤 Куди');
+            const where = admin.screen().text;
+            yield* admin.tap('⬅️ Назад');
+            yield* admin.tap('📍 North Arena');
+            const places = admin.labels().flat();
+            yield* admin.tap('⬅️ Назад');
+            yield* walkManual(admin, ['🛠 З нуля', 'Сб 28.11', 'Park Field', '18:30']);
+            const size = admin.screen();
+            yield* admin.type('/newgame');
+            yield* admin.tap('✅ Надіслати');
+            const card = admin.labels().flat();
+            yield* setNow(Date.parse('2026-11-26T22:30:00Z'));
+            yield* admin.type('/newgame');
+            yield* admin.type('23:40');
+            yield* admin.tap('📅 Пн 30.11');
+            yield* admin.tap('Сьогодні 26.11');
+            yield* advanceNow(20 * 60 * 1000);
+            yield* admin.tap('🕖 23:40');
+            const late = admin.screen().text;
+            const fresh = yield* seedCommunity(seedConfig('r3-labels-fresh'));
+            yield* grantOrganizer(fresh.communityId, 2905);
+            const newcomer = conversation(recorder, adminNumbered(2905));
+            yield* newcomer.type('/newgame');
+            const firstStep = newcomer.labels().flat();
+
+            expect(preview.buttons.some(row => row.length === 1 && row[0]?.text === '📝 Рядок')).toBe(true);
+            expect(labelsOf(preview)).toContain('↔️ Інша: Пн 30.11 18:30 · Park Fi…');
+            expect(preview.text).toContain('↔️ Інша гра: Пн 30.11 18:30 · Park Field');
+            expect(preview.text).toContain('💡 Або напиши: пн 19:30, 18 місць');
+            expect(where).toContain('📤 Куди надіслати опитування?');
+            expect(places).toContain('📍 Адреса для «North Arena»');
+            expect(firstStep.at(-1)).toBe('🏠 Меню');
+            expect(size.buttons[0]?.map(button => button.text)).toEqual(['−1', '👥 18', '+1']);
+            expect(size.text).not.toContain('Число полів');
+            expect(card).toContain('🗑 Видалити гру');
+            expect(late.split('\n').at(-1)).toBe('Сьогодні для звичних годин уже пізно.');
         })
     );
 });

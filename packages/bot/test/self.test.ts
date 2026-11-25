@@ -108,7 +108,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('Пн 30.11 18:30');
             const voted = admin.screen();
 
-            expect(card.buttons.flat().map(button => button.text)).toContain('🗑 Видалити');
+            expect(card.buttons.flat().map(button => button.text)).toContain('🗑 Видалити гру');
             expect(confirmation.text).toContain('Видалити гру');
             expect(afterDelete).toContain('Гру видалено');
             expect(gone).toBeUndefined();
@@ -117,7 +117,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(leftovers[2].filter(row => row.entityId === created?.id)).toEqual([]);
             expect(recorder.calls.some(call => call.method === 'stopPoll' && call.payload.chat_id === 1104)).toBe(true);
             expect(JSON.stringify(audit?.diff)).not.toContain('Admin');
-            expect(voted.buttons.flat().map(button => button.text)).not.toContain('🗑 Видалити');
+            expect(voted.buttons.flat().map(button => button.text)).not.toContain('🗑 Видалити гру');
             expect(voted.buttons.flat().map(button => button.text)).toContain('✖️ Скасувати гру');
             expect(yield* db.select().from(session).where(eq(session.communityId, communityId))).toHaveLength(19);
         })

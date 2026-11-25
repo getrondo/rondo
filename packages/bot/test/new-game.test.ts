@@ -55,10 +55,11 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             expect(main.text).toContain('1 поле, 22 місця');
             expect(main.buttons.map(row => row.map(button => button.text))).toEqual([
                 ['✅ Надіслати в «Games»'],
-                ['−1', '👥 22', '+1', '📝'],
+                ['−1', '👥 22', '+1'],
                 ['🕖 19:00', '📅 Пт 27.11'],
                 ['📍 North Arena'],
-                ['↔️ Пн 30.11 18:30 · Park Field'],
+                ['📝 Рядок'],
+                ['↔️ Інша: Пн 30.11 18:30 · Park Fi…'],
                 ['📤 Куди', '🛠 З нуля', '🏠 Меню']
             ]);
             expect(game).toMatchObject({ venueId: north, capacityMax: 22, fieldsPlanned: 1, status: 'open' });
@@ -76,7 +77,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             const owner = adminNumbered(102);
             const admin = conversation(recorder, owner);
             yield* admin.type('/newgame');
-            yield* admin.tap('↔️ Пн 30.11 18:30 · Park Field');
+            yield* admin.tap('↔️ ');
             const monday = admin.screen();
             yield* admin.tap('+1');
             yield* admin.tap('+1');
@@ -97,8 +98,8 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
 
             expect(monday.text).toContain('Понеділок, 30 листопада, 18.30 Park Field');
             expect(times.flat()).toEqual(expect.arrayContaining(['18:00', '✓ 18:30', '19:00', '⬅️ Назад']));
-            expect(places).toEqual([['✓ Park Field'], ['North Arena'], ['➕ Нове місце'], ['📍 Додати адресу'], ['⬅️ Назад']]);
-            expect(ready.buttons[1]?.map(button => button.text)).toEqual(['−1', '👥 21', '+1', '📝']);
+            expect(places).toEqual([['✓ Park Field'], ['North Arena'], ['➕ Нове місце'], ['📍 Адреса для «Park Field»'], ['⬅️ Назад']]);
+            expect(ready.buttons[1]?.map(button => button.text)).toEqual(['−1', '👥 21', '+1']);
             expect(game).toMatchObject({ venueId: park, capacityMax: 21 });
             expect(admin.tidy()).toEqual({ unanswered: [], oversized: [] });
         })
@@ -195,7 +196,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             const reply = admin.screen().text;
 
             expect(modelCalls).toBeGreaterThan(before);
-            expect(reply).toBe('Не вдалося розібрати текст. Збери гру кнопками.');
+            expect(reply).toBe('Не зрозумів текст, нічого не надіслано. Напиши, наприклад: пн 19:30 18, або збери кнопками.');
             expect(admin.labels()).toEqual([['➕ Нова гра', '📅 Ігри']]);
         })
     );
@@ -211,7 +212,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             const other = conversation(recorder, second);
             yield* first.type('/newgame');
             yield* other.type('/newgame');
-            yield* other.tap('↔️ Пн 30.11 18:30 · Park Field');
+            yield* other.tap('↔️ ');
             yield* first.tap('+1');
             const ready = first.screen();
             yield* first.tapOn(ready, '✅ Надіслати');

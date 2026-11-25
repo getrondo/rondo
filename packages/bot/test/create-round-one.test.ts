@@ -44,7 +44,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* walkManual(admin, ['🛠 З нуля', 'Сб 28.11', 'Park Field', '18:30', '👥 18', '🕖 18:30']);
             yield* admin.tap('⬅️ Назад');
             const preview = admin.screen();
-            yield* admin.tap('📝');
+            yield* admin.tap('📝 Рядок');
             yield* admin.type('М’ячі є\nВоротар потрібен');
             yield* admin.tap('✅ Надіслати');
             const poll = recorder.calls.findLast(call => call.method === 'sendPoll' && call.payload.chat_id === -15_002);
@@ -53,7 +53,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(labelsOf(scratch)).toContain('⬅️ Назад');
             expect(labelsOf(restored)).toEqual(expect.arrayContaining(['👥 23', '📅 Пт 27.11']));
             expect(preview.text).toContain('Опитування буде таким:');
-            expect(labelsOf(preview)).toEqual(expect.arrayContaining(['📝', '💾 Зберегти без опитування']));
+            expect(labelsOf(preview)).toEqual(expect.arrayContaining(['📝 Рядок', '💾 Зберегти без опитування']));
             expect(String(poll?.payload.question)).toContain('М’ячі є\nВоротар потрібен');
             expect(game?.capacityMax).toBe(18);
         })
@@ -139,7 +139,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(past.split('\n')).toHaveLength(2);
             expect(past).not.toContain('Який день');
             expect(offered).toEqual([['⏭ Пропустити'], ['⬅️ Назад']]);
-            expect(admin.screen().text).toContain('Число полів можна не вказувати.');
+            expect(admin.screen().text).not.toContain('Число полів');
             expect(sizes).toEqual(expect.arrayContaining(['👥 14', '👥 18', '✓ 👥 22', '✓ 1 поле', '2 поля', '3 поля']));
         })
     );

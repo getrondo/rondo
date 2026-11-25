@@ -49,7 +49,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 ['🕖 Час', '📅 День'],
                 ['📍 Місце', '👥 Ліміт'],
                 ['✖️ Скасувати гру'],
-                ['🗑 Видалити'],
+                ['🗑 Видалити гру'],
                 ['⬅️ Назад', '🏠 Меню']
             ]);
             expect(confirmTime.text.startsWith('Так буде в «Games»:')).toBe(true);

@@ -42,8 +42,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect(days.slice(0, 3)).toEqual(['✓ Пт 27.11', 'Сб 28.11', 'Нд 29.11']);
             expect(days).toContain('Сьогодні 26.11');
-            expect(limitless.text).not.toContain('місць');
-            expect(limitless.buttons[1]?.map(button => button.text)).toEqual(['−1', '👥 ♾', '+1', '📝']);
+            expect(limitless.text.split('</blockquote>')[0]).not.toContain('місць');
+            expect(limitless.buttons[1]?.map(button => button.text)).toEqual(['−1', '👥 ♾', '+1']);
             expect(refused).toContain('вже минув');
             expect(game).toMatchObject({ capacityMax: 25 });
         })
@@ -84,12 +84,12 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/newgame');
             yield* admin.tap('📍 North Arena');
             const hinted = admin.labels().flat();
-            yield* admin.tap('📍 Додати адресу');
+            yield* admin.tap('📍 Адреса для «North Arena»');
             yield* admin.type('Main Street 1 (gate B)');
             const preview = admin.screen();
             yield* admin.tap('✅ Надіслати');
 
-            expect(hinted).toContain('📍 Додати адресу');
+            expect(hinted).toContain('📍 Адреса для «North Arena»');
             expect(preview.text).toContain('Main Street 1 (gate B)');
             expect(pollTo(-5003)?.payload.description).toBe('📍 <b>Main Street 1 (gate B)</b>');
         })
@@ -123,7 +123,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(announce.text).toContain('Гра вже є, опитування ще немає');
             expect(announce.buttons.map(row => row.map(button => button.text))).toEqual([
                 ['✅ Надіслати в «Games»'],
-                ['↔️ Пн 30.11 18:30 · Park Field'],
+                ['↔️ Інша: Пн 30.11 18:30 · Park Fi…'],
                 ['📤 Куди', '🛠 З нуля', '🏠 Меню']
             ]);
             expect(duplicate).toContain('На цей день уже є гра: Пт 27.11');
@@ -142,7 +142,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/newgame');
 
             expect(admin.screen().text).toContain('Поки замало історії');
-            expect(admin.labels().flat()).toEqual(expect.arrayContaining(['Пт 27.11', 'Закрити']));
+            expect(admin.labels().flat()).toEqual(expect.arrayContaining(['Пт 27.11', '🏠 Меню']));
         })
     );
 
@@ -205,7 +205,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const [reply, again] = admin.seen().slice(-2);
             yield* admin.tap('Пн 30.11');
 
-            expect(reply?.text).toBe('Не вдалося розібрати текст. Збери гру кнопками.');
+            expect(reply?.text).toBe('Не зрозумів текст, нічого не надіслано. Напиши, наприклад: пн 19:30 18, або збери кнопками.');
             expect(labelsOf(again ?? { buttons: [] })).toEqual(labelsOf(list));
             expect(admin.screen().text).toContain('⚽ Понеділок, 30 листопада');
         })

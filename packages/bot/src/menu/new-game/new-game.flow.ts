@@ -110,9 +110,11 @@ export const withVenue = (draft: Draft, venueId: string, data: NewGameData, view
 
 export const withPlaces = (draft: Draft, places: number | null): Draft => advance({ ...draft, places, sized: true, custom: true });
 
+export const placesOf = (draft: Draft, data: NewGameData): number =>
+    draft.places ?? sizeAt(data.history, draft.venueId, draft.localDate ?? data.today).places ?? 14;
+
 const stepPlaces = (draft: Draft, data: NewGameData, step: number): Draft => {
-    const usual = sizeAt(data.history, draft.venueId, draft.localDate ?? data.today).places ?? 14;
-    const places = Math.min(99, Math.max(1, (draft.places ?? usual) + step));
+    const places = Math.min(99, Math.max(1, placesOf(draft, data) + step));
 
     return { ...draft, places, sized: true, custom: true, summary: null, notice: null };
 };

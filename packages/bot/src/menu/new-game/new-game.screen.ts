@@ -6,14 +6,12 @@ import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
-import { buttonBudget } from '../../utils/button-budget.util';
 import { dayLabel } from '../../utils/day-label.util';
-import { labelWidth } from '../../utils/label-width.util';
 import { failureText } from '../failure-text';
 import { isMenuKey, menuText, type MenuKey } from '../menu-text';
 
 import { audienceOfDraft, destinationTitles, isSelfAudience, quotedTitles } from './audience';
-import { otherGameLabel, venueLabel } from './new-game.keyboard';
+import { isLateToday, otherGameLabel, venueLabel } from './new-game.keyboard';
 
 import type { MenuUser } from '../screen.interface';
 import type { Draft, NewGameData } from './draft';
@@ -28,7 +26,7 @@ const prompts: Partial<Record<Draft['view'], MenuKey>> = {
     time: 'pickTime',
     size: 'pickSize',
     note: 'pickNote',
-    dest: 'where'
+    dest: 'whereAsk'
 };
 
 export const actionOf = (draft: Draft, announce: boolean, data: NewGameData): Action => {
@@ -112,9 +110,7 @@ const destinationLine = (user: MenuUser, draft: Draft, data: NewGameData): strin
 const otherGameLine = (user: MenuUser, draft: Draft, data: NewGameData): string[] => {
     const other = otherGameLabel(data, draft, user.locale);
 
-    return isDefined(other) && labelWidth(other.label) > buttonBudget(1)
-        ? [menuText(user.locale, 'otherGameLine', { what: escapeHtml(other.full) })]
-        : [];
+    return isDefined(other) && other.cut ? [menuText(user.locale, 'otherGameLine', { what: escapeHtml(other.full) })] : [];
 };
 
 const lastLines = (user: MenuUser, draft: Draft): string[] => {
@@ -154,7 +150,8 @@ export const newGameText = Effect.fn('Bot.newGameText')(function* (user: MenuUse
         : menuText(user.locale, 'newGame');
     const notice = noticeText(user, draft.notice);
     const heading = draft.notice === 'tooLittle' ? [] : [title];
-    const extra = draft.view === 'size' ? [menuText(user.locale, 'fieldsOptional')] : [];
 
-    return [...heading, ...(isNotEmptyArray(notice) ? notice : [ask, ...extra])].join('\n');
+    return [...heading, ...(isNotEmptyArray(notice) ? notice : [isLateToday(draft, data) ? menuText(user.locale, 'lateToday') : ask])].join(
+        '\n'
+    );
 });

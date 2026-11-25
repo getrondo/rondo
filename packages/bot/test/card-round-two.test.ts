@@ -121,7 +121,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 '📍 Місце',
                 '👥 Ліміт',
                 '✖️ Скасувати гру',
-                '🗑 Видалити',
+                '🗑 Видалити гру',
                 '⬅️ Назад',
                 '🏠 Меню'
             ]);

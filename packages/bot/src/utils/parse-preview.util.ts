@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 
 export interface PreviewInput {
     readonly weekday?: number;
@@ -26,6 +26,8 @@ const weekdays: Readonly<Record<string, number>> = {
     не: 0
 };
 
+const placeWord = /^(?:місць|місця|місце|мест|места|место)$/u;
+
 const tokenOf = (token: string): PreviewInput | null => {
     if (/^\d{1,2}:\d{2}$/u.test(token)) {
         return { time: token.padStart(5, '0') };
@@ -47,7 +49,12 @@ const tokenOf = (token: string): PreviewInput | null => {
 };
 
 export const parsePreview = (text: string): PreviewInput | null => {
-    const tokens = text.trim().toLowerCase().split(/\s+/u);
+    const words = text
+        .trim()
+        .toLowerCase()
+        .split(/[\s,]+/u)
+        .filter(word => isNotEmptyString(word));
+    const tokens = words.filter((word, index) => !(placeWord.test(word) && /^\d{1,2}$/u.test(words[index - 1] ?? '')));
     const parsed = tokens.map(token => tokenOf(token));
 
     if (tokens.length > 3 || parsed.some(entry => !isDefined(entry))) {

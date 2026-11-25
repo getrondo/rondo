@@ -154,8 +154,10 @@ without the bot still arrive as poll answers with public voters.
 | 141 | AUDIENCE | Group becomes a supergroup | Service message with migrate_to_chat_id | — | — | The linked chat row moves to the new id, topic kept | update | `moves the link of a group that became a supergroup and keeps its topic` |
 | 142 | ADMIN AFTER | Receipt after a change or a cancellation | 🕖 → ✅ notify; 👥 → quiet; ✖️ → ✅ notify; kept with me: 🕖 → ✅ | Notices as chosen | «✅ Змінено, у «Games» написано», «…У групу нічого не надіслано», «✅ Скасовано, у…», no «вільно» on a cancelled card; with me the receipt is a new message under the notice | Game updated | update | `says where a change or a cancellation went and puts the receipt under a notice sent to me` |
 | 143 | ADMIN AFTER | One shape for change notices | 🕖 → 19:30 → ✅; 📍 → Park Field → ✅ | «📢 Зміни», day · place, «🕐 Час: 19:00 → 19:30» or «📍 Місце: … → …», the address | — | Game updated | update | `posts every change notice in one shape: what changed, from and to, and the address` |
-| 144 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 145 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 146 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 147 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 148 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 144 | LAYOUT | Labels after the design judge | Preview, 📤, 📍, 🛠 steps, card, a late evening today | — | «📝 Рядок» on its own row, «↔️ Інша: … · place» with the place cut, «💡 Або напиши: пн 19:30, 18 місць», «📤 Куди надіслати опитування?», «📍 Адреса для «X»», −1 · 👥 N · +1 in the wizard without the fields sentence, «🗑 Видалити гру», «Сьогодні для звичних годин уже пізно.», «🏠 Меню» instead of «Закрити» | — | update | `labels the preview, the lists, the wizard and the card the way the design council asked` |
+| 145 | CREATE | Typed hint as written | «пн 19:30, 18 місць», «Пт 20:00, 16 мест» | — | Values read with commas and the word for places | — | unit | `reads the hint as written, with commas and the word for places` |
+| 146 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 147 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 148 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 149 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 150 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |

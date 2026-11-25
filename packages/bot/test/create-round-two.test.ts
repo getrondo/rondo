@@ -12,7 +12,7 @@ import { gamesOn, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
-const hint = '💡 Можна написати: пн 19:30 18';
+const hint = '💡 Або напиши: пн 19:30, 18 місць';
 
 layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('/newgame after the second design round', it => {
     it.effect('steps back one step at a time, keeps a typed place name and adds a new place in six taps', () =>
@@ -85,7 +85,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(1903));
             yield* admin.type('/newgame');
             const preview = admin.screen();
-            yield* admin.tap('📝');
+            yield* admin.tap('📝 Рядок');
             const ask = admin.screen().text;
             yield* admin.type('Bring a dark and a light shirt');
             yield* admin.tap('✅ Надіслати');

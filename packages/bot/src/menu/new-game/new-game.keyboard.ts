@@ -11,7 +11,7 @@ import { menuText } from '../menu-text';
 import { venuePage } from '../venue-page';
 
 import { audienceOfDraft, destinationChoices, destinationTitles, isSelfAudience, quotedTitles } from './audience';
-import { candidatesOf } from './new-game.flow';
+import { candidatesOf, placesOf } from './new-game.flow';
 
 import type { MenuButton } from '../screen.interface';
 import type { Draft, NewGameData, VenueChoice } from './draft';
@@ -37,6 +37,9 @@ const fitted = (locale: Locale, key: Parameters<typeof menuText>[1], titles: rea
     return menuText(locale, key, { where: fitLabel(quotedTitles(titles, locale), room) });
 };
 
+const addressLabel = (locale: Locale, name: string): string =>
+    menuText(locale, 'addAddress', { name: fitLabel(name, full - labelWidth(menuText(locale, 'addAddress', { name: '' }))) });
+
 const postLabel = (draft: Draft, data: NewGameData, locale: Locale): string => {
     if (draft.uncertain) {
         return menuText(locale, 'retrySend');
@@ -59,7 +62,7 @@ export const otherGameLabel = (
     data: NewGameData,
     draft: Draft,
     locale: Locale
-): { readonly label: string; readonly full: string } | null => {
+): { readonly label: string; readonly full: string; readonly cut: boolean } | null => {
     const other = candidatesOf(data).find(candidate => candidate.localDate !== draft.localDate);
 
     if (!isDefined(other) || draft.manual) {
@@ -67,17 +70,23 @@ export const otherGameLabel = (
     }
 
     const day = dayLabel(locale, other.localDate);
-    const what =
-        other._tag === 'new' ? `${day} ${other.localTime} · ${data.venues.find(entry => entry.id === other.venueId)?.name ?? ''}` : day;
 
-    return { label: menuText(locale, 'otherGame', { what }), full: what };
+    if (other._tag !== 'new') {
+        return { label: menuText(locale, 'otherGame', { what: day }), full: day, cut: false };
+    }
+
+    const place = data.venues.find(entry => entry.id === other.venueId)?.name ?? '';
+    const when = `${day} ${other.localTime} · `;
+    const shortPlace = fitLabel(place, full - labelWidth(menuText(locale, 'otherGame', { what: when })));
+
+    return { label: menuText(locale, 'otherGame', { what: `${when}${shortPlace}` }), full: `${when}${place}`, cut: shortPlace !== place };
 };
 
 const otherRows = (draft: Draft, data: NewGameData, locale: Locale, button: ButtonOf): Rows => {
     const other = candidatesOf(data).find(candidate => candidate.localDate !== draft.localDate);
     const label = otherGameLabel(data, draft, locale);
 
-    return isDefined(other) && isDefined(label) ? [[button(fitLabel(label.label, full), 'a', other.localDate.replaceAll('-', ''))]] : [];
+    return isDefined(other) && isDefined(label) ? [[button(label.label, 'a', other.localDate.replaceAll('-', ''))]] : [];
 };
 
 const mainRows = (draft: Draft, data: NewGameData, locale: Locale, button: ButtonOf): Rows => {
@@ -96,12 +105,13 @@ const mainRows = (draft: Draft, data: NewGameData, locale: Locale, button: Butto
 
     return [
         ...first,
-        [button('−1', 'p-'), button(`👥 ${draft.places ?? '♾'}`, 'pz'), button('+1', 'p+'), button(menuText(locale, 'note'), 'nt')],
+        [button('−1', 'p-'), button(`👥 ${draft.places ?? '♾'}`, 'pz'), button('+1', 'p+')],
         [
             button(`🕖 ${draft.localTime ?? '—'}`, 't'),
             button(`📅 ${isDefined(draft.localDate) ? dayLabel(locale, draft.localDate) : '—'}`, 'd')
         ],
         [button(fitLabel(`📍 ${venueLabel(data, draft.venueId)}`, full), 'v')],
+        [button(menuText(locale, 'note'), 'nt')],
         ...manualRows,
         ...otherRows(draft, data, locale, button),
         last
@@ -135,11 +145,14 @@ const dayRows = (draft: Draft, data: NewGameData, locale: Locale, button: Button
 
 const sizeRows = (draft: Draft, data: NewGameData, locale: Locale, button: ButtonOf): Rows => {
     const known = placeSizes(data.history, draft.venueId).slice(0, 4);
-    const sizes = [
-        ...new Set([...(isDefined(draft.places) ? [draft.places] : []), ...(isNotEmptyArray(known) ? known : newPlaceSizes)])
-    ].toSorted((left, right) => left - right);
+    const current = placesOf(draft, data);
+    const sizes = [...new Set([...(isDefined(draft.places) ? [draft.places] : []), ...(isNotEmptyArray(known) ? known : newPlaceSizes)])]
+        .filter(size => !draft.manual || size !== current)
+        .toSorted((left, right) => left - right);
+    const step = draft.manual ? [[button('−1', 'p-'), button(`👥 ${current}`, 'ps', String(current)), button('+1', 'p+')]] : [];
 
     return [
+        ...step,
         ...chunk(
             sizes.map(size => button(marked(`👥 ${size}`, draft.sized && size === draft.places), 'ps', String(size))),
             3
@@ -176,22 +189,28 @@ const placeRows = (draft: Draft, data: NewGameData, locale: Locale, button: Butt
             ...(data.venues.length > top.length ? [button(menuText(locale, 'allPlacesButton'), 'vl', '0')] : []),
             button(menuText(locale, 'newPlace'), 'vn')
         ],
-        ...(isDefined(venue) && !venue.located ? [[button(menuText(locale, 'addAddress'), 'ad')]] : [])
+        ...(isDefined(venue) && !venue.located ? [[button(addressLabel(locale, venue.name), 'ad')]] : [])
     ];
 };
 
-const listRows = (draft: Draft, data: NewGameData, locale: Locale, button: ButtonOf): Rows => {
+const timesAhead = (draft: Draft, data: NewGameData): string[] => {
     const localDate = draft.localDate ?? data.today;
+    const times = isDefined(draft.localTime)
+        ? timeChoices(data.history, draft.venueId, localDate, draft.localTime)
+        : rankTimes(data.history, draft.venueId, localDate).slice(0, 6).toSorted();
 
+    return times.filter(time => localDate !== data.today || time > data.nowTime);
+};
+
+export const isLateToday = (draft: Draft, data: NewGameData): boolean => draft.view === 'time' && !isNotEmptyArray(timesAhead(draft, data));
+
+const listRows = (draft: Draft, data: NewGameData, locale: Locale, button: ButtonOf): Rows => {
     switch (draft.view) {
         case 'day': {
             return dayRows(draft, data, locale, button);
         }
         case 'time': {
-            const times = isDefined(draft.localTime)
-                ? timeChoices(data.history, draft.venueId, localDate, draft.localTime)
-                : rankTimes(data.history, draft.venueId, localDate).slice(0, 6).toSorted();
-            const ahead = times.filter(time => localDate !== data.today || time > data.nowTime);
+            const ahead = timesAhead(draft, data);
 
             return isNotEmptyArray(ahead)
                 ? chunk(
@@ -246,6 +265,6 @@ export const newGameKeyboard = (draft: Draft, data: NewGameData, locale: Locale,
 
     return [
         ...listRows(draft, data, locale, button),
-        [button(menuText(locale, firstManualStep ? 'close' : 'back'), firstManualStep ? 'x' : 'b')]
+        [button(menuText(locale, firstManualStep ? 'home_' : 'back'), firstManualStep ? 'x' : 'b')]
     ];
 };
