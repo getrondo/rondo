@@ -46,6 +46,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const reworded = yield* answerTo(communityId, { _tag: 'create_session', ...game, announce: true }, 'Гра\n\nІнше');
             recorder.failures.set('sendPoll', refusal('sendPoll', 'Bad Request: not enough rights'));
             const refused = yield* answerTo(communityId, { _tag: 'create_session', ...game, announce: true });
+            recorder.failures.set('sendPoll', refusal('sendPoll', 'Too Many Requests: retry after 60', 429, 60));
+            const limited = yield* answerTo(communityId, { _tag: 'create_session', ...game, announce: true });
             recorder.failures.set('sendPoll', new Error('socket hang up'));
             const unknown = yield* answerTo(communityId, { _tag: 'create_session', ...game, announce: true });
             recorder.failures.delete('sendPoll');
@@ -53,6 +55,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(stranger).toBe('⚠️ Цей чат не підключено до спільноти, нічого не надіслано.');
             expect(reworded).toBe('⚠️ Дані змінилися, нічого не надіслано. Спробуй ще раз.');
             expect(refused).toBe('⚠️ Telegram не прийняв повідомлення.');
+            expect(limited).toBe(refused);
             expect(unknown).toBe('⚠️ Не знаю, чи дійшло повідомлення. Перевір чат, перш ніж пробувати ще раз.');
         })
     );
