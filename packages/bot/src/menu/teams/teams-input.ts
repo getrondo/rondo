@@ -265,12 +265,20 @@ export const handlePasteTap = Effect.fn('Bot.handlePasteTap')(function* (user: M
     }
 
     const answered = tap.op === 'U' ? paste.value : choose(paste.value, index, member?.candidates[Number(second)]?.personId ?? null);
+    // The answer is taken, and the paste cleared or its next question stored, in one transaction: a retried tap finds nothing to answer
+    const withPaste = (next: Paste | null) => ({ ...state.value, draft: { ...draft.value, paste: next }, now: user.now });
     const outcome = yield* Db.use(db =>
         db.transaction(() =>
-            replaceAdminState({ ...state.value, now: user.now }, state.value.revision).pipe(
+            replaceAdminState(withPaste(null), state.value.revision).pipe(
                 Effect.flatMap(claimed =>
                     Option.isSome(claimed)
-                        ? placePaste(user, tap.sessionId, answered, tap.op === 'U' ? first === '1' : null)
+                        ? placePaste(user, tap.sessionId, answered, tap.op === 'U' ? first === '1' : null).pipe(
+                              Effect.tap(placed =>
+                                  placed._tag === 'question'
+                                      ? replaceAdminState(withPaste(placed.paste), claimed.value.revision)
+                                      : Effect.void
+                              )
+                          )
                         : Effect.succeed(null)
                 )
             )

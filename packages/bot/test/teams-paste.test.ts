@@ -212,4 +212,28 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(placed).toHaveLength(new Set(placed).size);
         })
     );
+
+    it.effect('adds an unknown name once when the answer is tapped again after the screen could not be shown', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { sessionId } = yield* teamsGame('teams-paste-retry', { groupChatId: -3309, adminId: 339, players: 10 });
+            const admin = conversation(recorder, adminNumbered(339));
+            yield* openEditor(admin);
+            yield* admin.type('🔴 Andriy, Bohdan, Stranger\n🔵 Hryhoriy, Dmytro, Yevhen');
+            const add = buttonData(admin.screen(), '➕ Додати як гостей');
+            recorder.failures.set('editMessageText', new Error('socket hang up'));
+            recorder.failures.set('sendMessage', new Error('socket hang up'));
+            yield* admin.press(add).pipe(Effect.ignore);
+            recorder.failures.delete('editMessageText');
+            recorder.failures.delete('sendMessage');
+            yield* admin.press(add);
+            const guests = yield* db
+                .select({ id: signup.personId })
+                .from(signup)
+                .where(and(eq(signup.sessionId, sessionId), eq(signup.isGuest, true)));
+
+            expect(add).not.toBe('m:gone');
+            expect(guests).toHaveLength(1);
+        })
+    );
 });
