@@ -2,7 +2,7 @@ import { expect, layer } from '@effect/vitest';
 import { syncMember } from '@rondo/core/identity/telegram-user';
 import { recordedTelegramDbLayer, recorder } from '@rondo/core/testing/recorded-telegram.layer';
 import { seedGame as seedBareGame } from '@rondo/core/testing/seed-game';
-import { telegramPoll } from '@rondo/db/schema/platform.schema';
+import { pendingAction, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -193,6 +193,47 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('nightly maintenance', it =>
             expect(afterFailure).toBe(false);
             expect(closed).toEqual([true, true, false, true]);
             expect([stopsOf(901), stopsOf(902), stopsOf(903)]).toEqual([2, 2, 0]);
+        })
+    );
+
+    it.effect('removes the text of finished proposals after 30 days and keeps the receipt', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* seedBareGame('scrub-fc');
+            const kept = { _tag: 'create_session', chatId: '-100', topicId: 7 };
+            const receipt = { sessionId };
+            const propose = (status: 'proposed' | 'confirmed' | 'rejected' | 'failed', createdAt: string) =>
+                db
+                    .insert(pendingAction)
+                    .values({
+                        communityId,
+                        requestedByTgUserId: 42n,
+                        kind: 'create_session',
+                        payload: { ...kept, title: 'Secret', note: 'Call Ivan', preview: { html: 'Ivan' } },
+                        summary: 'Game of Ivan',
+                        status,
+                        result: receipt,
+                        createdAt: new Date(createdAt),
+                        expiresAt: new Date(createdAt)
+                    })
+                    .returning({ id: pendingAction.id });
+            const statuses = ['proposed', 'confirmed', 'rejected', 'failed'] as const;
+
+            for (const status of statuses) {
+                yield* propose(status, '2026-11-04T21:59:00Z');
+            }
+
+            const [recent] = yield* propose('confirmed', '2026-11-04T22:01:00Z');
+            yield* runMaintenance(afterTheGame);
+            yield* runMaintenance(afterTheGame);
+            const rows = yield* db.select().from(pendingAction).where(eq(pendingAction.communityId, communityId));
+            const scrubbed = rows.filter(row => row.id !== recent?.id);
+
+            expect(scrubbed.map(row => row.status).toSorted()).toEqual(['confirmed', 'expired', 'failed', 'rejected']);
+            expect(scrubbed.map(({ summary, payload, result }) => ({ summary, payload, result }))).toEqual(
+                scrubbed.map(() => ({ summary: '', payload: kept, result: receipt }))
+            );
+            expect(rows.find(row => row.id === recent?.id)).toMatchObject({ summary: 'Game of Ivan', payload: { note: 'Call Ivan' } });
         })
     );
 });
