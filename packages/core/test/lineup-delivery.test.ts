@@ -234,6 +234,17 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
         })
     );
 
+    it.effect('plans the line-up for the admin when the poll is in a chat the bot does not have', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-unlinked', [-7971, -7972], 79_700);
+            yield* db.delete(telegramChat).where(eq(telegramChat.communityId, game.communityId));
+            const plan = yield* planLineup({ ...game, locale: 'uk', privateChatId: 4242, fallback: Option.none() });
+
+            expect(plan.deliveries.map(delivery => delivery.chatId)).toEqual([4242n]);
+        })
+    );
+
     it.effect('keeps the recorded result when the changed squad could not be delivered', () =>
         Effect.gen(function* () {
             const db = yield* Db;

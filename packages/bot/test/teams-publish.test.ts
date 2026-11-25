@@ -332,6 +332,22 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             })
     );
 
+    it.effect('sends the line-up to the admin with the forward hint when no group can get it', () =>
+        Effect.gen(function* () {
+            yield* teamsGame('teams-post-nowhere', { groupChatId: null, adminId: 313, players: 8 });
+            const admin = conversation(recorder, adminNumbered(313));
+            yield* openOverview(admin);
+            const overview = admin.screen();
+            yield* admin.press(buttonData(overview, '✅ Надіслати мені'));
+
+            expect(labelsOf(overview)[0]).toEqual(['✅ Надіслати мені']);
+            expect(
+                sentTo(313).filter(call => call.method === 'sendMessage' && String(call.payload.text).startsWith('<b>Склади'))
+            ).toHaveLength(1);
+            expect(admin.screen().text).toContain('👇 Склади нижче');
+        })
+    );
+
     it.effect('warns in the preview that a squad changed after the result clears it', () =>
         Effect.gen(function* () {
             const { sessionId, communityId } = yield* teamsGame('teams-post-result', { groupChatId: -3209, adminId: 329, players: 8 });

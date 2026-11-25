@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { isDefined, isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
+import { isDefined, isEmptyArray, isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
 import { telegramChat } from '@rondo/db/schema/org.schema';
 import { lineupDelivery, ratingEvent } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -107,8 +107,9 @@ export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInp
         lineupPostHtml(postOf(inputs.game, teams, { locale: input.locale, showHandles: inputs.settings.showHandles, isUpdate }));
     const clean = post(false);
     const isUpdate = stored.some(entry => entry.status === 'sent');
-    const self =
-        audience.isPrivate && isDefined(input.privateChatId) ? [{ chatId: BigInt(input.privateChatId), topicId: null, title: null }] : [];
+    // The admin gets the line-up to forward when the poll went to them or no group of the bot can get it
+    const isToAdmin = audience.isPrivate || isEmptyArray(audience.groups);
+    const self = isToAdmin && isDefined(input.privateChatId) ? [{ chatId: BigInt(input.privateChatId), topicId: null, title: null }] : [];
     const now = yield* DateTime.nowAsDate;
     const deliveries = [...audience.groups, ...self].map((target): PlannedDelivery => {
         const found = stored.find(entry => entry.chatId === target.chatId);
