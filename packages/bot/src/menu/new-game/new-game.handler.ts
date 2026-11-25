@@ -74,6 +74,29 @@ export const openNewGame = Effect.fn('Bot.openNewGame')(function* (user: MenuUse
 
 const clearOld = (user: MenuUser, messageId: number | null) => (isDefined(messageId) ? clearKeyboard(user.chatId, messageId) : Effect.void);
 
+export const liveDraftElsewhere = Effect.fn('Bot.liveDraftElsewhere')(function* (user: MenuUser, messageId: number) {
+    const state = yield* loadAdminState(user.tgUserId, user.now);
+
+    return state.pipe(
+        Option.filter(row => isDefined(row.messageId) && row.messageId !== messageId),
+        Option.filter(row => Option.isSome(decodeDraft(row.draft)))
+    );
+});
+
+export const continueNewGame = Effect.fn('Bot.continueNewGame')(function* (user: MenuUser, messageId: number) {
+    const live = yield* liveDraftElsewhere(user, messageId);
+    const draft = live.pipe(Option.flatMap(row => decodeDraft(row.draft)));
+
+    if (Option.isNone(live) || Option.isNone(draft)) {
+        return yield* openNewGame(user, messageId);
+    }
+
+    const data = yield* loadNewGameData(user);
+    yield* clearOld(user, live.value.messageId);
+
+    return yield* presentNewGame(user, draft.value, data, { messageId, expected: live.value.revision });
+});
+
 const reopenNewGame = Effect.fn('Bot.reopenNewGame')(function* (user: MenuUser) {
     const state = yield* loadAdminState(user.tgUserId, user.now);
     const draft = state.pipe(Option.flatMap(row => decodeDraft(row.draft)));

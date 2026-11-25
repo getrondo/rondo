@@ -11,7 +11,7 @@ import { gameCardPage, gamesScreen, pastGamesScreen } from './games.screen';
 import { homeScreen } from './home.screen';
 import { menuText } from './menu-text';
 import { DraftSchema } from './new-game/draft';
-import { handleNewGameTap, openNewGame } from './new-game/new-game.handler';
+import { continueNewGame, handleNewGameTap, liveDraftElsewhere, openNewGame } from './new-game/new-game.handler';
 import { showScreen } from './show-screen';
 import { replyStale } from './stale-reply';
 
@@ -23,7 +23,27 @@ const navigate = Effect.fn('Bot.navigate')(function* (user: MenuUser, parts: rea
     yield* clearAdminState(user.tgUserId, { messageId, now: user.now });
     const [, screen, id, page] = parts;
 
-    if (screen === 'ng') {
+    const live = screen === 'ng' ? yield* liveDraftElsewhere(user, messageId) : Option.none();
+
+    if (Option.isSome(live)) {
+        yield* showScreen(user.chatId, messageId, {
+            text: menuText(user.locale, 'ngLive'),
+            keyboard: [
+                [{ text: menuText(user.locale, 'ngContinue'), callback_data: 'm:ngc' }],
+                [{ text: menuText(user.locale, 'ngRestart'), callback_data: 'm:ngn' }]
+            ]
+        });
+
+        return Option.none<string>();
+    }
+
+    if (screen === 'ngc') {
+        yield* continueNewGame(user, messageId);
+
+        return Option.none<string>();
+    }
+
+    if (screen === 'ng' || screen === 'ngn') {
         yield* openNewGame(user, messageId);
 
         return Option.none<string>();

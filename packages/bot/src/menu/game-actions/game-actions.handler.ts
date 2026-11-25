@@ -120,11 +120,14 @@ const runGameAction = Effect.fn('Bot.runGameAction')(function* (
     const outcome = yield* runConfirmed(user, action, { summary: null, target: { where: target.where, isPrivate: target.me } });
 
     if (outcome._tag === 'done') {
-        yield* rememberDone(
-            user,
-            { messageId: tap.messageId, expected: tap.expected },
-            { sessionId: sessionOf(action), created: false, self: isToMe(user, action), revision: tap.revision }
-        );
+        if (isDefined(tap.expected)) {
+            yield* rememberDone(
+                user,
+                { messageId: tap.messageId, expected: tap.expected },
+                { sessionId: sessionOf(action), created: false, self: isToMe(user, action), revision: tap.revision }
+            );
+        }
+
         yield* showAfterSuccess(
             user,
             tap.messageId,

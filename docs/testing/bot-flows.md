@@ -169,8 +169,10 @@ without the bot still arrive as poll answers with public voters.
 | 156 | AUDIENCE | Resend button used once | Unknown forward, resend times out, the old button tapped again, then the new one | Forward only from the current button | Old button refused with the warning; new one sends | Claim generation moves on | update | `sends again only once per resend button, even when the old button is tapped after another unknown result` |
 | 157 | SEND SAFETY | Resend at once | Eight taps of one resend button at the same moment (Postgres) | One forward | — | Generation moves once | service | `sends a retried forward once when its button is tapped many times at once` |
 | 158 | SEND SAFETY | Poll of an existing game after its kickoff | 💾 today 18:30, card 📣 at 18:20, ✅ at 18:35 | Nothing | «Час гри вже минув…» | — | update | `checks the stored kickoff again before posting the poll of an existing game` |
-| 159 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 160 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 161 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 162 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 163 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 159 | SEND SAFETY | Card send keeps a newer draft | Draft open on a newer message; ✅ resend on an older card | Poll to me | The draft still takes +1 | Draft kept | update | `keeps a live draft on a newer message when a card button on an older message sends` |
+| 160 | CREATE | New game from an older menu | Draft open on a newer message; ➕ on an older menu | — | «Есть незаконченная новая игра…» with ▶️ Продолжить / 🔄 Начать заново | Draft moved or replaced only after the choice | update | `asks before a new game from an older menu replaces a draft on a newer message` |
+| 161 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 162 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 163 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 164 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 165 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
