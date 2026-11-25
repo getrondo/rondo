@@ -1,4 +1,4 @@
-import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { isDefined, isEmptyArray, isNotEmptyArray } from '@rnw-community/shared';
 import { teamDraft } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, eq } from 'drizzle-orm';
@@ -187,6 +187,23 @@ export const changeDraft = Effect.fn('Core.changeDraft')(function* <Failure, Req
               _tag: 'stale',
               row: yield* requireDraft(tap.sessionId)
           } satisfies DraftChange);
+});
+
+export const prepareProposal = Effect.fn('Core.prepareProposal')(function* (inputs: TeamInputs, row: DraftRow) {
+    const synced = syncRoster(
+        row.state,
+        inputs.members.map(member => member.personId)
+    );
+    const placed = isEmptyArray(row.state.history) ? freshState(inputs, usualTeamCount(inputs.players.length)) : rebalanced(inputs, synced);
+    const next = isNotEmptyArray(synced.pending) || isEmptyArray(row.state.history) ? { ...placed, joined: [], left: [] } : synced;
+
+    if (next === row.state) {
+        return row;
+    }
+
+    const saved = yield* saveState(row, next, { actorPersonId: null });
+
+    return Option.getOrElse(saved, () => row);
 });
 
 export const markRosterChanged = Effect.fn('Core.markRosterChanged')(function* (sessionId: string, now: Date) {

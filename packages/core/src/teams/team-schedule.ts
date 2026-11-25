@@ -4,9 +4,10 @@ import { roleGrant } from '@rondo/db/schema/org.schema';
 import { team, teamDraft } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
+import { Access } from '../access/admin-access';
 import { resolveLocale } from '../i18n/locale';
 import { addMillis } from '../utils/add-millis.util';
 
@@ -78,8 +79,11 @@ export const claimNotice = Effect.fn('Core.claimNotice')(function* (sessionId: s
         .where(
             and(
                 eq(teamDraft.sessionId, sessionId),
+                or(isNotNull(teamDraft.proposedAt), isNotNull(teamDraft.publishedAt)),
                 sql`${teamDraft.changedAt} > coalesce(${teamDraft.notifiedAt}, ${teamDraft.proposedAt}, 'epoch'::timestamptz)`,
-                isLastCall ? sql`true` : or(isNull(teamDraft.notifiedAt), lte(teamDraft.notifiedAt, addMillis(now, -debounceMs)))
+                isLastCall
+                    ? sql`true`
+                    : sql`coalesce(greatest(${teamDraft.proposedAt}, ${teamDraft.notifiedAt}), 'epoch'::timestamptz) <= ${addMillis(now, -debounceMs)}`
             )
         )
         .returning({ sessionId: teamDraft.sessionId });
@@ -116,7 +120,8 @@ export const pendingNotices = Effect.fn('Core.pendingNotices')(function* (sessio
 
 export const communityAdmins = Effect.fn('Core.communityAdmins')(function* (communityId: string) {
     const db = yield* Db;
-    const rows = yield* db
+    const access = yield* Access;
+    const granted = yield* db
         .selectDistinctOn([telegramAccount.personId], { tgUserId: telegramAccount.tgUserId, languageCode: telegramAccount.languageCode })
         .from(roleGrant)
         .innerJoin(telegramAccount, eq(telegramAccount.personId, roleGrant.personId))
@@ -125,7 +130,19 @@ export const communityAdmins = Effect.fn('Core.communityAdmins')(function* (comm
         )
         .orderBy(telegramAccount.personId, desc(telegramAccount.lastSeenAt));
 
-    return rows.map(row => ({ tgUserId: row.tgUserId, locale: resolveLocale(row.languageCode) }));
+    const ownerIds = [...access.ownerTgUserIds].filter(tgUserId => !granted.some(row => row.tgUserId === tgUserId));
+    const known = isNotEmptyArray(ownerIds)
+        ? yield* db
+              .select({ tgUserId: telegramAccount.tgUserId, languageCode: telegramAccount.languageCode })
+              .from(telegramAccount)
+              .where(inArray(telegramAccount.tgUserId, ownerIds))
+        : [];
+    const owners = ownerIds.map(tgUserId => ({
+        tgUserId,
+        languageCode: known.find(row => row.tgUserId === tgUserId)?.languageCode ?? null
+    }));
+
+    return [...granted, ...owners].map(row => ({ tgUserId: row.tgUserId, locale: resolveLocale(row.languageCode) }));
 });
 
 const offerPauseMs = 30 * 24 * 60 * minute;

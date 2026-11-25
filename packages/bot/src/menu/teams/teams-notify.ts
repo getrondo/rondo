@@ -11,6 +11,7 @@ import {
     markRosterChanged,
     minimumPlayers,
     openDraft,
+    prepareProposal,
     rebalanced
 } from '@rondo/core/teams/team-draft.service';
 import { loadTeamInputs, personNames, teamSettingsOf } from '@rondo/core/teams/team-inputs';
@@ -38,6 +39,7 @@ import type { MenuUser, Screen } from '../screen.interface';
 import type { Locale } from '@rondo/core/i18n/locale';
 
 const hourMinutes = 60;
+const hourMs = hourMinutes * 60_000;
 
 interface Game {
     readonly id: string;
@@ -65,21 +67,29 @@ const adminUsers = Effect.fn('Bot.teamsAdminUsers')(function* (communityId: stri
 const sendScreen = Effect.fn('Bot.sendTeamsScreen')(function* (user: MenuUser, screen: Screen) {
     const telegram = yield* Telegram;
 
-    yield* telegram.call('sendMessage', api =>
-        api.sendMessage(user.chatId, screen.text, {
-            parse_mode: 'HTML',
-            disable_notification: true,
-            link_preview_options: { is_disabled: true },
-            reply_markup: { inline_keyboard: stackRows(screen.keyboard) }
-        })
-    );
+    return yield* telegram
+        .call('sendMessage', api =>
+            api.sendMessage(user.chatId, screen.text, {
+                parse_mode: 'HTML',
+                disable_notification: true,
+                link_preview_options: { is_disabled: true },
+                reply_markup: { inline_keyboard: stackRows(screen.keyboard) }
+            })
+        )
+        .pipe(
+            Effect.as(true),
+            Effect.catchTag('TelegramApiError', error =>
+                Effect.logWarning('[teams] admin not reached', { isUncertain: error.isUncertain }).pipe(Effect.as(error.isUncertain))
+            )
+        );
 });
 
 const labelOf = (locale: Locale, game: Parameters<typeof formatSessionLabel>[1]) => escapeHtml(formatSessionLabel(locale, game));
 
 export const proposeTeamsFor = Effect.fn('Bot.proposeTeamsFor')(function* (game: Game, now: Date) {
     const settings = yield* teamSettingsOf(game.communityId);
-    const isDue = game.startsAt.getTime() - now.getTime() < (settings.leadMinutes + hourMinutes) * 60_000 && now < game.startsAt;
+    const hour = Math.floor(now.getTime() / hourMs) * hourMs;
+    const isDue = game.startsAt.getTime() - hour < (settings.leadMinutes + hourMinutes) * 60_000 && now < game.startsAt;
     const existing = yield* loadDraft(game.id);
 
     if (!isDue || (yield* hasStoredTeams(game.id)) || Option.exists(existing, row => isDefined(row.proposedAt))) {
@@ -88,6 +98,10 @@ export const proposeTeamsFor = Effect.fn('Bot.proposeTeamsFor')(function* (game:
 
     const inputs = yield* loadTeamInputs(game.communityId, game.id);
     const admins = yield* adminUsers(game.communityId, now);
+
+    if (!isNotEmptyArray(admins)) {
+        return 'skipped';
+    }
 
     if (inputs.players.length < minimumPlayers) {
         if (yield* claimFewNotice(game.communityId, game.id)) {
@@ -102,24 +116,35 @@ export const proposeTeamsFor = Effect.fn('Bot.proposeTeamsFor')(function* (game:
         return 'few';
     }
 
-    if (Option.isNone(existing)) {
-        yield* createDraft(inputs, { actorPersonId: null, proposedAt: null });
-    }
+    yield* Option.isNone(existing)
+        ? createDraft(inputs, { actorPersonId: null, proposedAt: null })
+        : prepareProposal(inputs, existing.value);
 
     if (!(yield* claimProposal(game.id, now))) {
         return 'skipped';
     }
 
     const send = Effect.gen(function* () {
+        const reached: boolean[] = [];
+
         for (const admin of admins) {
             const view = yield* loadView(admin, game.id, {
                 offerLevels: true,
                 notes: [teamsText(admin.locale, 'auto', { label: labelOf(admin.locale, inputs.game) })]
             });
-            yield* sendScreen(admin, editorScreen(admin, view));
+            const isReached = yield* sendScreen(admin, editorScreen(admin, view));
+            reached.push(isReached);
         }
+
+        return reached.includes(true);
     });
-    yield* send.pipe(Effect.onError(() => releaseProposal(game.id).pipe(Effect.ignore)));
+    const isHeard = yield* send.pipe(Effect.onError(() => releaseProposal(game.id).pipe(Effect.ignore)));
+
+    if (!isHeard) {
+        yield* releaseProposal(game.id);
+
+        return 'skipped';
+    }
 
     return 'proposed';
 });
@@ -152,14 +177,11 @@ export const notifyRosterChange = Effect.fn('Bot.notifyRosterChange')(function* 
         return false;
     }
 
-    const cleared = yield* changeDraft(
-        { sessionId, version: opened.row.version, key: `notice:${now.getTime()}`, actorPersonId: null },
-        state => Effect.succeed({ ...state, joined: [], left: [] })
-    );
-    const proposal = rebalanced(opened.inputs, cleared.row.state);
+    const proposal = rebalanced(opened.inputs, { ...opened.row.state, joined: [], left: [] });
     const known = yield* personNames([...joined, ...left, ...opened.inputs.members.map(member => member.personId)]);
     const names = (personId: string) => escapeHtml(known.get(personId) ?? '?');
-    const base = { sessionId, version: cleared.row.version, page: 0 };
+    const base = { sessionId, version: opened.row.version + 1, page: 0 };
+    const reached: boolean[] = [];
 
     for (const admin of yield* adminUsers(game.value.communityId, now)) {
         const teams = proposal.teams.map(
@@ -167,7 +189,7 @@ export const notifyRosterChange = Effect.fn('Bot.notifyRosterChange')(function* 
                 `${badgeOfColour(proposal.colours[team])?.badge ?? `${team + 1}.`} ${members.map(personId => names(personId)).join(', ')}`
         );
 
-        yield* sendScreen(admin, {
+        const isReached = yield* sendScreen(admin, {
             text: [
                 teamsText(admin.locale, 'title', { label: labelOf(admin.locale, opened.inputs.game) }),
                 teamsText(admin.locale, 'readapt', { changes: changesText(names, joined, left) }),
@@ -177,7 +199,7 @@ export const notifyRosterChange = Effect.fn('Bot.notifyRosterChange')(function* 
             keyboard: [
                 [
                     {
-                        text: teamsText(admin.locale, isDefined(cleared.row.publishedAt) ? 'acceptSend' : 'accept'),
+                        text: teamsText(admin.locale, isDefined(opened.row.publishedAt) ? 'acceptSend' : 'accept'),
                         callback_data: teamsData(base, 'A')
                     }
                 ],
@@ -187,7 +209,18 @@ export const notifyRosterChange = Effect.fn('Bot.notifyRosterChange')(function* 
                 ]
             ]
         });
+        reached.push(isReached);
     }
+
+    if (!reached.includes(true)) {
+        yield* releaseNotice(sessionId, now, previous);
+
+        return false;
+    }
+
+    yield* changeDraft({ sessionId, version: opened.row.version, key: `notice:${now.getTime()}`, actorPersonId: null }, state =>
+        Effect.succeed({ ...state, joined: [], left: [] })
+    );
 
     return true;
 });
