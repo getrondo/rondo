@@ -15,6 +15,7 @@ import { noticeTargets } from '../signups/audience';
 
 import { placementOf, postOf, postTeamsOf, publishedPlacement } from './lineup-of-draft';
 import { lineupDiff, lineupPostHtml } from './lineup-post';
+import { busyMs } from './publish-claim';
 import { loadDraft, type DraftRow } from './team-draft.service';
 import { loadTeamInputs } from './team-inputs';
 
@@ -72,8 +73,6 @@ const audienceForTeams = Effect.fn('Core.audienceForTeams')(function* (
         isPrivate
     };
 });
-
-const busyMs = 60_000;
 
 const isDueBy = (
     stored: PlannedDelivery['stored'],

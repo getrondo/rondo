@@ -33,13 +33,13 @@ program composed from `Layer`s; promises exist only at foreign boundaries.
 | Observability | Effect logger and tracer → OpenTelemetry; `/health` endpoint |
 | Quality gates | oxfmt; `effect-tsgo --tsrs-lint oxlint --type-aware --deny-warnings` with local Effect rules (`lint-rules/`); knip; jscpd at threshold 0; commitlint; husky with lint-staged |
 | CI/CD | GitHub Actions on GitHub-hosted `ubuntu-latest` runners: quality job (format, types, lint, dead code, duplication, tests, `drizzle-kit check`, `db:generate` leaves a clean worktree); release-please |
-| Hosting | One container (bot, API, workers) plus managed Postgres in an EU region; decided in E01 |
+| Hosting | Superseded by [ADR 0002](0002-bot-runtime-and-assistant.md): Vercel functions and Neon Postgres in Frankfurt |
 
 ### Telegram specifics
 
-- **Live game card:** one message per game, edited in place and pinned while open; inline buttons In / Maybe / Out / +1 / Where? / Late.
-- **Native poll fallback:** the bot can send non-anonymous polls and capture `poll_answer` updates during migration.
-- **Privacy mode on:** the bot only needs commands, callbacks and mentions; admin rights only for pinning.
+- **Live game card:** superseded by [ADR 0002](0002-bot-runtime-and-assistant.md): sign-ups are native polls.
+- **Native polls:** not a fallback, the only way to sign up in a group ([ADR 0002](0002-bot-runtime-and-assistant.md)).
+- **Privacy mode:** superseded by the live listener of [ADR 0002](0002-bot-runtime-and-assistant.md), which reads group messages; admin rights only for pinning.
 - **History:** a Telegram Desktop export is imported once by `@rondo/ingest-telegram` ([runbook](../runbooks/import-telegram-history.md)).
 
 ## Consequences

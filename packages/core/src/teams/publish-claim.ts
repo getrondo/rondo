@@ -7,7 +7,7 @@ import * as Effect from 'effect/Effect';
 
 import { addMillis } from '../utils/add-millis.util';
 
-const busyMs = 60_000;
+export const busyMs = 60_000;
 
 export const claimPublish = Effect.fn('Core.claimPublish')(function* (sessionId: string, now: Date) {
     const db = yield* Db;
