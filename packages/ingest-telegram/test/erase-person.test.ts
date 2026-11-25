@@ -15,7 +15,7 @@ import { adminState, auditLog, pendingAction, pollVote } from '@rondo/db/schema/
 import { lineupDelivery, lineupEntry } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -148,7 +148,7 @@ const prepare = Effect.fn('test.prepare')(function* (slug: string) {
         .where(and(eq(session.communityId, communityId), eq(lineupEntry.raw, '@zorro_tg')));
     expect(shared).toBeDefined();
     const [game] = yield* db.select({ id: session.id }).from(session).where(eq(session.communityId, communityId));
-    yield* db.insert(lineupDelivery).values({ sessionId: game?.id ?? '', chatId: -1n, text: 'Зорро', status: 'sent' });
+    yield* db.insert(lineupDelivery).values({ sessionId: game?.id ?? '', chatId: -1n, text: '<a>Ян</a>, <a>D&amp;G</a>', status: 'sent' });
     yield* db.insert(person).values({ displayName: 'Дон Диего', mergedIntoPersonId: personId });
     const expiresAt = new Date('2030-01-01T00:00:00Z');
     const action = { communityId, requestedByTgUserId: 5n, kind: 'rename_person', expiresAt };
@@ -189,6 +189,8 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('erasing a person', it => {
                 assistantMessages: 0
             });
             expect(yield* leaks).toEqual([]);
+            // A short or escaped name is in no search text: every posted text of the community goes
+            expect(yield* db.select({ text: lineupDelivery.text }).from(lineupDelivery).where(isNotNull(lineupDelivery.text))).toEqual([]);
             expect(yield* countsOf(communityId, personId)).toEqual(before);
             expect(
                 yield* db

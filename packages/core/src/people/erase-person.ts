@@ -148,6 +148,11 @@ const stopPublishing = Effect.fn('Core.stopPublishing')(function* (communityId: 
         .update(lineupDelivery)
         .set({ status: 'uncertain', token: sql`gen_random_uuid()` })
         .where(and(eq(lineupDelivery.status, 'claimed'), sql`${lineupDelivery.sessionId} in ${games}`));
+    // The text only says whether an edit is due, and a name in it may be short or escaped
+    yield* db
+        .update(lineupDelivery)
+        .set({ text: null })
+        .where(sql`${lineupDelivery.sessionId} in ${games}`);
 });
 
 // A guest without a typed name is called by the host's name of that day: "<host> +N"
@@ -205,7 +210,6 @@ const eraseTexts = Effect.fn('Core.eraseTexts')(function* (
         .delete(assistantMessage)
         .where(or(inArray(assistantMessage.tgUserId, [...tgUserIds]), mentions(assistantMessage.content, texts)))
         .returning({ id: assistantMessage.id });
-    yield* db.update(lineupDelivery).set({ text: null }).where(mentions(lineupDelivery.text, texts));
 
     return { pendingActions: actions.length, adminStates: states.length, assistantMessages: conversation.length };
 });

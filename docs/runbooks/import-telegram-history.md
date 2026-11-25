@@ -117,7 +117,7 @@ RONDO_ERASE_MODE=erase pnpm -F @rondo/core erase
 ```
 
 Games, attendance and votes stay under "Former player". Later imports, approvals and group posts mask the erased nicknames, so a new player with
-the same nickname needs manual links. Not covered: a nickname shared with other players stays as theirs, free-text mentions that resolve to nobody, typed guest names, backups and posts in Telegram. Remove the person from the private community config, the approvals file and
+the same nickname needs manual links. Not covered: a nickname shared with other players stays as theirs, free-text mentions that resolve to nobody, typed guest names, short or quoted names in other admins' messages (they expire in 30 days), organizer names in the stored config until the next import, backups and posts in Telegram. Remove the person from the private community config, the approvals file and
 kept exports by hand.
 
 ### Rehearse first
