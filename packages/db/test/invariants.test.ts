@@ -8,8 +8,9 @@ import * as Exit from 'effect/Exit';
 
 import { account, ledgerEntry, ledgerTxn, priceRule } from '../src/schema/finance.schema';
 import { aliasLink, person, personAlias, telegramAccount } from '../src/schema/identity.schema';
-import { community } from '../src/schema/org.schema';
+import { activity, community } from '../src/schema/org.schema';
 import { auditLog } from '../src/schema/platform.schema';
+import { session, signup, signupEvent } from '../src/schema/scheduling.schema';
 import { booking, field, venue } from '../src/schema/venue.schema';
 import { Db } from '../src/service/db.service';
 import { testDbLayer } from '../src/testing/test-db.layer';
@@ -244,6 +245,50 @@ layer(testDbLayer, { timeout: 60_000 })('database invariants', it => {
                 { aliasId: confirmedId, personId: linked, during: '(,)', status: 'rejected' }
             ]);
             expect(Exit.isFailure(overlapping)).toBe(true);
+        })
+    );
+
+    it.effect('lets a sign-up event go only together with its sign-up, whatever the session settings say', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const communityId = yield* seedCommunity('signup-events');
+            const [activityRow] = yield* db
+                .insert(activity)
+                .values({ communityId, sport: 'football', name: 'Football' })
+                .returning({ id: activity.id });
+            const [personRow] = yield* db.insert(person).values({ displayName: 'Player' }).returning({ id: person.id });
+            const sessionOf = () =>
+                db
+                    .insert(session)
+                    .values({
+                        communityId,
+                        activityId: activityRow?.id ?? '',
+                        localDate: '2026-12-01',
+                        startsAt: new Date('2026-12-01T18:00:00Z')
+                    })
+                    .returning({ id: session.id });
+            const [kept] = yield* sessionOf();
+            const [gone] = yield* sessionOf();
+            for (const sessionId of [kept?.id ?? '', gone?.id ?? '']) {
+                const [signupRow] = yield* db
+                    .insert(signup)
+                    .values({ sessionId, personId: personRow?.id ?? '', status: 'in' })
+                    .returning({ id: signup.id });
+                yield* db.insert(signupEvent).values({ signupId: signupRow?.id ?? '', toStatus: 'in' });
+            }
+            const direct = yield* Effect.exit(
+                db.transaction(() =>
+                    db
+                        .execute(sql`select set_config('rondo.erase_game', 'on', true)`)
+                        .pipe(Effect.andThen(db.execute(sql`delete from scheduling.signup_event`)))
+                )
+            );
+            const cascaded = yield* Effect.exit(db.delete(session).where(eq(session.id, gone?.id ?? '')));
+            const left = yield* db.select({ signupId: signupEvent.signupId }).from(signupEvent);
+
+            expect(Exit.isFailure(direct)).toBe(true);
+            expect(Exit.isSuccess(cascaded)).toBe(true);
+            expect(left).toHaveLength(1);
         })
     );
 });

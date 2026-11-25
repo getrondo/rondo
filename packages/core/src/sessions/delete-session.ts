@@ -4,7 +4,7 @@ import { messageRef, pollVote, telegramPoll } from '@rondo/db/schema/platform.sc
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { adminPersonIds } from '../access/admin-access';
@@ -59,7 +59,6 @@ export const deleteSession = Effect.fn('Core.deleteSession')(function* (input: {
 
     yield* db.transaction(() =>
         Effect.gen(function* () {
-            yield* db.execute(sql`select set_config('rondo.erase_game', 'on', true)`);
             const [game] = yield* db.select({ localDate: session.localDate }).from(session).where(eq(session.id, input.sessionId));
             yield* db.delete(pollVote).where(eq(pollVote.sessionId, input.sessionId));
             yield* db.delete(messageRef).where(and(eq(messageRef.entityType, 'session'), eq(messageRef.entityId, input.sessionId)));
