@@ -132,7 +132,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(tiers.text).toContain('видишь только ты');
             expect(labelsOf(cycled).flat()).toContain(`💪 ${someone}`);
             expect(stored.map(row => row.mu)).toContain(8);
-            expect(withLevels).toMatch(/⚖️ [▰▱]{5}/u);
+            expect(withLevels).toMatch(/⚖️ (Силы равны|Силы почти равны|Одна команда сильнее)\./u);
         })
     );
 
@@ -212,7 +212,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 .from(attendance)
                 .where(and(eq(attendance.sessionId, sessionId), eq(attendance.outcome, 'no_show')));
 
-            expect(asked).toEqual(expect.arrayContaining(['🚫 Не прийшов', '🗑 Прибрати з гри']));
+            expect(asked).toEqual(expect.arrayContaining(['🚫 Не прийшов на гру', '🗑 Відмовився заздалегідь']));
             expect((yield* draftTeams(sessionId)).teams.flat()).toContain(absent);
             expect(marks).toEqual([]);
         })

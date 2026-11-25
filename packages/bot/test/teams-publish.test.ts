@@ -70,7 +70,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(done.text).toContain('✅ Склади в «Games».');
             expect(done.text).not.toContain('📨');
             expect(diff.text).toContain('Що змінилося:');
-            expect(diff.text).toMatch(/: 🔴 → 🔵/u);
+            expect(diff.text).toMatch(/ → 🔵 Сині/u);
             expect(edited.map(call => call.method)).toEqual(['sendMessage', 'editMessageText']);
             expect(edited[1]?.payload.message_id).toBe(
                 Predicate.hasProperty(posted[0]?.result, 'message_id') ? posted[0].result.message_id : 0
@@ -249,7 +249,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect(overview.text).toContain('Надішлю в «Games» і мені.');
             expect(labelsOf(overview)[0]).toEqual(['✅ Надіслати']);
-            expect(changed.text).toContain('🔄 Дані змінилися, нічого не надіслано.');
+            expect(changed.text).toContain('🔄 Поки ти дивився, склади змінилися.');
             expect(changed.text).toContain('Andriy K');
             expect(quiet).toBe(0);
             expect(unknown.text.split('⚠️ Не знаю, чи дійшли склади в «Games». Зазирни туди.')).toHaveLength(2);

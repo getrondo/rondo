@@ -2,7 +2,7 @@ import { isDefined, isNotEmptyArray, isNotEmptyString } from '@rnw-community/sha
 import { person } from '@rondo/db/schema/identity.schema';
 import { attendance, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
@@ -83,7 +83,13 @@ export const addGuests = Effect.fn('Core.addGuests')(function* (
             const existing = yield* db
                 .select({ personId: signup.personId })
                 .from(signup)
-                .where(and(eq(signup.sessionId, change.sessionId), eq(signup.isGuest, true)));
+                .where(
+                    and(
+                        eq(signup.sessionId, change.sessionId),
+                        eq(signup.isGuest, true),
+                        isDefined(guest.hostPersonId) ? eq(signup.guestOfPersonId, guest.hostPersonId) : isNull(signup.guestOfPersonId)
+                    )
+                );
             const added: { readonly personId: string; readonly status: 'in' | 'waitlisted' }[] = [];
 
             for (let index = 0; index < Math.max(1, Math.min(guest.count, 9)); index += 1) {

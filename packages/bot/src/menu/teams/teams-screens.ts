@@ -9,7 +9,7 @@ import { escapeHtml } from '@rondo/telegram/format/html';
 import { toShortId } from '../../utils/to-short-id.util';
 
 import { teamsData, type TeamsBase } from './teams-callback';
-import { badgeAt, nameOf, shortName, teamAt } from './teams-editor.screen';
+import { badgeAt, buttonNames, nameOf, queueLine, shortName, teamAt } from './teams-editor.screen';
 import { teamsCount, teamsText } from './teams-text';
 
 import type { MenuButton, MenuUser, Screen } from '../screen.interface';
@@ -54,13 +54,7 @@ export const fullAsk = (
     text: [
         header(user, view),
         teamsText(user.locale, 'fullAsk', { taken: ask.taken, limit: ask.limit, name: escapeHtml(ask.who) }),
-        ...(isNotEmptyArray(view.waiting)
-            ? [
-                  teamsText(user.locale, 'queue', {
-                      names: escapeHtml(view.waiting.map((name, index) => `${index + 1}. ${name}`).join(', '))
-                  })
-              ]
-            : [])
+        ...queueLine(user.locale, view.waiting)
     ].join('\n'),
     keyboard: [
         [{ text: teamsText(user.locale, 'toQueue'), callback_data: teamsData(baseOf(view), ask.op, [...ask.args, 0]) }],
@@ -76,11 +70,12 @@ export const removeScreen = (
 ): Screen => {
     const index = playersOf(view.row.state).indexOf(ask.personId);
     const name = nameOf(view, ask.personId);
-    const remove = (key: 'withGuests' | 'onlyHost' | 'removeYes', guests: number): MenuButton => ({
+    const remove = (key: 'withGuests' | 'onlyHost' | 'removeYes' | 'withdrew', guests: number): MenuButton => ({
         text: teamsText(user.locale, key, { count: ask.guests, name: shortName(name) }),
         callback_data: teamsData(baseOf(view), 'R', [index, guests])
     });
-    const options = ask.guests > 0 ? [remove('withGuests', 1), remove('onlyHost', 0)] : [remove('removeYes', 0)];
+    const options =
+        ask.guests > 0 ? [remove('withGuests', 1), remove('onlyHost', 0)] : [remove(ask.hasStarted ? 'withdrew' : 'removeYes', 0)];
 
     return {
         text: [
@@ -90,7 +85,7 @@ export const removeScreen = (
         ].join('\n'),
         keyboard: [
             ...(ask.hasStarted ? [[{ text: teamsText(user.locale, 'noShow'), callback_data: teamsData(baseOf(view), 'o', [index]) }]] : []),
-            options,
+            ...options.map(option => [option]),
             backRow(user, view)
         ]
     };
@@ -141,6 +136,7 @@ const tierMark: Readonly<Record<Tier, string>> = { strong: '💪', normal: '🙂
 export const settingsScreen = (user: MenuUser, view: EditorView): Screen => {
     const players = playersOf(view.row.state);
     const members = view.inputs.members.filter(member => !member.isGuest && players.includes(member.personId));
+    const labels = buttonNames(members.map(member => member.displayName));
     const count = view.row.state.teams.length;
     const counts = [2, 3, 4].filter(entry => entry !== count && entry <= Math.max(2, usualTeamCount(players.length) + 1));
 
@@ -149,7 +145,7 @@ export const settingsScreen = (user: MenuUser, view: EditorView): Screen => {
         keyboard: [
             ...chunk(
                 members.map(member => ({
-                    text: `${isDefined(member.tier) ? tierMark[member.tier] : '·'} ${shortName(member.displayName)}`,
+                    text: `${isDefined(member.tier) ? `${tierMark[member.tier]} ` : ''}${labels.get(member.displayName) ?? member.displayName}`,
                     callback_data: teamsData(baseOf(view), 'Y', [players.indexOf(member.personId)])
                 })),
                 2
@@ -177,13 +173,9 @@ export const joinersScreen = (
 ): Screen => ({
     text: [header(user, view), teamsText(user.locale, isNotEmptyArray(candidates) ? 'joinTitle' : 'noJoiners')].join('\n'),
     keyboard: [
-        ...chunk(
-            candidates.map(candidate => ({
-                text: shortName(candidate.displayName, 16),
-                callback_data: teamsData(baseOf(view), 'J', [toShortId(candidate.personId)])
-            })),
-            2
-        ),
+        ...candidates.map(candidate => [
+            { text: candidate.displayName, callback_data: teamsData(baseOf(view), 'J', [toShortId(candidate.personId)]) }
+        ]),
         [{ text: teamsText(user.locale, 'writeName'), callback_data: teamsData(baseOf(view), 'g') }],
         backRow(user, view)
     ]

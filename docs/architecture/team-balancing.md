@@ -32,7 +32,7 @@ Strength: the tier an admin sets by tapping is stored as `organizer_seed` (new 3
 μ = 25 ± 2 per level step with σ = 5; unknown players are μ = 25, σ = 25/3. The one-tap result of the evening updates
 `openskill_pl` with the Weng–Lin Bradley–Terry full-pair rule (Weng and Lin, "A Bayesian Approximation Method for Online
 Ranking", JMLR 12, 2011, Algorithm 1), see `rate-result.ts`. Strength and tiers are never shown in group text, logs or
-assistant answers; the editor shows only a five-cell balance bar.
+assistant answers; the editor says it in words («⚖️ Сили майже рівні.»), never with numbers.
 
 ## Habits
 

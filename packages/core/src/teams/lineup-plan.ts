@@ -32,6 +32,7 @@ export interface PlanInput {
     readonly state?: DraftState;
     readonly loaded?: { readonly row: DraftRow; readonly inputs: TeamInputs };
     readonly retryToken?: string | null;
+    readonly asNewMessage?: boolean;
 }
 
 const audienceForTeams = Effect.fn('Core.audienceForTeams')(function* (
@@ -97,7 +98,7 @@ export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInp
     const teams = postTeamsOf(input.state ?? row.state, inputs.members);
     const previous = yield* publishedPlacement(input.sessionId);
     const placement = placementOf(teams);
-    const diff = isNotEmptyArray(previous) ? lineupDiff(previous, placement) : [];
+    const diff = isNotEmptyArray(previous) ? lineupDiff(previous, placement, input.locale) : [];
     const teamOf = new Map(previous.map(entry => [entry.personId, entry.team]));
     const isSquadChanged = previous.length !== placement.length || placement.some(entry => teamOf.get(entry.personId) !== entry.team);
     const audience = yield* audienceForTeams(input.communityId, input.sessionId, input.fallback);
@@ -131,7 +132,7 @@ export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInp
             title: target.title,
             html: isPrivate && isUpdate && isDue ? post(true) : clean,
             text: clean,
-            messageId: isPrivate || !isSameTopic ? null : (found?.messageId ?? null),
+            messageId: isPrivate || !isSameTopic || input.asNewMessage === true ? null : (found?.messageId ?? null),
             stored: status,
             token: found?.token ?? null,
             isDue

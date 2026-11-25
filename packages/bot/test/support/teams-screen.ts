@@ -1,7 +1,9 @@
 import { isDefined } from '@rnw-community/shared';
 import { loadDraft } from '@rondo/core/teams/team-draft.service';
 import { person } from '@rondo/db/schema/identity.schema';
+import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
+import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Predicate from 'effect/Predicate';
@@ -91,3 +93,20 @@ export const sentMessage = (call: { readonly payload: unknown; readonly result?:
     text: Option.match(decodeSent(call?.payload), { onNone: () => '', onSome: value => value.text }),
     buttons: Option.match(decodeSent(call?.payload), { onNone: () => [], onSome: value => value.reply_markup.inline_keyboard })
 });
+
+// A pasted list with a name nobody has, answered with the «add as guests» button
+export const pasteWithStranger = (admin: ReturnType<typeof conversation>) =>
+    Effect.gen(function* () {
+        yield* openEditor(admin);
+        yield* admin.type('🔴 Andriy, Bohdan, Stranger\n🔵 Hryhoriy, Dmytro, Yevhen');
+
+        return buttonData(admin.screen(), '➕ Додати як гостей');
+    });
+
+export const guestSignups = (sessionId: string) =>
+    Db.use(db =>
+        db
+            .select({ id: signup.personId })
+            .from(signup)
+            .where(and(eq(signup.sessionId, sessionId), eq(signup.isGuest, true)))
+    );

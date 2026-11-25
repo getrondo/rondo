@@ -20,6 +20,14 @@ import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
 const at = (time: string) => new Date(`2026-11-27T${time}:00Z`);
+
+const sendThenOpenCard = (admin: ReturnType<typeof conversation>) =>
+    Effect.gen(function* () {
+        yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
+        yield* setNow(at('21:30').getTime());
+        yield* admin.type('/games');
+        yield* admin.tap('Пт 27.11');
+    });
 const privateTo = (chatId: number) => recorder.calls.filter(call => call.method === 'sendMessage' && call.payload.chat_id === chatId);
 
 const vote = (pollId: string, userId: number, option: number) =>
@@ -143,10 +151,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* more.tap('Пт 27.11 19:00');
             yield* more.tap('👕 Склади');
             const three = yield* draftTeams(extra.sessionId);
-            yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
-            yield* setNow(at('21:30').getTime());
-            yield* admin.type('/games');
-            yield* admin.tap('Пт 27.11');
+            yield* sendThenOpenCard(admin);
             const card = labelsOf(admin.screen());
             const cardText = admin.screen().text;
             yield* admin.press(buttonData(admin.screen(), '🏆 Червоні'));
@@ -206,10 +211,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const { sessionId } = yield* teamsGame('teams-result-stale', { groupChatId: -3381, adminId: 381, players: 8 });
             const admin = conversation(recorder, adminNumbered(381));
             yield* openOverview(admin);
-            yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
-            yield* setNow(at('21:30').getTime());
-            yield* admin.type('/games');
-            yield* admin.tap('Пт 27.11');
+            yield* sendThenOpenCard(admin);
             const card = admin.screen();
             const teams = yield* db.select({ id: team.id }).from(team).where(eq(team.sessionId, sessionId)).orderBy(team.ordinal);
             const [moved] = yield* db

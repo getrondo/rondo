@@ -21,4 +21,12 @@ const towards: Readonly<Record<Locale, Readonly<Record<string, string>>>> = {
     ru: { '🔴': 'к Красным', '🔵': 'к Синим', '🟢': 'к Зелёным', '🟡': 'к Жёлтым', '⚪': 'к Белым', '🟠': 'к Оранжевым' }
 };
 
+const ofTeam: Readonly<Record<Locale, Readonly<Record<string, string>>>> = {
+    uk: { '🔴': 'Червоних', '🔵': 'Синіх', '🟢': 'Зелених', '🟡': 'Жовтих', '⚪': 'Білих', '🟠': 'Помаранчевих' },
+    ru: { '🔴': 'Красных', '🔵': 'Синих', '🟢': 'Зелёных', '🟡': 'Жёлтых', '⚪': 'Белых', '🟠': 'Оранжевых' }
+};
+
+// «Червоних 6», «в Червоних»: the plural form a count or a place takes, else the team's own name
+export const teamOf = (locale: Locale, badge: string, fallback: string): string => ofTeam[locale][badge] ?? fallback;
+
 export const towardsTeam = (locale: Locale, badge: string): string => `➡️ ${towards[locale][badge] ?? badge}`;

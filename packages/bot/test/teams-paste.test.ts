@@ -9,7 +9,7 @@ import * as Effect from 'effect/Effect';
 
 import { conversation } from './support/conversation';
 import { teamsGame } from './support/teams-game';
-import { buttonData, draftTeams, labelsOf, openEditor, playerData } from './support/teams-screen';
+import { buttonData, draftTeams, guestSignups, labelsOf, openEditor, pasteWithStranger, playerData } from './support/teams-screen';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
@@ -215,22 +215,16 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
     it.effect('adds an unknown name once when the answer is tapped again after the screen could not be shown', () =>
         Effect.gen(function* () {
-            const db = yield* Db;
             const { sessionId } = yield* teamsGame('teams-paste-retry', { groupChatId: -3309, adminId: 339, players: 10 });
             const admin = conversation(recorder, adminNumbered(339));
-            yield* openEditor(admin);
-            yield* admin.type('🔴 Andriy, Bohdan, Stranger\n🔵 Hryhoriy, Dmytro, Yevhen');
-            const add = buttonData(admin.screen(), '➕ Додати як гостей');
+            const add = yield* pasteWithStranger(admin);
             recorder.failures.set('editMessageText', new Error('socket hang up'));
             recorder.failures.set('sendMessage', new Error('socket hang up'));
             yield* admin.press(add).pipe(Effect.ignore);
             recorder.failures.delete('editMessageText');
             recorder.failures.delete('sendMessage');
             yield* admin.press(add);
-            const guests = yield* db
-                .select({ id: signup.personId })
-                .from(signup)
-                .where(and(eq(signup.sessionId, sessionId), eq(signup.isGuest, true)));
+            const guests = yield* guestSignups(sessionId);
 
             expect(add).not.toBe('m:gone');
             expect(guests).toHaveLength(1);

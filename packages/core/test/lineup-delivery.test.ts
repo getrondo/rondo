@@ -73,6 +73,16 @@ const publishPlanned = Effect.fn('test.publishPlanned')(function* (
     return yield* publishLineup({ ...input, version: plan.version, fingerprint: plan.fingerprint });
 });
 
+// A recorded result, then the first players of the two teams swapped
+const resultThenSwap = Effect.fn('test.resultThenSwap')(function* (game: { readonly communityId: string; readonly sessionId: string }) {
+    yield* recordResult({ ...game, winner: 1, actorPersonId: null, now: new Date('2026-12-04T20:30:00Z') });
+    const { row } = yield* openDraft(game.communityId, game.sessionId, null);
+    const [first = '', second = ''] = row.state.teams.map(members => members[0] ?? '');
+    yield* changeDraft({ sessionId: game.sessionId, version: row.version, key: 'w', actorPersonId: null }, state =>
+        Effect.succeed(swapPlayers(state, first, second))
+    );
+});
+
 const statusesOf = (game: { readonly sessionId: string }) =>
     Db.use(db =>
         db
@@ -250,12 +260,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             const db = yield* Db;
             const game = yield* twoGroupGame('delivery-result-kept', [-7601, -7602], 76_000);
             yield* publishPlanned(game);
-            yield* recordResult({ ...game, winner: 1, actorPersonId: null, now: new Date('2026-12-04T20:30:00Z') });
-            const { row } = yield* openDraft(game.communityId, game.sessionId, null);
-            const [first = '', second = ''] = row.state.teams.map(members => members[0] ?? '');
-            yield* changeDraft({ sessionId: game.sessionId, version: row.version, key: 'w', actorPersonId: null }, state =>
-                Effect.succeed(swapPlayers(state, first, second))
-            );
+            yield* resultThenSwap(game);
             blocked.set(-7601, refusal('editMessageText', 'Bad Request: message can not be edited'));
             blocked.set(-7602, refusal('editMessageText', 'Bad Request: message can not be edited'));
             yield* publishPlanned(game);
@@ -334,12 +339,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
                 .select({ personId: teamMember.personId, teamId: teamMember.teamId })
                 .from(teamMember)
                 .where(eq(teamMember.sessionId, game.sessionId));
-            yield* recordResult({ ...game, winner: 1, actorPersonId: null, now: new Date('2026-12-04T20:30:00Z') });
-            const { row } = yield* openDraft(game.communityId, game.sessionId, null);
-            const [first = '', second = ''] = row.state.teams.map(members => members[0] ?? '');
-            yield* changeDraft({ sessionId: game.sessionId, version: row.version, key: 'w', actorPersonId: null }, state =>
-                Effect.succeed(swapPlayers(state, first, second))
-            );
+            yield* resultThenSwap(game);
             blocked.set(-7931, new Error('socket hang up'));
             blocked.set(-7932, new Error('socket hang up'));
             const published = yield* publishPlanned(game);

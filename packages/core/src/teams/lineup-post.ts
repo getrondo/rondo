@@ -111,17 +111,20 @@ export interface TeamPlacement {
     readonly team: number;
 }
 
-export const lineupDiff = (before: readonly TeamPlacement[], after: readonly TeamPlacement[]): string[] => {
+// «Name → 🔴 Червоні» per move, «+ Name → 🔴 Червоні» for a newcomer, «− Name» for who left
+export const lineupDiff = (before: readonly TeamPlacement[], after: readonly TeamPlacement[], locale: Locale): string[] => {
     const placed = new Map(before.map(entry => [entry.personId, entry]));
     const kept = new Set(after.map(entry => entry.personId));
     const moved = after.flatMap(entry => {
         const previous = placed.get(entry.personId);
 
+        const team = `${entry.badge} ${teamName(locale, entry.badge, entry.team)}`;
+
         if (!isDefined(previous)) {
-            return [`+ ${entry.name} ${entry.badge}`];
+            return [`+ ${entry.name} → ${team}`];
         }
 
-        return previous.badge === entry.badge ? [] : [`${entry.name}: ${previous.badge} → ${entry.badge}`];
+        return previous.badge === entry.badge ? [] : [`${entry.name} → ${team}`];
     });
 
     return [...moved, ...before.filter(entry => !kept.has(entry.personId)).map(entry => `− ${entry.name}`)];

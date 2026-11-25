@@ -12,7 +12,7 @@ import { fitLabel } from '../../utils/fit-label.util';
 import { labelWidth } from '../../utils/label-width.util';
 
 import { teamsData, type TeamsBase } from './teams-callback';
-import { teamsText, towardsTeam } from './teams-text';
+import { teamOf, teamsText, towardsTeam } from './teams-text';
 
 import type { MenuButton, MenuUser, Screen } from '../screen.interface';
 import type { EditorView } from './teams-view.interface';
@@ -32,7 +32,7 @@ const initialsOf = (name: string, letters: number): string => {
     return isDefined(guest) ? `${short} ${guest.number}` : short;
 };
 
-const buttonNames = (names: readonly string[]): Map<string, string> => {
+export const buttonNames = (names: readonly string[]): Map<string, string> => {
     const labels = new Map<string, string>();
 
     for (const name of names) {
@@ -54,10 +54,12 @@ export const stackRows = (rows: readonly (readonly MenuButton[])[]): MenuButton[
         )
     );
 
-const balanceBar = (balance: number): string => {
-    const filled = Math.round(balance * 5);
+const balanceKey = (balance: number) => {
+    if (balance >= 0.85) {
+        return 'balanceEven' as const;
+    }
 
-    return `${'▰'.repeat(filled)}${'▱'.repeat(5 - filled)}`;
+    return balance >= 0.5 ? ('balanceClose' as const) : ('balanceUneven' as const);
 };
 
 export const badgeAt = (view: Pick<EditorView, 'row'>, team: number): string =>
@@ -95,19 +97,39 @@ export const sendLabel = (locale: Locale, deliveries: readonly PlannedDelivery[]
     return teamsText(locale, isUpdate ? 'updateTo' : 'sendTo', { where: whereOf(locale, deliveries, 'to') });
 };
 
+export const queueLine = (locale: Locale, waiting: readonly string[]): string[] =>
+    isNotEmptyArray(waiting)
+        ? [teamsText(locale, 'queue', { names: escapeHtml(waiting.map((name, index) => `${index + 1}. ${name}`).join(', ')) })]
+        : [];
+
 export const statusLines = (user: MenuUser, view: EditorView): string[] => {
-    const sent = view.plan.deliveries.filter(delivery => delivery.stored === 'sent' && !view.receipts.includes(delivery.chatId));
-    const isQuiet = view.plan.deliveries.every(delivery => !isUnsure(delivery) && delivery.stored !== 'busy');
+    const after = view.after ?? { receipts: [], refused: [], isRefresh: false };
+    const isOld = (delivery: PlannedDelivery) => delivery.stored === 'sent' && delivery.isDue && !after.refused.includes(delivery.chatId);
+    const sent = view.plan.deliveries.filter(
+        delivery =>
+            delivery.stored === 'sent' &&
+            !isOld(delivery) &&
+            !after.receipts.includes(delivery.chatId) &&
+            !after.refused.includes(delivery.chatId)
+    );
+    const isQuiet = !after.isRefresh && view.plan.deliveries.every(delivery => !isUnsure(delivery) && delivery.stored !== 'busy');
     const where = (deliveries: readonly PlannedDelivery[]) => escapeHtml(whereOf(user.locale, deliveries, 'at'));
 
     return [
-        ...(isNotEmptyArray(view.waiting) ? [teamsText(user.locale, 'queue', { names: escapeHtml(view.waiting.join(', ')) })] : []),
+        ...queueLine(user.locale, view.waiting),
         ...view.plan.deliveries
             .filter(delivery => isUnsure(delivery))
             .map(delivery => teamsText(user.locale, 'uncertain', { where: where([delivery]) })),
         ...view.plan.deliveries
             .filter(delivery => delivery.stored === 'busy')
             .map(delivery => teamsText(user.locale, 'busy', { where: where([delivery]) })),
+        ...view.plan.deliveries
+            .filter(delivery => isOld(delivery))
+            .map(delivery =>
+                delivery.chatId > 0n
+                    ? teamsText(user.locale, 'oldAtMe')
+                    : teamsText(user.locale, 'oldInGroup', { title: escapeHtml(delivery.title ?? '') })
+            ),
         ...(isNotEmptyArray(sent) ? [teamsText(user.locale, 'sent', { where: where(sent) })] : []),
         ...(!view.plan.deliveries.some(delivery => delivery.stored === 'sent') && isQuiet ? [teamsText(user.locale, 'quiet')] : [])
     ];
@@ -207,15 +229,28 @@ const pageRow = (user: MenuUser, view: EditorView): MenuButton[][] => {
     ];
 };
 
+const teamOfAt = (locale: Locale, view: EditorView, team: number): string =>
+    teamOf(locale, badgeAt(view, team), teamAt(locale, view, team));
+
+const countsOf = (locale: Locale, view: EditorView, counts: readonly number[]): string =>
+    counts.map((count, team) => `${teamOfAt(locale, view, team)} ${count}`).join(', ');
+
 const keepersLine = (user: MenuUser, view: EditorView): string[] => {
     const { teams, keepers } = view.row.state;
     const counts = teams.map(members => members.filter(personId => keepers.includes(personId)).length);
     const total = counts.reduce((sum, count) => sum + count, 0);
     const isSpread = counts.every(count => count >= Math.floor(total / teams.length) && count <= Math.ceil(total / teams.length));
+    const only = counts.indexOf(total);
 
-    return isSpread
-        ? []
-        : [teamsText(user.locale, 'keepersUneven', { counts: counts.map((count, team) => `${badgeAt(view, team)} ${count}`).join(' · ') })];
+    if (isSpread) {
+        return [];
+    }
+
+    if (only !== -1) {
+        return [teamsText(user.locale, total === 2 ? 'keepersBoth' : 'keepersAll', { team: teamOfAt(user.locale, view, only) })];
+    }
+
+    return [teamsText(user.locale, 'keepersUneven', { counts: countsOf(user.locale, view, counts) })];
 };
 
 const textOf = (user: MenuUser, view: EditorView, isUneven: boolean): string => {
@@ -232,17 +267,20 @@ const textOf = (user: MenuUser, view: EditorView, isUneven: boolean): string => 
     return [
         teamsText(user.locale, 'editorTitle', { label: escapeHtml(formatSessionLabel(user.locale, view.inputs.game)) }),
         ...view.notes,
-        ...(isNotEmptyArray(view.row.state.pending)
+        prompt,
+        ...(isUneven
             ? [
-                  teamsText(user.locale, 'pending', {
-                      names: escapeHtml(view.row.state.pending.map(personId => nameOf(view, personId)).join(', '))
+                  teamsText(user.locale, 'uneven', {
+                      counts: countsOf(
+                          user.locale,
+                          view,
+                          view.row.state.teams.map(members => members.length)
+                      )
                   })
               ]
             : []),
-        prompt,
-        ...(isUneven ? [teamsText(user.locale, 'uneven')] : []),
         ...keepersLine(user, view),
-        ...(view.inputs.hasLevels ? [`⚖️ ${balanceBar(balanceOf(input, view.row.state.teams))}`] : []),
+        ...(view.inputs.hasLevels ? [teamsText(user.locale, balanceKey(balanceOf(input, view.row.state.teams)))] : []),
         ...statusLines(user, view)
     ].join('\n');
 };
@@ -261,6 +299,7 @@ export const editorScreen = (user: MenuUser, view: EditorView): Screen => {
     const actions = isDefined(view.selected)
         ? selectedRows(user, view, base)
         : [
+              ...(isNotEmptyArray(state.pending) ? [[button('place', 'b')]] : []),
               ...(isDefined(back)
                   ? [
                         [
@@ -274,7 +313,6 @@ export const editorScreen = (user: MenuUser, view: EditorView): Screen => {
                         ]
                     ]
                   : []),
-              ...(isNotEmptyArray(state.pending) ? [[button('place', 'b')]] : []),
               ...pageRow(user, view),
               [
                   ...(isNotEmptyArray(state.history) ? [button('undoLast', 'u')] : []),
@@ -290,6 +328,9 @@ export const editorScreen = (user: MenuUser, view: EditorView): Screen => {
             ...fitRows([
                 titleRow(user, view, base),
                 ...playerRows(view, base, labels),
+                ...(isNotEmptyArray(pending)
+                    ? [[{ text: teamsText(user.locale, 'pendingRow', { count: pending.length }), callback_data: teamsData(base, 'e') }]]
+                    : []),
                 ...Array.from({ length: Math.ceil(pending.length / pageSize) }, (_row, row) =>
                     pending.slice(row * pageSize, row * pageSize + pageSize)
                 )

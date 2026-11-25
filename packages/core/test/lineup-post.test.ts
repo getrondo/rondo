@@ -165,6 +165,7 @@ describe('the posted line-up', () => {
             { personId: 'd', name: 'D', badge: '🔴', team: 1 }
         ];
 
-        expect(lineupDiff(before, after)).toEqual(['A: 🔴 → 🔵', '+ D 🔴', '− C']);
+        expect(lineupDiff(before, after, 'uk')).toEqual(['A → 🔵 Сині', '+ D → 🔴 Червоні', '− C']);
+        expect(lineupDiff(before, after, 'ru')).toEqual(['A → 🔵 Синие', '+ D → 🔴 Красные', '− C']);
     });
 });

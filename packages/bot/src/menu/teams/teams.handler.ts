@@ -65,10 +65,16 @@ const viewScreen = Effect.fn('Bot.teamsViewScreen')(function* (user: MenuUser, v
             return joinersScreen(user, view, candidates);
         }
         case 'r': {
+            const { taken } = yield* waitingOf(view.row.sessionId);
+            const limit = view.inputs.game.capacityMax;
+            const isKeeper = view.inputs.members.some(member => member.personId === selected && member.isGk);
+            // The first in the queue is named only when this removal really frees a field seat
+            const isFreed = isDefined(limit) && !isKeeper && taken - 1 < limit;
+
             return removeScreen(user, view, {
                 personId: selected ?? '',
                 guests: view.inputs.members.filter(member => member.isGuest && member.hostId === selected).length,
-                waiting: view.waiting[0] ?? null,
+                waiting: isFreed ? (view.waiting[0] ?? null) : null,
                 hasStarted: user.now.getTime() >= view.inputs.game.startsAt.getTime()
             });
         }

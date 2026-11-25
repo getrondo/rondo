@@ -12,6 +12,7 @@ export interface EditorView {
     readonly selected: string | null;
     readonly page: number;
     readonly notes: readonly string[];
-    readonly receipts: readonly bigint[];
+    // What the last send left: receipts shown, edits refused, or a refresh instead of a send
+    readonly after: { readonly receipts: readonly bigint[]; readonly refused: readonly bigint[]; readonly isRefresh: boolean } | null;
     readonly offerLevels: boolean;
 }

@@ -127,7 +127,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const evened = yield* draftTeams(sessionId);
 
             expect(moved.teams.map(members => members.length)).toEqual([5, 7]);
-            expect(uneven.text).toContain('⚠️ Команди нерівні.');
+            expect(uneven.text).toMatch(/⚠️ \S+ \d+, \S+ \d+\./u);
             expect(twice.row.version).toBe(moved.row.version);
             expect(told.text).toContain('🔄 Составы изменил другой админ');
             expect(toasts.at(-1)).toBe('🔄 Составы изменил другой админ — вот новые.');
@@ -199,7 +199,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.press(titleData(admin.screen(), keeperTeams[0] ?? 0));
 
             expect(keeperTeams.toSorted((left, right) => left - right)).toEqual([0, 1]);
-            expect(admin.screen().text).toMatch(/⚠️ 🧤 Воротарі нерівно: \S+ 2 · \S+ 0/u);
+            expect(admin.screen().text).toMatch(/⚠️ Обидва воротарі в \S+\./u);
         })
     );
 });

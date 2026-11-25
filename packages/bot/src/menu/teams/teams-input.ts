@@ -23,7 +23,7 @@ import * as Schema from 'effect/Schema';
 import { failureText } from '../failure-text';
 
 import { teamsData, type TeamsTap } from './teams-callback';
-import { editorScreen, shortName } from './teams-editor.screen';
+import { editorScreen } from './teams-editor.screen';
 import { joinTyped } from './teams-join';
 import { teamsText } from './teams-text';
 import { actorOf, loadView, showTeams, TeamsDraftSchema } from './teams-view';
@@ -93,7 +93,7 @@ const questionScreen = (
             text: teamsText(user.locale, 'whoIs', { name: escapeHtml(member.name) }),
             keyboard: [
                 ...member.candidates.map((candidate, index) => [
-                    { text: shortName(candidate.label, 30), callback_data: teamsData(base, 'Q', [paste.revision, ambiguous, index]) }
+                    { text: candidate.label, callback_data: teamsData(base, 'Q', [paste.revision, ambiguous, index]) }
                 ]),
                 [{ text: teamsText(user.locale, 'skip'), callback_data: teamsData(base, 'Q', [paste.revision, ambiguous, 'n']) }]
             ]

@@ -35,6 +35,22 @@ const playedGame = Effect.fn('test.playedGame')(function* (slug: string, count: 
     return { communityId, sessionId, people };
 });
 
+// A squad imported from a chat: two teams, players alternating between them
+const importSquad = Effect.fn('test.importSquad')(function* (sessionId: string, players: readonly string[]) {
+    const db = yield* Db;
+    yield* db.insert(team).values([1, 2].map(ordinal => ({ sessionId, ordinal })));
+    yield* db.insert(lineupEntry).values(
+        players.map((personId, index) => ({
+            sessionId,
+            messageId: 1,
+            teamOrdinal: (index % 2) + 1,
+            position: index + 1,
+            personId,
+            resolvedBy: 'manual' as const
+        }))
+    );
+});
+
 layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it => {
     it.effect('opens one draft per game, applies a tap once, tells a double tap from another admin and undoes', () =>
         Effect.gen(function* () {
@@ -337,17 +353,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
             const loose = yield* syncMember(communityId, { id: 89_810n, firstName: 'Loose' }, 'active');
             const gone = yield* syncMember(communityId, { id: 89_811n, firstName: 'Gone' }, 'active');
             yield* db.insert(signup).values({ sessionId, personId: gone, status: 'out', role: 'field' });
-            yield* db.insert(team).values([1, 2].map(ordinal => ({ sessionId, ordinal })));
-            yield* db.insert(lineupEntry).values(
-                [...people, loose, gone].map((personId, index) => ({
-                    sessionId,
-                    messageId: 1,
-                    teamOrdinal: (index % 2) + 1,
-                    position: index + 1,
-                    personId,
-                    resolvedBy: 'manual' as const
-                }))
-            );
+            yield* importSquad(sessionId, [...people, loose, gone]);
             const { row } = yield* openDraft(communityId, sessionId, null);
             const placed = row.state.teams.flat();
 
@@ -365,17 +371,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
             yield* db
                 .insert(telegramPoll)
                 .values({ pollId: 'poll-unsigned', chatId: -1n, messageId: 1, sessionId, options: ['in', 'out'] });
-            yield* db.insert(team).values([1, 2].map(ordinal => ({ sessionId, ordinal })));
-            yield* db.insert(lineupEntry).values(
-                [...people, loose].map((personId, index) => ({
-                    sessionId,
-                    messageId: 1,
-                    teamOrdinal: (index % 2) + 1,
-                    position: index + 1,
-                    personId,
-                    resolvedBy: 'manual' as const
-                }))
-            );
+            yield* importSquad(sessionId, [...people, loose]);
             const { row } = yield* openDraft(communityId, sessionId, null);
 
             expect(row.state.teams.flat()).not.toContain(loose);
@@ -385,20 +381,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
 
     it.effect('lets a squad member without a sign-up bring a guest', () =>
         Effect.gen(function* () {
-            const db = yield* Db;
             const { communityId, sessionId, people } = yield* playedGame('draft-unsigned-host', 8, 89_970);
             const loose = yield* syncMember(communityId, { id: 89_980n, firstName: 'Loose' }, 'active');
-            yield* db.insert(team).values([1, 2].map(ordinal => ({ sessionId, ordinal })));
-            yield* db.insert(lineupEntry).values(
-                [...people, loose].map((personId, index) => ({
-                    sessionId,
-                    messageId: 1,
-                    teamOrdinal: (index % 2) + 1,
-                    position: index + 1,
-                    personId,
-                    resolvedBy: 'manual' as const
-                }))
-            );
+            yield* importSquad(sessionId, [...people, loose]);
             const added = yield* addGuests({ communityId, sessionId, actorPersonId: null }, { hostPersonId: loose, count: 1, name: null });
 
             expect(added).toHaveLength(1);

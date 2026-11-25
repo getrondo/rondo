@@ -13,9 +13,28 @@ import { actorOf, loadView, planOf, showTeams } from './teams-view';
 
 import type { MenuButton, MenuUser, Screen } from '../screen.interface';
 import type { EditorView } from './teams-view.interface';
-import type { DeliveryOutcome } from '@rondo/core/teams/interface/publish.interface';
+import type { DeliveryOutcome, PlannedDelivery } from '@rondo/core/teams/interface/publish.interface';
 
 const notFound = /message to edit not found/iu;
+// Second argument of a send tap: a ticket of an unknown delivery, or this mark for a new message instead of an edit
+const asNewMessage = 'n';
+
+const sendRows = (user: MenuUser, view: EditorView, due: readonly PlannedDelivery[]): MenuButton[][] => {
+    const base = { sessionId: view.row.sessionId, version: view.row.version, page: 0 };
+    const { fingerprint } = view.plan;
+
+    if (!isNotEmptyArray(due)) {
+        return [];
+    }
+
+    // After a refused edit the admin chooses: a new message, or the edit once more
+    return isNotEmptyArray(view.after?.refused ?? [])
+        ? [
+              [{ text: teamsText(user.locale, 'sendAsNew'), callback_data: teamsData(base, 'X', [fingerprint, asNewMessage]) }],
+              [{ text: teamsText(user.locale, 'editAgain'), callback_data: teamsData(base, 'X', [fingerprint]) }]
+          ]
+        : [[{ text: sendLabel(user.locale, due, view.plan.isUpdate), callback_data: teamsData(base, 'X', [fingerprint]) }]];
+};
 
 export const overviewScreen = Effect.fn('Bot.teamsOverview')(function* (user: MenuUser, view: EditorView) {
     const { plan, row } = view;
@@ -48,9 +67,7 @@ export const overviewScreen = Effect.fn('Bot.teamsOverview')(function* (user: Me
             ...statusLines(user, view)
         ].join('\n'),
         keyboard: [
-            ...(isNotEmptyArray(due)
-                ? [[{ text: sendLabel(user.locale, due, plan.isUpdate), callback_data: teamsData(base, 'X', [plan.fingerprint]) }]]
-                : []),
+            ...sendRows(user, view, due),
             ...retries,
             [{ text: teamsText(user.locale, 'editSquads'), callback_data: teamsData(base, 'e') }],
             [
@@ -103,12 +120,14 @@ const outcomeNote = (user: MenuUser, outcome: DeliveryOutcome): string | null =>
 
 export const publishAndShow = Effect.fn('Bot.publishAndShow')(function* (user: MenuUser, tap: TeamsTap, messageId: number) {
     const [fingerprint, ticket] = tap.args;
+    const isNew = ticket === asNewMessage;
     const published = yield* publishLineup({
         communityId: user.communityId,
         sessionId: tap.sessionId,
         version: tap.version,
         fingerprint: fingerprint ?? '',
-        retryToken: ticket ?? null,
+        retryToken: isNew ? null : (ticket ?? null),
+        asNewMessage: isNew,
         locale: yield* groupLocaleOf(user.communityId),
         actorPersonId: yield* actorOf(user),
         privateChatId: user.chatId,
@@ -131,7 +150,11 @@ export const publishAndShow = Effect.fn('Bot.publishAndShow')(function* (user: M
 
         return yield* showTeams(user, messageId, {
             sessionId: tap.sessionId,
-            screen: yield* overviewScreen(user, { ...fresh, notes: isDone && !changes ? [] : [note] })
+            screen: yield* overviewScreen(user, {
+                ...fresh,
+                notes: isDone && !changes ? [] : [note],
+                after: { receipts: [], refused: [], isRefresh: !isDone || changes }
+            })
         });
     }
 
@@ -139,7 +162,10 @@ export const publishAndShow = Effect.fn('Bot.publishAndShow')(function* (user: M
     const receipts = published.deliveries.flatMap(outcome =>
         outcome.status === 'sent' || outcome.status === 'edited' ? [outcome.chatId] : []
     );
-    const fresh = yield* loadView(user, tap.sessionId, { notes, receipts });
+    const refused = published.deliveries.flatMap(outcome =>
+        outcome.status === 'refused' && refusedKey(outcome) === 'refusedEdit' ? [outcome.chatId] : []
+    );
+    const fresh = yield* loadView(user, tap.sessionId, { notes, after: { receipts, refused, isRefresh: false } });
 
     return yield* showTeams(user, messageId, { sessionId: tap.sessionId, screen: yield* overviewScreen(user, fresh) });
 });
