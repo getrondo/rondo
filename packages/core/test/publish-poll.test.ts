@@ -11,6 +11,7 @@ import * as Predicate from 'effect/Predicate';
 
 import { describeAction } from '../src/actions/describe-action';
 import { decideAction, proposeAction } from '../src/actions/pending-action.service';
+import { noticeOf } from '../src/notify/notice-preview';
 import { createSession } from '../src/sessions/session.service';
 import { publishPoll } from '../src/signups/publish-poll';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
@@ -156,6 +157,33 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             expect(reasonIn(long.outcome)).toContain('300');
             expect(countOfCalls('sendPoll')).toBe(before);
             expect(yield* gamesOf(communityId)).toHaveLength(1);
+        })
+    );
+
+    it.effect('sends a card notice only to the previewed audience with the previewed text', () =>
+        Effect.gen(function* () {
+            const { communityId } = yield* seedCommunity(seedConfig('publish-notice-fc'));
+            const sessionId = yield* createSession(gameOf(communityId));
+            const context = {
+                communityId,
+                timezone: 'Europe/Vienna',
+                group: Option.some({ chatId: group.chatId, topicId: group.topicId }),
+                groupLocale: 'uk' as const,
+                actorPersonId: null
+            };
+            const change: Action = { _tag: 'update_session', sessionId, localTime: '11:30', notify: true };
+            const preview = yield* noticeOf(change, context);
+            const before = countOfCalls('sendMessage');
+            const elsewhere = yield* confirm(communityId, { ...change, preview: { ...preview, chats: ['-555'] } });
+            const reworded = yield* confirm(communityId, { ...change, preview: { ...preview, html: `${preview.html} ` } });
+            const refusedCount = countOfCalls('sendMessage') - before;
+            const exact = yield* confirm(communityId, { ...change, preview });
+
+            expect(reasonIn(elsewhere.outcome)).toContain('changed after the preview');
+            expect(reasonIn(reworded.outcome)).toContain('changed after the preview');
+            expect(refusedCount).toBe(0);
+            expect(exact.outcome._tag).toBe('done');
+            expect(recorder.calls.findLast(call => call.method === 'sendMessage')?.payload.text).toBe(preview.html);
         })
     );
 

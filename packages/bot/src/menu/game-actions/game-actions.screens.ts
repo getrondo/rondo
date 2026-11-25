@@ -1,12 +1,12 @@
-import { groupLocaleOf } from '@rondo/core/community/community.repository';
+import { isDefined } from '@rnw-community/shared';
 import { formatSessionLabel } from '@rondo/core/i18n/messages';
-import { sessionCancelledHtml, sessionChangedHtml } from '@rondo/core/notify/notifier';
+import { isNoticeAction, noticeOf } from '@rondo/core/notify/notice-preview';
 import { requireSession } from '@rondo/core/sessions/session.service';
 import { pollFor } from '@rondo/core/signups/poll-for';
-import { lineupHtml } from '@rondo/core/teams/team.service';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
 
+import { actionContextFor } from '../../context/action-context';
 import { buttonBudget } from '../../utils/button-budget.util';
 import { fitLabel } from '../../utils/fit-label.util';
 import { labelWidth } from '../../utils/label-width.util';
@@ -14,7 +14,7 @@ import { toShortId } from '../../utils/to-short-id.util';
 import { menuText, type MenuKey } from '../menu-text';
 import { pollHtml } from '../new-game/new-game.screen';
 
-import { afterChange, changeNotes } from './change-notes';
+import { changeNotes } from './change-notes';
 import { sessionOf } from './game-draft';
 import { targetOfAction, type GameTarget } from './game-target';
 
@@ -25,26 +25,17 @@ import type { SessionView } from '@rondo/core/sessions/session.model';
 const full = buttonBudget(1);
 
 const groupHtml = Effect.fn('Bot.groupHtml')(function* (user: MenuUser, game: SessionView, action: Action) {
-    const locale = yield* groupLocaleOf(user.communityId);
-
     if (action._tag === 'announce_session' || action._tag === 'forward_poll') {
         const poll = yield* pollFor(user.communityId, game, null);
 
         return pollHtml(poll);
     }
 
-    if (action._tag === 'cancel_session') {
-        return `<blockquote>${yield* sessionCancelledHtml({ target: game, reason: action.reason, locale })}</blockquote>`;
-    }
+    if (isNoticeAction(action)) {
+        const context = yield* actionContextFor(user.tgUserId)(user.communityId);
+        const notice = action.preview ?? (yield* noticeOf(action, context));
 
-    if (action._tag === 'publish_teams') {
-        return `<blockquote>${yield* lineupHtml(locale, game, action.teams)}</blockquote>`;
-    }
-
-    if (action._tag === 'update_session') {
-        const after = yield* afterChange(game, action);
-
-        return `<blockquote>${yield* sessionChangedHtml({ before: game, after, locale })}</blockquote>`;
+        return `<blockquote>${notice.html}</blockquote>`;
     }
 
     return '';
@@ -81,7 +72,12 @@ const okLabel = (user: MenuUser, action: Action, target: GameTarget, loud: boole
     return pick('sendTo', action._tag === 'publish_teams' ? 'sendMeShort' : 'sendMe', ['notifyNo', 'notifyNoMe']);
 };
 
-export const confirmScreen = Effect.fn('Bot.confirmScreen')(function* (user: MenuUser, action: Action, revision: number) {
+export const confirmScreen = Effect.fn('Bot.confirmScreen')(function* (
+    user: MenuUser,
+    action: Action,
+    revision: number,
+    notice: string | null
+) {
     const sessionId = sessionOf(action);
     const game = yield* requireSession(user.communityId, sessionId);
     const target = yield* targetOfAction(user, action, sessionId);
@@ -103,7 +99,7 @@ export const confirmScreen = Effect.fn('Bot.confirmScreen')(function* (user: Men
     const quiet = action._tag === 'update_session' || action._tag === 'cancel_session';
 
     return {
-        text: [sees, yield* groupHtml(user, game, action), ...notes, ...closing].join('\n'),
+        text: [...(isDefined(notice) ? [notice] : []), sees, yield* groupHtml(user, game, action), ...notes, ...closing].join('\n'),
         keyboard: [[ok(true)], ...(quiet ? [[ok(false)]] : []), nav]
     } satisfies Screen;
 });

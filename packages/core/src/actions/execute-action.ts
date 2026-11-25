@@ -8,13 +8,13 @@ import * as Predicate from 'effect/Predicate';
 import { grantAdmin, isAdminOf } from '../access/admin-access';
 import { linkedChatsOf } from '../community/community.repository';
 import { ActionFailedError } from '../error/action-failed.error';
+import { noticeTargetsOf, requirePreviewed } from '../notify/notice-preview';
 import { notifySessionCancelled, notifySessionChanged } from '../notify/notifier';
 import { linkAlias, requireAlias, unlinkAlias } from '../people/alias-links.service';
 import { arePeopleOf, createPerson, mergePeople, renamePerson } from '../people/people.service';
 import { deleteSession } from '../sessions/delete-session';
 import { todayIn } from '../sessions/local-time';
 import { cancelSession, createSession, findSameGame, requireSession, updateSession } from '../sessions/session.service';
-import { noticeTargets } from '../signups/audience';
 import { forwardPoll } from '../signups/forward-poll';
 import { publishPoll } from '../signups/publish-poll';
 import { closePollsOf } from '../signups/signup.service';
@@ -39,18 +39,12 @@ const requireGroup = (context: ActionContext) =>
         ? Effect.succeed(context.group.value)
         : Effect.fail(ActionFailedError.make({ reason: 'no group is linked to this community yet' }));
 
-const targetsOf = Effect.fn('Core.targetsOf')(function* (context: ActionContext, sessionId: string) {
-    const requester = isDefined(context.requester) ? [{ chatId: context.requester, topicId: null }] : [];
-
-    return yield* noticeTargets(sessionId, Option.isSome(context.group) ? [context.group.value] : requester);
-});
-
 const toAudience = Effect.fn('Core.toAudience')(function* <Value, Failure, Requirements>(
     context: ActionContext,
     sessionId: string,
     effect: (group: GroupTarget) => Effect.Effect<Value, Failure, Requirements>
 ) {
-    const targets = yield* targetsOf(context, sessionId);
+    const targets = yield* noticeTargetsOf(context, sessionId);
 
     for (const group of targets) {
         yield* effect(group);
@@ -120,6 +114,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
         }
         case 'update_session': {
             return yield* Effect.gen(function* () {
+                yield* requirePreviewed(action, context);
                 const before = yield* requireSession(communityId, action.sessionId);
                 yield* updateSession(before, action, context.timezone, actorPersonId);
                 const after = yield* requireSession(communityId, action.sessionId);
@@ -132,6 +127,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
         }
         case 'cancel_session': {
             return yield* Effect.gen(function* () {
+                yield* requirePreviewed(action, context);
                 const target = yield* requireSession(communityId, action.sessionId);
                 yield* cancelSession(target, action.reason, actorPersonId);
                 yield* closePollsOf(target.id);
@@ -146,8 +142,9 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
         }
         case 'publish_teams': {
             return yield* Effect.gen(function* () {
+                yield* requirePreviewed(action, context);
                 const target = yield* requireSession(communityId, action.sessionId);
-                const groups = yield* targetsOf(context, action.sessionId);
+                const groups = yield* noticeTargetsOf(context, action.sessionId);
 
                 if (!isNotEmptyArray(groups)) {
                     return yield* ActionFailedError.make({ reason: 'no group is linked to this community yet' });

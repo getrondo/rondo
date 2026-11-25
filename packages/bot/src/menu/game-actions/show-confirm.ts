@@ -1,9 +1,11 @@
 import { ActionSchema, type Action } from '@rondo/core/actions/action.model';
 import { moveAdminMessage } from '@rondo/core/menu/admin-state.repository';
+import { isNoticeAction, noticeOf } from '@rondo/core/notify/notice-preview';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 
+import { actionContextFor } from '../../context/action-context';
 import { showScreen } from '../show-screen';
 import { writeState } from '../write-state';
 
@@ -36,7 +38,24 @@ const placeScreen = Effect.fn('Bot.placeGameScreen')(function* (
     }
 });
 
-export const showConfirm = Effect.fn('Bot.showGameConfirm')(function* (user: MenuUser, action: Action, at: ScreenAt) {
+const withPreview = Effect.fn('Bot.withPreview')(function* (user: MenuUser, action: Action) {
+    if (!isNoticeAction(action)) {
+        return action;
+    }
+
+    const context = yield* actionContextFor(user.tgUserId)(user.communityId);
+    const preview = yield* noticeOf(action, context);
+
+    return { ...action, preview };
+});
+
+export const showConfirm = Effect.fn('Bot.showGameConfirm')(function* (
+    user: MenuUser,
+    proposed: Action,
+    at: ScreenAt,
+    notice: string | null = null
+) {
+    const action = yield* withPreview(user, proposed);
     const encoded = yield* encodeAction(action).pipe(Effect.orDie);
     const draft: GameDraft = { flow: 'game', view: 'confirm', page: 0, sessionId: sessionOf(action), action: encoded, summary: null };
     const saved = yield* saveGameDraft(user, draft, at);
@@ -45,7 +64,7 @@ export const showConfirm = Effect.fn('Bot.showGameConfirm')(function* (user: Men
         return;
     }
 
-    const screen = yield* confirmScreen(user, action, saved.value.revision);
+    const screen = yield* confirmScreen(user, action, saved.value.revision, notice);
     const shownId = yield* showScreen(user.chatId, at.messageId, screen);
     yield* placeScreen(user, { ...at, revision: saved.value.revision }, shownId);
 });

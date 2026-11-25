@@ -8,6 +8,8 @@ const CancelReason = Schema.Literals(['weather', 'low_turnout', 'venue', 'holida
 const TeamPlayer = Schema.Struct({ personId: Schema.String, displayName: Schema.String, strength: Schema.Finite, isGk: Schema.Boolean });
 const Team = Schema.Struct({ ordinal: Schema.Int, players: Schema.Array(TeamPlayer), strength: Schema.Finite });
 
+const NoticePreview = Schema.Struct({ html: Schema.String, chats: Schema.Array(Schema.String) });
+
 const CreateSessionAction = Schema.TaggedStruct('create_session', {
     localDate: LocalDate,
     localTime: LocalTime,
@@ -28,13 +30,15 @@ const UpdateSessionAction = Schema.TaggedStruct('update_session', {
     venueId: Schema.optional(Schema.NullOr(Schema.String)),
     capacityMax: Schema.optional(Schema.NullOr(Schema.Int)),
     fieldsPlanned: Schema.optional(Schema.NullOr(FieldCount)),
-    notify: Schema.Boolean
+    notify: Schema.Boolean,
+    preview: Schema.optional(NoticePreview)
 });
 
 const CancelSessionAction = Schema.TaggedStruct('cancel_session', {
     sessionId: Schema.String,
     reason: CancelReason,
-    notify: Schema.Boolean
+    notify: Schema.Boolean,
+    preview: Schema.optional(NoticePreview)
 });
 
 const AnnounceSessionAction = Schema.TaggedStruct('announce_session', {
@@ -48,7 +52,11 @@ const DeleteSessionAction = Schema.TaggedStruct('delete_session', { sessionId: S
 
 const ForwardPollAction = Schema.TaggedStruct('forward_poll', { sessionId: Schema.String, chatId: Schema.String });
 
-const PublishTeamsAction = Schema.TaggedStruct('publish_teams', { sessionId: Schema.String, teams: Schema.Array(Team) });
+const PublishTeamsAction = Schema.TaggedStruct('publish_teams', {
+    sessionId: Schema.String,
+    teams: Schema.Array(Team),
+    preview: Schema.optional(NoticePreview)
+});
 
 const MergePeopleAction = Schema.TaggedStruct('merge_people', { fromPersonId: Schema.String, intoPersonId: Schema.String });
 

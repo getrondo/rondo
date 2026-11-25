@@ -1,6 +1,7 @@
 import { isDefined } from '@rnw-community/shared';
 import { ActionSchema, type Action } from '@rondo/core/actions/action.model';
 import { consumeAdminState, loadAdminState } from '@rondo/core/menu/admin-state.repository';
+import { isNoticeAction } from '@rondo/core/notify/notice-preview';
 import { requireSession } from '@rondo/core/sessions/session.service';
 import { proposeTeams } from '@rondo/core/teams/team.service';
 import { requireVenue } from '@rondo/core/venues/venue.service';
@@ -103,6 +104,12 @@ const runGameAction = Effect.fn('Bot.runGameAction')(function* (
             { sessionId: sessionOf(action), created: false, self: isToMe(user, action), revision: tap.revision }
         );
         yield* afterDone(user, action, tap.messageId, target.where);
+
+        return Option.none<string>();
+    }
+
+    if (/changed after the preview/u.test(outcome.reason) && isNoticeAction(action)) {
+        yield* showConfirm(user, action, { messageId: tap.messageId, expected: tap.expected }, outcome.text);
 
         return Option.none<string>();
     }

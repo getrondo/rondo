@@ -143,8 +143,10 @@ without the bot still arrive as poll answers with public voters.
 | 130 | SEND SAFETY | Delete versus vote | Delete and a player vote at the same time (Postgres) | — | — | Never a deleted game with a counted vote | service | `never deletes a game whose player vote was counted at the same time` |
 | 131 | CREATE | Two admins post the same game | Both open /newgame, both ✅ | One poll | Second admin: «Гра вже є, друге опитування не надіслано» and the card with its poll | One game | update | `shows the game the other admin already posted instead of creating a second one` |
 | 132 | SEND SAFETY | Same game confirmed at once | Six confirmations of one game at the same moment (Postgres) | — | One done, the rest «already exists» | One game | service | `creates one game when two admins confirm the same game at once` |
-| 133 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 134 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 135 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 136 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 137 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 133 | SEND SAFETY | Card notice changed before ✅ | Card → 🕖 → 20:15, a player votes, then ✅ | Nothing, then exactly the previewed notice | «Дані змінилися…» and a fresh preview with the new name | Game moved after the second ✅ | update | `sends exactly the previewed notice and shows a fresh preview when it changed before ✅` |
+| 134 | SEND SAFETY | Card notice audience | update_session with a preview for other chats or other text | Nothing | — | Refused as changed | service | `sends a card notice only to the previewed audience with the previewed text` |
+| 135 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 136 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 137 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 138 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 139 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
