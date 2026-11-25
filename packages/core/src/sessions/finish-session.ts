@@ -7,6 +7,7 @@ import { and, eq, inArray, isNotNull, lt, ne } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { outAfterSquad } from '../teams/lineup-of-draft';
+import { isPublishing } from '../teams/publish-claim';
 
 import type { SessionStatus } from './session.model';
 
@@ -45,7 +46,7 @@ const finishSession = Effect.fn('Core.finishSession')(function* (sessionId: stri
         .where(and(eq(session.id, sessionId), isOver(startedBefore)))
         .for('update');
 
-    if (!isNotEmptyArray(locked)) {
+    if (!isNotEmptyArray(locked) || (yield* isPublishing(sessionId))) {
         return false;
     }
 

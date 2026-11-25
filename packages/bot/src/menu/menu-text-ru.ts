@@ -207,6 +207,7 @@ export const menuTextRu = {
     reasonTeamNotFound: 'Такой команды в этой игре нет.',
     reasonTeamsUnsaved: 'Составы отправлены, но могли не сохраниться. Проверь чат.',
     reasonVenueExists: 'Такое место уже есть или название пустое.',
+    reasonPublishBusy: 'Составы как раз отправляются. Попробуй через минуту.',
     uncertainPlain: '⚠️ Не знаю, дошло ли сообщение. Проверь чат, прежде чем пробовать ещё раз.',
     reasonChangedPlain: 'Данные изменились, ничего не отправлено. Попробуй ещё раз.',
     reasonRefusedPlain: 'Telegram не принял сообщение.'

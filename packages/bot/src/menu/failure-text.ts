@@ -50,6 +50,7 @@ const keys: Readonly<Record<ActionFailure['code'], MenuKey>> = {
     poll_unsaved_closed: 'reasonPollUnsavedClosed',
     poll_unsaved_open: 'reasonPollUnsavedOpen',
     preview_changed: 'reasonChanged',
+    publish_busy: 'reasonPublishBusy',
     records_conflict: 'reasonRecordsConflict',
     result_recorded: 'reasonResultRecorded',
     result_uncertain: 'uncertain',

@@ -2,22 +2,23 @@ import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { lineupDelivery, team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/db/service/with-community-lock';
-import { and, eq, gt, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, gt, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
+import * as Ref from 'effect/Ref';
 
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
-import { addMillis } from '../utils/add-millis.util';
 
 import { badgeOfColour, badgeOfRow } from './badges';
 import { deliverOne, isGameOpen, type Claim } from './deliver-lineup';
 import { syncRoster } from './draft-state';
 import { planLineup, type PlanInput } from './lineup-plan';
+import { claimPublish, ownPublish } from './publish-claim';
 import { loadDraft } from './team-draft.service';
 import { loadTeamInputs } from './team-inputs';
-import { clearResult, isRevertible } from './team-result';
+import { clearResult, isRevertible, resultMark } from './team-result';
 
 import type { PostTeam } from './interface/lineup-post.interface';
 import type { DeliveryOutcome, LineupPlan, PlannedDelivery, PublishOutcome } from './interface/publish.interface';
@@ -67,23 +68,6 @@ const storeSquad = Effect.fn('Core.storeSquad')(function* (communityId: string, 
             );
         }
     }
-
-    return publishedAt;
-});
-
-const busyMs = 60_000;
-
-const claimPublish = Effect.fn('Core.claimPublish')(function* (sessionId: string, now: Date) {
-    const db = yield* Db;
-    const [claimed] = yield* db
-        .update(teamDraft)
-        .set({ publishToken: sql`gen_random_uuid()`, publishAt: now })
-        .where(
-            and(eq(teamDraft.sessionId, sessionId), or(isNull(teamDraft.publishToken), lte(teamDraft.publishAt, addMillis(now, -busyMs))))
-        )
-        .returning({ token: teamDraft.publishToken });
-
-    return claimed?.token ?? null;
 });
 
 const claimDelivery = Effect.fn('Core.claimLineupDelivery')(function* (sessionId: string, delivery: PlannedDelivery, now: Date) {
@@ -167,7 +151,7 @@ const startPublish = Effect.fn('Core.startPublish')(function* (
         }
     }
 
-    return { plan, claims, token };
+    return { plan, claims, token, before: yield* resultMark(input.sessionId) };
 });
 
 const waitingOutcome = (delivery: PlannedDelivery): DeliveryOutcome => {
@@ -182,58 +166,93 @@ const waitingOutcome = (delivery: PlannedDelivery): DeliveryOutcome => {
     };
 };
 
-const finishPublish = Effect.fn('Core.finishPublish')(function* (
+interface Approval {
+    readonly plan: LineupPlan;
+    readonly token: string;
+    readonly before: string;
+}
+
+type ApprovalOutcome = 'stored' | 'taken' | 'closed' | 'changed';
+
+// Runs in the transaction of the first receipt, so a posted line-up and its squad are never one without the other
+const storeApproved = Effect.fn('Core.storeApprovedSquad')(function* (
     input: { readonly communityId: string; readonly sessionId: string; readonly actorPersonId: string | null },
-    published: { readonly plan: LineupPlan; readonly token: string; readonly delivered: readonly DeliveryOutcome[] }
+    { plan, token, before }: Approval
 ) {
     const db = yield* Db;
-    const released = yield* db
-        .update(teamDraft)
-        .set({ publishToken: null, publishAt: null })
-        .where(and(eq(teamDraft.sessionId, input.sessionId), eq(teamDraft.publishToken, published.token)))
-        .returning({ sessionId: teamDraft.sessionId });
-    const isStored = isNotEmptyArray(released) && published.delivered.some(entry => entry.status === 'sent' || entry.status === 'edited');
+    const now = yield* DateTime.nowAsDate;
+    const [own] = yield* db.select({ sessionId: teamDraft.sessionId }).from(teamDraft).where(ownPublish(input.sessionId, token));
 
-    if (!isStored) {
-        return;
+    if (!isDefined(own)) {
+        return 'taken' satisfies ApprovalOutcome;
     }
 
-    if (published.plan.clearsResult) {
+    if (!(yield* isGameOpen(input.sessionId))) {
+        return 'closed' satisfies ApprovalOutcome;
+    }
+
+    if ((yield* resultMark(input.sessionId)) !== before || (plan.clearsResult && !(yield* isRevertible(input.sessionId)).isRevertible)) {
+        return 'changed' satisfies ApprovalOutcome;
+    }
+
+    if (plan.clearsResult) {
         yield* clearResult(input.sessionId);
     }
 
-    const publishedAt = yield* storeSquad(input.communityId, input.sessionId, published.plan.teams);
-    yield* db.update(teamDraft).set({ publishedAt }).where(eq(teamDraft.sessionId, input.sessionId));
+    yield* storeSquad(input.communityId, input.sessionId, plan.teams);
+    yield* db.update(teamDraft).set({ publishedAt: now }).where(eq(teamDraft.sessionId, input.sessionId));
     yield* recordAudit({
         communityId: input.communityId,
         actorPersonId: input.actorPersonId,
         action: 'teams.publish',
         entityType: 'session',
         entityId: input.sessionId,
-        diff: { delivered: published.delivered.map(entry => entry.status) }
+        diff: { due: plan.deliveries.filter(entry => entry.isDue).length }
     });
+
+    return 'stored' satisfies ApprovalOutcome;
+});
+
+const releasePublish = Effect.fn('Core.releasePublish')(function* (sessionId: string, token: string) {
+    const db = yield* Db;
+    yield* db.update(teamDraft).set({ publishToken: null, publishAt: null }).where(ownPublish(sessionId, token));
+});
+
+const isPosted = (outcome: DeliveryOutcome): boolean => outcome.status === 'sent' || outcome.status === 'edited';
+
+const deliverAll = Effect.fn('Core.deliverLineups')(function* (
+    input: { readonly communityId: string; readonly sessionId: string; readonly actorPersonId: string | null },
+    approval: Approval,
+    claims: readonly Claim[]
+) {
+    const approved = yield* Ref.make<ApprovalOutcome | null>(null);
+    const approve = storeApproved(input, approval).pipe(Effect.flatMap(outcome => Ref.set(approved, outcome)));
+    const delivered: DeliveryOutcome[] = [];
+
+    for (const claim of claims) {
+        const outcome = yield* deliverOne({
+            ...input,
+            claim,
+            publishToken: approval.token,
+            onPosted: delivered.some(entry => isPosted(entry)) ? Effect.void : approve
+        });
+        delivered.push(outcome);
+    }
+
+    yield* releasePublish(input.sessionId, approval.token).pipe(
+        Effect.catchCause(cause => Effect.logError('[teams] claim not released', cause))
+    );
+
+    return delivered.some(entry => isPosted(entry)) && (yield* Ref.get(approved)) === 'changed'
+        ? yield* ActionFailedError.make({ failure: { code: 'teams_unsaved' } })
+        : delivered;
 });
 
 export const publishLineup = Effect.fn('Core.publishLineup')(function* (
     input: PlanInput & { readonly version: number; readonly fingerprint: string; readonly actorPersonId: string | null }
 ) {
-    const { plan, claims, token } = yield* withCommunityLock({ id: input.communityId }, startPublish(input));
-    const delivered: DeliveryOutcome[] = [];
-
-    for (const claim of isDefined(token) ? claims : []) {
-        const outcome = yield* deliverOne(input.communityId, input.sessionId, claim, token ?? '');
-        delivered.push(outcome);
-    }
-
-    if (isDefined(token)) {
-        yield* withCommunityLock({ id: input.communityId }, finishPublish(input, { plan, token, delivered })).pipe(
-            Effect.catchCause(cause =>
-                Effect.logError('[teams] sent but not saved', cause).pipe(
-                    Effect.andThen(ActionFailedError.make({ failure: { code: 'teams_unsaved' } }))
-                )
-            )
-        );
-    }
+    const { plan, claims, token, before } = yield* withCommunityLock({ id: input.communityId }, startPublish(input));
+    const delivered = isDefined(token) ? yield* deliverAll(input, { plan, token, before }, claims) : [];
 
     return {
         deliveries: plan.deliveries.map(

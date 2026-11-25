@@ -35,6 +35,7 @@ const ActionFailureSchema = Schema.Union([
             'poll_unsaved_closed',
             'poll_unsaved_open',
             'preview_changed',
+            'publish_busy',
             'records_conflict',
             'result_recorded',
             'result_uncertain',

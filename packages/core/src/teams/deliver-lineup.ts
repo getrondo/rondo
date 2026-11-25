@@ -11,6 +11,8 @@ import * as Effect from 'effect/Effect';
 import { failureOf, type ActionFailure } from '../error/action-failed.error';
 import { topicOptions } from '../utils/topic-options.util';
 
+import { ownPublish } from './publish-claim';
+
 import type { DeliveryOutcome, PlannedDelivery } from './interface/publish.interface';
 
 const notModified = /message is not modified/iu;
@@ -49,12 +51,19 @@ const sendOne = (delivery: PlannedDelivery) =>
         return { messageId: sent.message_id, status: 'sent' as const };
     });
 
-export const deliverOne = Effect.fn('Core.deliverLineup')(function* (
-    communityId: string,
-    sessionId: string,
-    claim: Claim,
-    publishToken: string
-) {
+export const deliverOne = Effect.fn('Core.deliverLineup')(function* <Failure, Requirements>({
+    communityId,
+    sessionId,
+    claim,
+    publishToken,
+    onPosted
+}: {
+    readonly communityId: string;
+    readonly sessionId: string;
+    readonly claim: Claim;
+    readonly publishToken: string;
+    readonly onPosted: Effect.Effect<void, Failure, Requirements>;
+}) {
     const db = yield* Db;
     const { delivery } = claim;
     const where = and(
@@ -74,7 +83,7 @@ export const deliverOne = Effect.fn('Core.deliverLineup')(function* (
         const [draft] = yield* db
             .update(teamDraft)
             .set({ publishAt: now })
-            .where(and(eq(teamDraft.sessionId, sessionId), eq(teamDraft.publishToken, publishToken)))
+            .where(ownPublish(sessionId, publishToken))
             .returning({ sessionId: teamDraft.sessionId });
         const [own] = isDefined(draft)
             ? yield* db.update(lineupDelivery).set({ updatedAt: now }).where(where).returning({ chatId: lineupDelivery.chatId })
@@ -129,7 +138,15 @@ export const deliverOne = Effect.fn('Core.deliverLineup')(function* (
         const { receipt, result } = yield* send;
         const saved = yield* withCommunityLock(
             { id: communityId },
-            db.update(lineupDelivery).set(receipt).where(where).returning({ chatId: lineupDelivery.chatId })
+            Effect.gen(function* () {
+                const rows = yield* db.update(lineupDelivery).set(receipt).where(where).returning({ chatId: lineupDelivery.chatId });
+
+                if (isNotEmptyArray(rows) && (result.status === 'sent' || result.status === 'edited')) {
+                    yield* onPosted;
+                }
+
+                return rows;
+            })
         );
 
         return isNotEmptyArray(saved) ? result : outcome('uncertain', null);

@@ -205,6 +205,7 @@ export const menuTextUk = {
     reasonTeamNotFound: 'Такої команди в цій грі немає.',
     reasonTeamsUnsaved: 'Склади надіслано, але вони могли не зберегтися. Перевір чат.',
     reasonVenueExists: 'Таке місце вже є або назва порожня.',
+    reasonPublishBusy: 'Склади саме надсилаються. Спробуй за хвилину.',
     uncertainPlain: '⚠️ Не знаю, чи дійшло повідомлення. Перевір чат, перш ніж пробувати ще раз.',
     reasonChangedPlain: 'Дані змінилися, нічого не надіслано. Спробуй ще раз.',
     reasonRefusedPlain: 'Telegram не прийняв повідомлення.'

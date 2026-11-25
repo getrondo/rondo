@@ -75,7 +75,12 @@ const audienceForTeams = Effect.fn('Core.audienceForTeams')(function* (
 
 const busyMs = 60_000;
 
-const isDueBy = (stored: PlannedDelivery['stored'], storedText: string | null, text: string, isRetry: boolean): boolean => {
+const isDueBy = (
+    stored: PlannedDelivery['stored'],
+    storedText: string | null,
+    text: string,
+    { isRetry, isUnsaved }: { readonly isRetry: boolean; readonly isUnsaved: boolean }
+): boolean => {
     if (stored === 'busy') {
         return false;
     }
@@ -84,7 +89,8 @@ const isDueBy = (stored: PlannedDelivery['stored'], storedText: string | null, t
         return isRetry;
     }
 
-    return stored !== 'sent' || storedText !== text;
+    // A posted line-up without its stored squad is posted again, so the squad is stored with it
+    return stored !== 'sent' || storedText !== text || isUnsaved;
 };
 
 const fingerprintOf = (deliveries: readonly PlannedDelivery[], clearsResult: boolean): string =>
@@ -131,12 +137,10 @@ export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInp
         const isPrivate = target.chatId > 0n;
         // A post in another topic of the same chat is a new message, never an edit or a receipt of the old one
         const isSameTopic = (found?.topicId ?? null) === target.topicId;
-        const isDue = isDueBy(
-            status,
-            isSameTopic ? (found?.text ?? null) : null,
-            clean,
-            isDefined(found) && isNotEmptyString(input.retryToken) && found.token.startsWith(input.retryToken)
-        );
+        const isDue = isDueBy(status, isSameTopic ? (found?.text ?? null) : null, clean, {
+            isRetry: isDefined(found) && isNotEmptyString(input.retryToken) && found.token.startsWith(input.retryToken),
+            isUnsaved: isSquadChanged
+        });
 
         return {
             chatId: target.chatId,

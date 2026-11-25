@@ -12,6 +12,7 @@ import { requireSession } from '../sessions/session.service';
 import { markedNoShows } from '../signups/roster.service';
 
 import { outAfterSquad, squadFingerprint, squadOf } from './lineup-of-draft';
+import { isPublishing } from './publish-claim';
 import { rateResult } from './rate-result';
 import { ratingsOf } from './team-inputs';
 
@@ -50,6 +51,19 @@ export const isRevertible = Effect.fn('Core.isRevertible')(function* (sessionId:
         : [];
 
     return { events, isRevertible: !isNotEmptyArray(later) };
+});
+
+// Changes whenever a result is recorded, corrected or cleared
+export const resultMark = Effect.fn('Core.resultMark')(function* (sessionId: string) {
+    const db = yield* Db;
+    const ranks = yield* db.select({ rank: team.rank }).from(team).where(eq(team.sessionId, sessionId)).orderBy(asc(team.ordinal));
+    const events = yield* db
+        .select({ id: ratingEvent.id })
+        .from(ratingEvent)
+        .where(eq(ratingEvent.sessionId, sessionId))
+        .orderBy(asc(ratingEvent.id));
+
+    return JSON.stringify([ranks.filter(row => isDefined(row.rank)), events]);
 });
 
 const revertResult = Effect.fn('Core.revertResult')(function* (sessionId: string, isSameEvening: boolean) {
@@ -99,6 +113,10 @@ export const recordResult = Effect.fn('Core.recordResult')(
 
                 if (target.status === 'cancelled' || target.status === 'moved') {
                     return yield* ActionFailedError.make({ failure: { code: 'game_over' } });
+                }
+
+                if (yield* isPublishing(input.sessionId)) {
+                    return yield* ActionFailedError.make({ failure: { code: 'publish_busy' } });
                 }
 
                 if (isDefined(input.squad) && input.squad !== (yield* squadFingerprint(input.sessionId))) {
