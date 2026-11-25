@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, index, jsonb, pgSchema, primaryKey, smallint, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigint, boolean, index, jsonb, pgSchema, primaryKey, smallint, text, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import { createdAt, id, instant, ref, tstzrange, updatedAt, requiredRef } from './columns';
 import { localeEnum, person } from './identity.schema';
@@ -7,7 +7,7 @@ import { localeEnum, person } from './identity.schema';
 export const org = pgSchema('org');
 
 export const chatKindEnum = org.enum('chat_kind', ['group', 'supergroup', 'channel', 'private']);
-export const chatPurposeEnum = org.enum('chat_purpose', ['main', 'activity', 'squad', 'staff']);
+export const chatPurposeEnum = org.enum('chat_purpose', ['main', 'activity', 'squad', 'staff', 'other']);
 export const membershipStatusEnum = org.enum('membership_status', ['active', 'left', 'removed']);
 export const roleEnum = org.enum('role', ['owner', 'organizer', 'helper', 'scorekeeper', 'manager']);
 export const scopeTypeEnum = org.enum('scope_type', ['community', 'activity', 'squad', 'session']);
@@ -32,6 +32,8 @@ export const community = org.table('community', {
     currency: text('currency').notNull().default('EUR'),
     defaultLocale: localeEnum('default_locale').notNull().default('uk'),
     settings: jsonb('settings').notNull().default({}),
+    approverPersonId: ref('approver_person_id').references(() => person.id, { onDelete: 'set null' }),
+    liveSince: instant('live_since'),
     createdAt: createdAt(),
     updatedAt: updatedAt()
 });
@@ -60,6 +62,8 @@ export const telegramChat = org.table(
         title: text('title').notNull(),
         topicId: bigint('topic_id', { mode: 'number' }),
         botRights: jsonb('bot_rights').notNull().default({}),
+        isPosting: boolean('is_posting').notNull().default(false),
+        isMentioning: boolean('is_mentioning').notNull().default(false),
         createdAt: createdAt()
     },
     t => [index('telegram_chat_community_idx').on(t.communityId)]

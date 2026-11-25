@@ -18,6 +18,8 @@ export const actorKindEnum = audit.enum('actor_kind', ['user', 'bot', 'system'])
 export const assistantRoleEnum = comms.enum('assistant_role', ['user', 'assistant']);
 export const pendingActionStatusEnum = comms.enum('pending_action_status', ['proposed', 'confirmed', 'rejected', 'expired', 'failed']);
 
+export const noticeStatusEnum = comms.enum('notice_status', ['claimed', 'sent', 'refused', 'uncertain']);
+
 export const messageRef = comms.table(
     'message_ref',
     {
@@ -114,6 +116,7 @@ export const pendingAction = comms.table(
         id: id(),
         communityId: requiredRef('community_id', () => community.id),
         requestedByTgUserId: bigint('requested_by_tg_user_id', { mode: 'bigint' }).notNull(),
+        approverTgUserId: bigint('approver_tg_user_id', { mode: 'bigint' }),
         kind: text('kind').notNull(),
         payload: jsonb('payload').notNull(),
         summary: text('summary').notNull(),
@@ -124,6 +127,18 @@ export const pendingAction = comms.table(
         decidedAt: instant('decided_at')
     },
     t => [index('pending_action_status_idx').on(t.status, t.expiresAt)]
+);
+
+export const noticeDelivery = comms.table(
+    'notice_delivery',
+    {
+        actionId: requiredRef('action_id', () => pendingAction.id),
+        chatId: bigint('chat_id', { mode: 'bigint' }).notNull(),
+        status: noticeStatusEnum('status').notNull().default('claimed'),
+        messageId: bigint('message_id', { mode: 'number' }),
+        updatedAt: instant('updated_at').notNull().defaultNow()
+    },
+    t => [primaryKey({ columns: [t.actionId, t.chatId] })]
 );
 
 export const adminState = comms.table('admin_state', {
