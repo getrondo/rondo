@@ -1,7 +1,8 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { person } from '@rondo/db/schema/identity.schema';
 import { homeColour, rating } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
@@ -157,10 +158,23 @@ export const setHomeColour = Effect.fn('Core.setHomeColour')(function* (input: {
     const activityId = yield* footballActivity(input.communityId);
 
     if (isDefined(colour)) {
-        yield* db
-            .insert(homeColour)
-            .values({ personId, activityId, colour })
-            .onConflictDoUpdate({ target: [homeColour.personId, homeColour.activityId], set: { colour } });
+        yield* db.transaction(() =>
+            Effect.gen(function* () {
+                // An erasure running at the same time waits or is seen: an erased person gets no colour
+                const active = yield* db
+                    .select({ id: person.id })
+                    .from(person)
+                    .where(and(eq(person.id, personId), isNull(person.anonymizedAt)))
+                    .for('share');
+
+                if (isNotEmptyArray(active)) {
+                    yield* db
+                        .insert(homeColour)
+                        .values({ personId, activityId, colour })
+                        .onConflictDoUpdate({ target: [homeColour.personId, homeColour.activityId], set: { colour } });
+                }
+            })
+        );
     } else {
         yield* db.delete(homeColour).where(and(eq(homeColour.personId, personId), eq(homeColour.activityId, activityId)));
     }

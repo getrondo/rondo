@@ -300,6 +300,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('erasing a person', it => {
             yield* setHomeColour({ communityId, personId, colour: 'red', actorPersonId: null });
             yield* setHomeColour({ communityId, personId: neighbourId, colour: 'green', actorPersonId: null });
             yield* erasePerson({ communityId, personId });
+            yield* setHomeColour({ communityId, personId, colour: 'blue', actorPersonId: null });
             const colours = yield* db
                 .select({ personId: homeColour.personId })
                 .from(homeColour)
