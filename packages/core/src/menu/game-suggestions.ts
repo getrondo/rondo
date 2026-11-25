@@ -82,6 +82,15 @@ export const placeSizes = (games: readonly PastGame[], venueId: string | null): 
         game => game.capacityMax
     );
 
+export const sizeOfPlace = (games: readonly PastGame[], venueId: string | null): GameSize => {
+    const atPlace = heldGames(games).filter(game => game.venueId === venueId);
+
+    return {
+        fields: mostUsed(atPlace, game => game.fieldsPlanned)[0] ?? null,
+        places: mostUsed(atPlace, game => game.capacityMax)[0] ?? null
+    };
+};
+
 export const sizeAt = (games: readonly PastGame[], venueId: string | null, localDate: string): GameSize => {
     const held = heldGames(games);
     const scopes = [held.filter(game => game.venueId === venueId), onWeekdayOf(held, localDate), held];

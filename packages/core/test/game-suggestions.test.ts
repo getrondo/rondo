@@ -1,6 +1,15 @@
 import { describe, expect, it } from '@effect/vitest';
 
-import { dayChoices, placeSizes, predictGames, rankTimes, rankVenues, sizeAt, timeChoices } from '../src/menu/game-suggestions';
+import {
+    dayChoices,
+    placeSizes,
+    predictGames,
+    rankTimes,
+    rankVenues,
+    sizeAt,
+    sizeOfPlace,
+    timeChoices
+} from '../src/menu/game-suggestions';
 
 import type { PastGame, PlannedGame } from '../src/menu/past-game.interface';
 
@@ -107,5 +116,7 @@ describe('game predictions', () => {
     it('lists the most used sizes of the place', () => {
         expect(placeSizes(history, 'arena')).toEqual([22, 24, 20]);
         expect(placeSizes([], 'arena')).toEqual([]);
+        expect(sizeOfPlace(history, 'park')).toEqual({ fields: 1, places: 18 });
+        expect(sizeOfPlace(history, 'zoo')).toEqual({ fields: null, places: null });
     });
 });

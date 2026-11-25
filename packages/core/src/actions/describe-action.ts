@@ -42,7 +42,7 @@ const noVenue = {
     venueMapUrl: null
 };
 
-const displayOfVenue = Effect.fn('Core.displayOfVenue')(function* (venueId: string | null | undefined) {
+export const displayOfVenue = Effect.fn('Core.displayOfVenue')(function* (venueId: string | null | undefined) {
     const db = yield* Db;
 
     if (!isDefined(venueId)) {

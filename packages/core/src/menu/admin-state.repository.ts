@@ -39,11 +39,11 @@ export const loadAdminState = Effect.fn('Core.loadAdminState')(function* (tgUser
     return Option.fromNullishOr(row).pipe(Option.map((found): AdminStateRow => found));
 });
 
-export const takeAwaiting = Effect.fn('Core.takeAwaiting')(function* (tgUserId: bigint, now: Date) {
+export const takeAwaiting = Effect.fn('Core.takeAwaiting')(function* (tgUserId: bigint, revision: number, now: Date) {
     const db = yield* Db;
     const live = yield* loadAdminState(tgUserId, now);
 
-    if (Option.isNone(live) || !isDefined(live.value.awaiting)) {
+    if (Option.isNone(live) || !isDefined(live.value.awaiting) || live.value.revision !== revision) {
         return Option.none<AdminStateRow>();
     }
 
@@ -73,6 +73,12 @@ export const restoreAdminState = Effect.fn('Core.restoreAdminState')(function* (
         .insert(adminState)
         .values({ ...row, awaiting: null, revision: row.revision + 1, expiresAt: addMillis(now, lifetimeMs) })
         .onConflictDoNothing();
+});
+
+export const moveAdminMessage = Effect.fn('Core.moveAdminMessage')(function* (tgUserId: bigint, messageId: number) {
+    const db = yield* Db;
+
+    yield* db.update(adminState).set({ messageId }).where(eq(adminState.tgUserId, tgUserId));
 });
 
 export const clearAdminState = Effect.fn('Core.clearAdminState')(function* (tgUserId: bigint) {

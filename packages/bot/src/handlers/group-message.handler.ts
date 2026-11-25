@@ -12,6 +12,7 @@ import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
+import { noFollowUp, type FollowUp } from '../context/follow-up';
 import { proposeToAdmin } from '../context/propose-to-admin';
 import { toTelegramUser } from '../context/telegram-user.mapper';
 import { topicOf } from '../context/topic-of';
@@ -20,8 +21,6 @@ import { syncGroupUsers } from './chat-member.handler';
 import { proposeUnknownPlace } from './unknown-place.handler';
 
 import type { Message } from 'grammy/types';
-
-export const noFollowUp = Option.none<ReturnType<typeof proposeUnknownPlace>>();
 
 const linkCommand = /^\/link(?:@\w+)?\s+(\S+)/u;
 
@@ -133,5 +132,9 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
         yield* Effect.logInfo('[group] extracted', result);
     }
 
-    return Option.fromNullishOr(result.unknownPlace).pipe(Option.map(place => proposeUnknownPlace(communityId, user, place)));
+    const followUp: FollowUp = Option.fromNullishOr(result.unknownPlace).pipe(
+        Option.map(place => proposeUnknownPlace(communityId, user, place))
+    );
+
+    return followUp;
 });

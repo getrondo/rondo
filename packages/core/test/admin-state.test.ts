@@ -29,7 +29,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('admin state', it => {
                 draft: { step: 'size' },
                 now
             });
-            const [first, second] = yield* Effect.all([takeAwaiting(1n, now), takeAwaiting(1n, now)], { concurrency: 2 });
+            const [first, second] = yield* Effect.all([takeAwaiting(1n, saved.revision, now), takeAwaiting(1n, saved.revision, now)], {
+                concurrency: 2
+            });
             const loaded = yield* loadAdminState(1n, now);
 
             expect(saved.revision).toBe(2);
@@ -43,7 +45,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('admin state', it => {
         Effect.gen(function* () {
             const { communityId } = yield* seedCommunity(seedConfig('state-two-fc'));
             const saved = yield* saveAdminState({ tgUserId: 2n, communityId, messageId: 1, awaiting: 'note', draft: {}, now });
-            const expired = yield* takeAwaiting(2n, later);
+            const expired = yield* takeAwaiting(2n, saved.revision, later);
             const stale = yield* consumeAdminState(2n, saved.revision + 1, now);
             const [won, lost] = yield* Effect.all(
                 [consumeAdminState(2n, saved.revision, now), consumeAdminState(2n, saved.revision, now)],

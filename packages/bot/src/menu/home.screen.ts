@@ -1,0 +1,55 @@
+import { isDefined } from '@rnw-community/shared';
+import { communityProfile } from '@rondo/core/community/community.repository';
+import { formatSessionLabel } from '@rondo/core/i18n/messages';
+import { listSessions } from '@rondo/core/sessions/session.service';
+import { rosterOf } from '@rondo/core/signups/signup.service';
+import { addDays } from '@rondo/core/utils/add-days.util';
+import { escapeHtml } from '@rondo/telegram/format/html';
+import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
+
+import { toShortId } from '../utils/to-short-id.util';
+
+import { menuText } from './menu-text';
+
+import type { MenuUser, Screen } from './screen.interface';
+import type { SessionView } from '@rondo/core/sessions/session.model';
+
+const openStatuses = new Set(['open', 'full', 'locked', 'draft']);
+
+export const upcomingGames = Effect.fn('Bot.upcomingGames')(function* (user: MenuUser) {
+    const games = yield* listSessions(user.communityId, { from: user.today, to: addDays(user.today, 60) });
+
+    return games.filter(game => openStatuses.has(game.status));
+});
+
+export const signedUpLine = Effect.fn('Bot.signedUpLine')(function* (user: MenuUser, game: SessionView) {
+    const roster = yield* rosterOf(game.id);
+    const count = roster.filter(entry => entry.status === 'in' && entry.role === 'field').length;
+
+    return isDefined(game.capacityMax)
+        ? menuText(user.locale, 'signedUpOf', { count, max: game.capacityMax })
+        : menuText(user.locale, 'signedUp', { count });
+});
+
+export const homeScreen = Effect.fn('Bot.homeScreen')(function* (user: MenuUser) {
+    const profile = yield* communityProfile(user.communityId);
+    const [next] = yield* upcomingGames(user);
+    const name = Option.match(profile, { onNone: () => '', onSome: value => value.name });
+    const nextLine = isDefined(next)
+        ? `${menuText(user.locale, 'nextGame')}: <b>${escapeHtml(formatSessionLabel(user.locale, next))}</b>, ${yield* signedUpLine(user, next)}`
+        : menuText(user.locale, 'noGames');
+
+    return {
+        text: [menuText(user.locale, 'home', { name: escapeHtml(name) }), '', nextLine].join('\n'),
+        keyboard: [
+            [
+                { text: menuText(user.locale, 'newGame'), callback_data: 'm:ng' },
+                { text: menuText(user.locale, 'games'), callback_data: 'm:gl' }
+            ],
+            ...(isDefined(next)
+                ? [[{ text: `⚽ ${formatSessionLabel(user.locale, next)}`, callback_data: `m:g:${toShortId(next.id)}` }]]
+                : [])
+        ]
+    } satisfies Screen;
+});
