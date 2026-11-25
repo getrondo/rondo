@@ -1,6 +1,5 @@
-import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { isDefined } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
-import { telegramChat } from '@rondo/db/schema/org.schema';
 import { pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -17,7 +16,7 @@ import { writeToChat, type Approval } from '../telegram/write-to-chat';
 import { isSettledPoll } from '../utils/is-settled-poll.util';
 
 import { closureApproval } from './closure-approval';
-import { pollChatsOf } from './poll-chats';
+import { pollChatsOf, titlesOfChats } from './poll-chats';
 
 type PollChoice = 'in' | 'gk' | 'out';
 
@@ -285,11 +284,7 @@ export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId:
     }
 
     const chatIds = kept.includes(true) ? yield* pollChatsOf(sessionId) : [];
-    const rows = isNotEmptyArray(chatIds)
-        ? yield* db.select({ title: telegramChat.title }).from(telegramChat).where(inArray(telegramChat.chatId, chatIds))
-        : [];
-
-    return rows.map(({ title }) => `«${title}»`).join(', ');
+    return yield* titlesOfChats(chatIds.map(chatId => `${chatId}`));
 });
 
 export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function* () {

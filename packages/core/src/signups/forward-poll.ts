@@ -108,7 +108,7 @@ export const forwardPoll = Effect.fn('Core.forwardPoll')(function* (
         yield* claimForward(poll.pollId, target, resend);
     }
 
-    const content = { _tag: 'forward', fromChatId: poll.chatId, messageId: poll.messageId } as const;
+    const content = { _tag: 'forward', fromChatId: poll.chatId, messageId: poll.messageId, sessionId } as const;
     const { messageId } = yield* writeToChat({ target, approval, content }).pipe(
         Effect.catch(error =>
             Effect.gen(function* () {
@@ -131,5 +131,5 @@ export const forwardPoll = Effect.fn('Core.forwardPoll')(function* (
         Effect.catch(error => Effect.logInfo('[poll] forward not pinned', error))
     );
 
-    return { sessionId, messageId };
+    return { sessionId, messageId, pollId: poll.pollId };
 });

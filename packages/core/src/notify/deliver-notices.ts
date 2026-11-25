@@ -1,10 +1,8 @@
-import { isEmptyArray, isNotEmptyArray } from '@rnw-community/shared';
-import { telegramChat } from '@rondo/db/schema/org.schema';
-import { Db } from '@rondo/db/service/db.service';
-import { inArray } from 'drizzle-orm';
+import { isEmptyArray, isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
 import * as Effect from 'effect/Effect';
 
 import { ActionFailedError } from '../error/action-failed.error';
+import { titlesOfChats } from '../signups/poll-chats';
 
 import { postHtml } from './notifier';
 
@@ -22,15 +20,9 @@ interface Notice {
 const privately = '👤';
 
 const titlesOf = Effect.fn('Core.titlesOf')(function* (chatIds: readonly bigint[]) {
-    const db = yield* Db;
-    const rows = isNotEmptyArray(chatIds)
-        ? yield* db
-              .select({ title: telegramChat.title })
-              .from(telegramChat)
-              .where(inArray(telegramChat.chatId, [...chatIds]))
-        : [];
+    const groups = yield* titlesOfChats(chatIds.filter(chatId => chatId < 0n).map(chatId => `${chatId}`));
 
-    return [...rows.map(({ title }) => `«${title}»`), ...(chatIds.some(chatId => chatId > 0n) ? [privately] : [])].join(', ');
+    return [groups, chatIds.some(chatId => chatId > 0n) ? privately : ''].filter(part => isNotEmptyString(part)).join(', ');
 });
 
 // Every destination is tried once, and one that fails does not stop the others

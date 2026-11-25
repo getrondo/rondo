@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Predicate from 'effect/Predicate';
@@ -7,6 +7,7 @@ import { displayOfVenue } from '../actions/describe-action';
 import { ActionFailedError } from '../error/action-failed.error';
 import { requireSession } from '../sessions/session.service';
 import { noticeTargets } from '../signups/audience';
+import { closureOf } from '../signups/poll-chats';
 
 import { sessionCancelledHtml, sessionChangedHtml } from './notifier';
 
@@ -69,23 +70,22 @@ export const noticeOf = Effect.fn('Core.noticeOf')(function* (action: NoticeActi
 });
 
 export const withNotice = Effect.fn('Core.withNotice')(function* (action: Action, context: NoticeContext) {
-    return isNoticeAction(action) && action.notify ? { ...action, preview: yield* noticeOf(action, context) } : action;
+    const isClosing = action._tag === 'cancel_session' || action._tag === 'delete_session';
+    const closing = isClosing ? { ...action, closes: yield* closureOf(action.sessionId) } : action;
+
+    return isNoticeAction(closing) && closing.notify ? { ...closing, preview: yield* noticeOf(closing, context) } : closing;
 });
 
+// What was shown for the groups: the text, its targets, and the poll copies that close
+const shownOf = (action: Action): string => {
+    const closes = 'closes' in action && isNotEmptyArray([...(action.closes?.chatIds ?? [])]) ? action.closes : null;
+
+    return JSON.stringify([isNoticeAction(action) && action.notify ? action.preview : null, closes]);
+};
+
+export const isStillShown = (action: Action, context: NoticeContext) =>
+    withNotice(action, context).pipe(Effect.map(fresh => shownOf(fresh) === shownOf(action)));
+
 export const requirePreviewed = Effect.fn('Core.requirePreviewed')(function* (action: NoticeAction, context: NoticeContext) {
-    if (!action.notify) {
-        return action;
-    }
-
-    if (!isDefined(action.preview)) {
-        return yield* ActionFailedError.make({ failure: { code: 'preview_changed' } });
-    }
-
-    const current = yield* noticeOf(action, context);
-
-    if (current.html !== action.preview.html || JSON.stringify(current.targets) !== JSON.stringify(action.preview.targets)) {
-        return yield* ActionFailedError.make({ failure: { code: 'preview_changed' } });
-    }
-
-    return action;
+    return (yield* isStillShown(action, context)) ? action : yield* ActionFailedError.make({ failure: { code: 'preview_changed' } });
 });

@@ -105,7 +105,7 @@ const foreignChats = Effect.fn('Core.foreignChats')(function* (communityId: stri
     return chats.filter(({ chatId }) => taken.has(chatId));
 });
 
-const refused = (code: 'chat_not_linked' | 'person_not_found') => ActionFailedError.make({ failure: { code } });
+const refused = (code: 'chat_not_linked' | 'not_admin' | 'person_not_found') => ActionFailedError.make({ failure: { code } });
 
 const storeGroups = Effect.fn('Core.storeGroups')(function* ({ slug, approverTgUserId, chats }: typeof GroupsFileSchema.Type) {
     const db = yield* Db;
@@ -115,6 +115,10 @@ const storeGroups = Effect.fn('Core.storeGroups')(function* ({ slug, approverTgU
 
     if (!isDefined(home) || !isDefined(personId) || !(yield* arePeopleOf(home.id, [personId]))) {
         return yield* refused('person_not_found');
+    }
+
+    if (!(yield* adminCommunityIds(approver)).includes(home.id)) {
+        return yield* refused('not_admin');
     }
 
     const foreign = yield* foreignChats(home.id, chats);

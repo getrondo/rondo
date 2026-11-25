@@ -4,7 +4,7 @@ import { describeAction } from '@rondo/core/actions/describe-action';
 import { postingChatsOf } from '@rondo/core/community/community.repository';
 import { ActionFailedError, failureOf } from '@rondo/core/error/action-failed.error';
 import { moveAdminMessage } from '@rondo/core/menu/admin-state.repository';
-import { isNoticeAction, noticeOf } from '@rondo/core/notify/notice-preview';
+import { withNotice } from '@rondo/core/notify/notice-preview';
 import { openPollOf } from '@rondo/core/signups/poll-chats';
 import { writeToChat } from '@rondo/core/telegram/write-to-chat';
 import * as Effect from 'effect/Effect';
@@ -82,14 +82,9 @@ const withPreview = Effect.fn('Bot.withPreview')(function* (user: MenuUser, acti
         return yield* withDestination(user, action);
     }
 
-    if (!isNoticeAction(action)) {
-        return action;
-    }
-
     const context = yield* actionContextFor(user.communityId, user.tgUserId);
-    const preview = yield* noticeOf(action, context);
 
-    return { ...action, preview };
+    return yield* withNotice(action, context);
 });
 
 // The poll itself is the preview of a forward: the text of the game may have changed since it was sent
@@ -97,9 +92,9 @@ export const showPoll = Effect.fn('Bot.showPoll')(function* (tgUserId: bigint, a
     const poll = action._tag === 'forward_poll' ? yield* openPollOf(action.sessionId) : Option.none();
 
     if (Option.isSome(poll)) {
-        const { chatId: fromChatId, messageId } = poll.value;
+        const { chatId: fromChatId, messageId, sessionId } = poll.value;
         const target = { chatId: tgUserId, topicId: null };
-        yield* writeToChat({ target, approval: null, content: { _tag: 'forward', fromChatId, messageId } }).pipe(
+        yield* writeToChat({ target, approval: null, content: { _tag: 'forward', fromChatId, messageId, sessionId } }).pipe(
             Effect.catchTag('TelegramApiError', error => ActionFailedError.make({ failure: failureOf(error) }))
         );
     }

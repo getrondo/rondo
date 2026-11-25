@@ -1,5 +1,6 @@
 import * as NodeRuntime from '@effect/platform-node/NodeRuntime';
 import * as NodeServices from '@effect/platform-node/NodeServices';
+import { Access } from '@rondo/core/access/admin-access';
 import { GroupsFileSchema, loadGroups } from '@rondo/core/community/group-settings';
 import { Db } from '@rondo/db/service/db.service';
 import * as Config from 'effect/Config';
@@ -17,4 +18,4 @@ const program = Effect.gen(function* () {
     yield* Effect.logInfo('Groups loaded', loaded);
 });
 
-NodeRuntime.runMain(program.pipe(Effect.provide([NodeServices.layer, Db.layer])));
+NodeRuntime.runMain(program.pipe(Effect.provide([NodeServices.layer, Db.layer, Access.layer])));

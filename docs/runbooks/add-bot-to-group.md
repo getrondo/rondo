@@ -6,7 +6,7 @@ Nothing is posted in a group until the organizer (the approver) allowed that gro
 
 1. Decide about backups again and take a dump, see [deploy-bot](deploy-bot.md#back-up-and-restore).
 2. Register the webhook again, because `my_chat_member` is a new update (the command is in [deploy-bot](deploy-bot.md#deploy)).
-3. The organizer must be an admin and must have opened the bot once. Otherwise nothing is posted and the owner is told.
+3. The organizer must be an admin (the load refuses anyone else) and must have opened the bot once. Otherwise nothing is posted and the owner is told.
 4. Write the private file outside the repository, readable by its owner only (`chmod 600`):
 
    ```json

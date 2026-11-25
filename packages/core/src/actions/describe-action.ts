@@ -11,11 +11,12 @@ import * as Predicate from 'effect/Predicate';
 import { ActionFailedError } from '../error/action-failed.error';
 import { cancelReasonText, countOf, formatSessionLabel } from '../i18n/messages';
 import { getSession, requireSession } from '../sessions/session.service';
+import { titlesOfChats } from '../signups/poll-chats';
 import { pollFor, previewOf } from '../signups/poll-for';
 import { plainText } from '../utils/plain-text.util';
 
 import type { Locale } from '../i18n/locale';
-import type { Action } from './action.model';
+import type { Action, Closes } from './action.model';
 
 const nameOfPerson = Effect.fn('Core.nameOfPerson')(function* (personId: string) {
     const db = yield* Db;
@@ -203,6 +204,9 @@ const describeCreate = Effect.fn('Core.describeCreate')(function* (
     return `${summary} ${word.announce}${yield* placeOfPoll(action, locale)}:\n\n${previewOf(poll)}`;
 });
 
+const closedIn = (closes: Closes | undefined) =>
+    titlesOfChats(closes?.chatIds ?? []).pipe(Effect.map(titles => (isNotEmptyString(titles) ? `: ${titles}` : '')));
+
 const noticeText = (action: Extract<Action, { _tag: 'update_session' | 'cancel_session' }>, word: string): string => {
     const shown = isDefined(action.preview) ? `:\n\n${plainText(action.preview.html)}` : '';
 
@@ -238,7 +242,7 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
             return `${word.update}: ${yield* sessionLabel(locale, action.sessionId)} → ${changes}${noticeText(action, word.notify)}`;
         }
         case 'cancel_session': {
-            return `${word.cancel}: ${yield* sessionLabel(locale, action.sessionId)} — ${cancelReasonText(locale, action.reason)}. ${word.closes}${noticeText(action, word.notify)}`;
+            return `${word.cancel}: ${yield* sessionLabel(locale, action.sessionId)} — ${cancelReasonText(locale, action.reason)}. ${word.closes}${yield* closedIn(action.closes)}${noticeText(action, word.notify)}`;
         }
         case 'announce_session': {
             const target = yield* requireSession(communityId, action.sessionId);
@@ -247,7 +251,7 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
             return `${word.publishPoll}${yield* placeOfPoll(action, locale)}: ${formatSessionLabel(locale, target)}\n\n${previewOf(poll)}`;
         }
         case 'delete_session': {
-            return `${word.remove}: ${yield* sessionLabel(locale, action.sessionId)}. ${word.closes}`;
+            return `${word.remove}: ${yield* sessionLabel(locale, action.sessionId)}. ${word.closes}${yield* closedIn(action.closes)}`;
         }
         case 'forward_poll': {
             return `${word.forward}${yield* placeOfPoll({ chatId: action.chatId }, locale)}: ${yield* sessionLabel(locale, action.sessionId)}`;

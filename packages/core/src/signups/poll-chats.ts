@@ -1,8 +1,12 @@
+import { isNotEmptyArray } from '@rnw-community/shared';
+import { telegramChat } from '@rondo/db/schema/org.schema';
 import { messageRef, pollForward, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
+
+import type { Closes } from '../actions/action.model';
 
 // Groups the poll of a game is in: the original, recorded copies and forwards that may have arrived
 export const pollChatsOf = Effect.fn('Core.pollChatsOf')(function* (sessionId: string) {
@@ -29,4 +33,26 @@ export const openPollOf = Effect.fn('Core.openPollOf')(function* (sessionId: str
         .where(and(eq(telegramPoll.sessionId, sessionId), isNull(telegramPoll.closedAt)));
 
     return Option.fromNullishOr(poll);
+});
+
+export const closureOf = Effect.fn('Core.closureOf')(function* (sessionId: string) {
+    const poll = yield* openPollOf(sessionId);
+    const chatIds = Option.isSome(poll) ? yield* pollChatsOf(sessionId) : [];
+
+    return {
+        pollIds: Option.toArray(poll).map(({ pollId }) => pollId),
+        chatIds: chatIds.map(chatId => `${chatId}`).toSorted()
+    } satisfies Closes;
+});
+
+export const titlesOfChats = Effect.fn('Core.titlesOfChats')(function* (chatIds: readonly string[]) {
+    const db = yield* Db;
+    const rows = isNotEmptyArray(chatIds)
+        ? yield* db
+              .select({ title: telegramChat.title })
+              .from(telegramChat)
+              .where(sql`${telegramChat.chatId}::text = any(${sql.param([...chatIds])}::text[])`)
+        : [];
+
+    return [...rows.map(({ title }) => `«${title}»`), ...(rows.length < chatIds.length ? ['❓'] : [])].join(', ');
 });

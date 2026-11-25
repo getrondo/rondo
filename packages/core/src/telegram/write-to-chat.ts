@@ -1,28 +1,34 @@
-import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { isDefined, isEmptyArray } from '@rnw-community/shared';
 import { telegramChat } from '@rondo/db/schema/org.schema';
 import { telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { Telegram, type CallOptions } from '@rondo/telegram/service/telegram.service';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 import * as Predicate from 'effect/Predicate';
 
 import { isApproverOf } from '../community/group-settings';
 import { ActionFailedError } from '../error/action-failed.error';
+import { getSession } from '../sessions/session.service';
 import { pollChatsOf } from '../signups/poll-chats';
 import { topicOptions } from '../utils/topic-options.util';
 
+import type { Closes } from '../actions/action.model';
 import type { GroupTarget } from '../interface/group-target.interface';
 import type { PollText } from '../interface/poll.interface';
 
 // Who allowed a write to a group: the approver with a ✅, or a switch of the group
-export type Approval = { readonly _tag: 'approver'; readonly tgUserId: bigint } | { readonly _tag: 'mention' };
+export type Approval =
+    | { readonly _tag: 'approver'; readonly tgUserId: bigint; readonly expiresAt?: Date; readonly closes?: Closes | undefined }
+    | { readonly _tag: 'mention' };
 
 type ChatContent =
     | { readonly _tag: 'text'; readonly html: string; readonly hasLinkPreview: boolean }
     | { readonly _tag: 'edit'; readonly messageId: number; readonly html: string }
-    | { readonly _tag: 'poll'; readonly poll: PollText }
-    | { readonly _tag: 'forward'; readonly fromChatId: bigint; readonly messageId: number }
+    | { readonly _tag: 'poll'; readonly poll: PollText; readonly sessionId: string }
+    | { readonly _tag: 'forward'; readonly fromChatId: bigint; readonly messageId: number; readonly sessionId: string }
     | { readonly _tag: 'pin'; readonly messageId: number }
     | { readonly _tag: 'stop_poll'; readonly messageId: number };
 
@@ -33,7 +39,7 @@ interface ChatWrite {
     readonly options?: Pick<CallOptions, 'maxWaitSeconds'>;
 }
 
-const refused = (code: 'group_off' | 'not_approved' | 'preview_changed') => ActionFailedError.make({ failure: { code } });
+const refused = (code: 'group_off' | 'not_approved' | 'preview_changed' | 'time_passed') => ActionFailedError.make({ failure: { code } });
 
 const isAllowed = (chat: typeof telegramChat.$inferSelect, approval: Approval, content: ChatContent) => {
     switch (approval._tag) {
@@ -49,16 +55,15 @@ const isAllowed = (chat: typeof telegramChat.$inferSelect, approval: Approval, c
     }
 };
 
-// Closing a poll closes its forwarded copies too, so it writes to every linked group that has one
-const copyChats = Effect.fn('Core.copyChats')(function* (chatId: bigint, messageId: number) {
+// Closing a poll closes its forwarded copies too, so it writes to every group that has one
+const closureOfMessage = Effect.fn('Core.closureOfMessage')(function* (chatId: bigint, messageId: number) {
     const db = yield* Db;
     const [poll] = yield* db
         .select({ pollId: telegramPoll.pollId, sessionId: telegramPoll.sessionId })
         .from(telegramPoll)
         .where(and(eq(telegramPoll.chatId, chatId), eq(telegramPoll.messageId, messageId)));
-    const chatIds = isDefined(poll) ? yield* pollChatsOf(poll.sessionId) : [];
 
-    return isNotEmptyArray(chatIds) ? yield* db.select().from(telegramChat).where(inArray(telegramChat.chatId, chatIds)) : [];
+    return isDefined(poll) ? { pollId: poll.pollId, chatIds: yield* pollChatsOf(poll.sessionId) } : null;
 });
 
 const requireChat = Effect.fn('Core.requireGroupPass')(function* (
@@ -78,16 +83,34 @@ const requireChat = Effect.fn('Core.requireGroupPass')(function* (
 
 const requirePass = Effect.fn('Core.requirePass')(function* (write: ChatWrite) {
     const db = yield* Db;
-    const { target, content } = write;
+    const { target, approval, content } = write;
+    const now = yield* DateTime.nowAsDate;
+    const terms = approval?._tag === 'approver' ? approval : null;
+    const closure = content._tag === 'stop_poll' ? yield* closureOfMessage(target.chatId, content.messageId) : null;
+    const chatIds = [target.chatId, ...(closure?.chatIds ?? [])].filter(chatId => chatId <= 0n);
 
-    if (target.chatId <= 0n) {
-        const [chat] = yield* db.select().from(telegramChat).where(eq(telegramChat.chatId, target.chatId));
+    for (const chatId of chatIds) {
+        const [chat] = yield* db.select().from(telegramChat).where(eq(telegramChat.chatId, chatId));
         yield* requireChat(chat, write);
+        const isShown =
+            !isDefined(closure) || (terms?.closes?.pollIds.includes(closure.pollId) && terms.closes.chatIds.includes(`${chatId}`));
+
+        if (isShown !== true) {
+            return yield* refused('preview_changed');
+        }
     }
 
-    for (const copy of content._tag === 'stop_poll' ? yield* copyChats(target.chatId, content.messageId) : []) {
-        yield* requireChat(copy, write);
+    if (isEmptyArray(chatIds)) {
+        return now;
     }
+
+    if (isDefined(terms?.expiresAt) && terms.expiresAt < now) {
+        return yield* refused('not_approved');
+    }
+
+    const game = 'sessionId' in content ? yield* getSession(content.sessionId) : Option.none();
+
+    return Option.exists(game, ({ startsAt }) => startsAt <= now) ? yield* refused('time_passed') : now;
 });
 
 const sent = (messageId: number, pollId = '', voters: number | null = null) => ({ messageId, pollId, voters });

@@ -297,6 +297,39 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         })
     );
 
+    it.effect('shows the approver a notice as it is now when its mentions changed, and sends only that one', () =>
+        Effect.gen(function* () {
+            const { approver, helper } = yield* twoAdmins('say-fresh', 4441, -44_041);
+            yield* approver.type('/newgame');
+            yield* approver.tap('✅ Надіслати');
+            yield* helper.type('/games');
+            yield* helper.tap('Пт 27.11 19:00');
+            yield* helper.tap('🕖 Время');
+            yield* helper.tap('19:30');
+            yield* helper.tap('✅ Изменить и написать в «Games»');
+            const old = approver.screen();
+            yield* deliver({
+                poll_answer: {
+                    poll_id: lastPollId(recorder, -44_041),
+                    user: { id: 44_411, is_bot: false, first_name: 'Newcomer' },
+                    option_ids: [0],
+                    option_persistent_ids: []
+                }
+            });
+            yield* approver.tapOn(old, '✅ Надіслати в «Games»');
+            const early = sentTo(-44_041).filter(call => call.method === 'sendMessage');
+            const fresh = approver.seen().at(-1) ?? old;
+            yield* approver.tapOn(fresh, '✅ Надіслати в «Games»');
+            const posted = sentTo(-44_041).filter(call => call.method === 'sendMessage');
+
+            expect(early).toEqual([]);
+            expect(approver.seen().find(message => message.id === old.id)?.text).toContain('🔄 Дані змінилися, нічого не надіслано.');
+            expect(fresh.text).toContain('Newcomer');
+            expect(posted.map(call => String(call.payload.text).includes('Newcomer'))).toEqual([true]);
+            expect(helper.screen().text).toContain('✅ Подтверждено и отправлено.');
+        })
+    );
+
     it.effect('fits the request into one message', () =>
         Effect.gen(function* () {
             const { helper, approver, communityId } = yield* twoAdmins('say-long', 4431, -44_031);

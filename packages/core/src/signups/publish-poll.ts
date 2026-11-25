@@ -29,6 +29,7 @@ interface PublishPollInput<PrepareFailure, PrepareRequirements, SettleFailure, S
     readonly settle: (result: {
         readonly sessionId: string;
         readonly messageId: number;
+        readonly pollId: string;
     }) => Effect.Effect<void, SettleFailure, SettleRequirements>;
 }
 
@@ -74,7 +75,7 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
         const { messageId, pollId } = yield* writeToChat({
             target,
             approval,
-            content: { _tag: 'poll', poll },
+            content: { _tag: 'poll', poll, sessionId },
             options: maxWaitInTransaction
         });
         yield* Ref.set(sentMessage, messageId);
@@ -83,7 +84,7 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
             .insert(messageRef)
             .values({ chatId, messageId, purpose: 'poll', entityType: 'session', entityId: sessionId })
             .onConflictDoNothing();
-        yield* input.settle({ sessionId, messageId });
+        yield* input.settle({ sessionId, messageId, pollId });
         yield* Ref.set(isWritten, true);
 
         return { sessionId, messageId };

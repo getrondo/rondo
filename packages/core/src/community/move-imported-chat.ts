@@ -21,8 +21,8 @@ export const moveImportedChat = Effect.fn('Core.moveImportedChat')(function* (fr
 
     yield* db
         .update(pendingAction)
-        .set({ payload: sql`jsonb_set(${pendingAction.payload}, '{chatId}', to_jsonb(${String(to)}::text))` })
-        .where(sql`${pendingAction.payload} ->> 'chatId' = ${String(from)}`);
+        .set({ payload: sql`replace(${pendingAction.payload}::text, ${`"${from}"`}, ${`"${to}"`})::jsonb` })
+        .where(sql`position(${`"${from}"`} in ${pendingAction.payload}::text) > 0`);
 
     for (const path of ['{ingest,otherChats}', '{groups,chats}']) {
         yield* db

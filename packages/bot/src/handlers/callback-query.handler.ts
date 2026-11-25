@@ -132,7 +132,9 @@ export const handleCallbackQuery = Effect.fn('Bot.handleCallbackQuery')(function
     });
     const { message } = query;
     const asked = outcome._tag === 'awaiting' ? yield* askApprover(outcome.request, locale) : '';
-    const shown = outcome._tag === 'awaiting' ? `${outcome.request.summary}\n\n${plainText(asked)}` : outcomeText(locale, outcome);
+    const isRefreshed = outcome._tag === 'awaiting' && outcome.request.approver.tgUserId === tgUserId;
+    const waiting = isRefreshed ? menuText(locale, 'requestRefreshed') : plainText(asked);
+    const shown = outcome._tag === 'awaiting' ? `${outcome.request.summary}\n\n${waiting}` : outcomeText(locale, outcome);
     yield* noteOutcome(outcome, { decidedBy: tgUserId, isEdited });
 
     // A second tap leaves the message to the first one

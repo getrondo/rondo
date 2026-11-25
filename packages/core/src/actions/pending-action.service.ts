@@ -12,10 +12,12 @@ import * as Schema from 'effect/Schema';
 
 import { approverOf, isApproverOf } from '../community/group-settings';
 import { failureOf, type ActionFailure } from '../error/action-failed.error';
+import { isStillShown, withNotice } from '../notify/notice-preview';
 import { findSameGame } from '../sessions/session.service';
 import { addMillis } from '../utils/add-millis.util';
 
 import { ActionSchema, type Action } from './action.model';
+import { describeAction } from './describe-action';
 import { kickoffOf, runAdminAction, type ActionContext } from './execute-action';
 import { groupsTouched } from './groups-touched';
 
@@ -184,6 +186,46 @@ const isRequestOver = Effect.fn('Core.isRequestOver')(function* (
     );
 });
 
+// What the approver saw is out of date: they get it as it is now, with a ✅ of its own
+const refresh = Effect.fn('Core.refreshRequest')(function* (
+    proposed: typeof pendingAction.$inferSelect,
+    action: Action,
+    { context, now }: { readonly context: ActionContext; readonly now: Date }
+) {
+    const approver = yield* approverOf(proposed.communityId);
+    const isSame = yield* isStillShown(action, context).pipe(Effect.orElseSucceed(() => true));
+
+    if (
+        !isDefined(proposed.approverTgUserId) ||
+        isSame ||
+        Option.isNone(approver) ||
+        (yield* isRequestOver(proposed, action, { context, now }))
+    ) {
+        return null;
+    }
+
+    const db = yield* Db;
+    const { id, requestedByTgUserId: requestedBy } = proposed;
+    const replaced = yield* db
+        .update(pendingAction)
+        .set({ status: 'expired', result: { told: true } })
+        .where(and(eq(pendingAction.id, id), eq(pendingAction.status, 'proposed')))
+        .returning({ id: pendingAction.id });
+
+    if (!isNotEmptyArray(replaced)) {
+        return { _tag: 'missing' } as const;
+    }
+
+    const fresh = yield* withNotice(action, context);
+    const summary = yield* describeAction(fresh, approver.value.locale, proposed.communityId);
+    const actionId = yield* proposeAction({ communityId: proposed.communityId, tgUserId: requestedBy, action: fresh, summary, now });
+    const { approverTgUserId, expiresAt } = proposed;
+    yield* db.update(pendingAction).set({ approverTgUserId, expiresAt }).where(eq(pendingAction.id, actionId));
+    const groups = (yield* groupsTouched(fresh, context)).map(({ title }) => title);
+
+    return { _tag: 'awaiting', request: { actionId, action: fresh, summary, requestedBy, groups, approver: approver.value } } as const;
+});
+
 export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
     readonly actionId: string;
     readonly tgUserId: bigint;
@@ -199,7 +241,8 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
 
     if (input.confirm && isDefined(proposed) && proposed.expiresAt >= now && Option.isSome(action)) {
         const context = yield* input.context(proposed.communityId, proposed.requestedByTgUserId);
-        const passed = yield* passOn(proposed, action.value, { context, now });
+        const passed =
+            (yield* passOn(proposed, action.value, { context, now })) ?? (yield* refresh(proposed, action.value, { context, now }));
 
         if (isDefined(passed)) {
             return passed;
@@ -242,7 +285,7 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
 
     const exit = yield* Effect.exit(
         runAdminAction(requestedBy, action.value, context, {
-            approval: { _tag: 'approver', tgUserId: input.tgUserId },
+            approval: { _tag: 'approver', tgUserId: input.tgUserId, expiresAt: claimed.expiresAt },
             summary: claimed.summary,
             settle: result => db.update(pendingAction).set({ result }).where(eq(pendingAction.id, claimed.id))
         })
@@ -298,7 +341,7 @@ export const removeActionTexts = Effect.fn('Core.removeActionTexts')(function* (
     const kept = sql`(
         select coalesce(jsonb_object_agg(key, value), '{}'::jsonb)
         from jsonb_each(${pendingAction.payload})
-        where key in ('_tag', 'chatId', 'topicId', 'sessionId')
+        where key in ('_tag', 'chatId', 'topicId', 'sessionId', 'closes')
     )`;
 
     yield* db

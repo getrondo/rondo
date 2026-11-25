@@ -130,7 +130,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
                 yield* requirePreviewed(action, context);
                 const target = yield* requireSession(communityId, action.sessionId);
                 yield* cancelSession(target, action.reason, actorPersonId);
-                const kept = yield* closePollsOf(target.id, approval);
+                const kept = yield* closePollsOf(target.id, { ...approval, closes: action.closes });
                 yield* notify(action);
 
                 return {
@@ -157,7 +157,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
                 sessionId: action.sessionId,
                 today: todayIn(context.timezone, now),
                 actorPersonId,
-                approval
+                approval: { ...approval, closes: action.closes }
             }).pipe(Effect.as({ sessionId: action.sessionId }), asResult);
         }
         case 'forward_poll': {
@@ -169,7 +169,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
                     approval
                 });
 
-                return { sessionId: action.sessionId, messageId: forwarded.messageId };
+                return forwarded;
             }).pipe(asResult);
         }
         case 'merge_people': {

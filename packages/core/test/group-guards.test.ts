@@ -1,7 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { telegramAccount } from '@rondo/db/schema/identity.schema';
 import { community, telegramChat } from '@rondo/db/schema/org.schema';
-import { messageRef, pendingAction, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { refusal } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -16,61 +16,16 @@ import { moveChat } from '../src/community/community.repository';
 import { isApproverOf, knownChatsOf, loadGroups } from '../src/community/group-settings';
 import { syncMember } from '../src/identity/telegram-user';
 import { mergePeople } from '../src/people/people.service';
-import { createSession } from '../src/sessions/session.service';
 import { closeFinishedPolls } from '../src/signups/signup.service';
 import { writeToChat } from '../src/telegram/write-to-chat';
-import { confirmAsOwner, decideAs, proposeAs } from '../src/testing/confirm-action';
+import { confirmAsOwner, proposeAs } from '../src/testing/confirm-action';
 import { linkGroup, ownerApproval } from '../src/testing/link-group';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
+import { actionRow, decide, helped, sentTo, untilSent } from './support/helped-group';
+
 import type { Action } from '../src/actions/action.model';
-
-const sentTo = (chatId: number, method: string) =>
-    recorder.calls.filter(call => call.payload.chat_id === chatId && call.method === method).length;
-
-const decide = (actionId: string, tgUserId: bigint, now = new Date('2026-12-01T10:00:00Z')) => decideAs(actionId, tgUserId, now);
-
-const helped = Effect.fn('test.helped')(function* (slug: string, chatId: number, helper: number) {
-    const { communityId } = yield* seedCommunity(seedConfig(slug));
-    yield* linkGroup(communityId, { chatId });
-    const personId = yield* syncMember(communityId, { id: BigInt(helper), firstName: 'Helper' }, 'active');
-    yield* grantAdmin({ communityId, personId, grantedBy: null });
-    const sessionId = yield* createSession({
-        communityId,
-        timezone: 'Europe/Vienna',
-        localDate: '2026-12-04',
-        localTime: '19:00',
-        venueId: null,
-        capacityMax: 10,
-        title: null,
-        actorPersonId: null
-    });
-
-    return {
-        communityId,
-        sessionId,
-        ask: (action: Action) =>
-            Effect.gen(function* () {
-                const db = yield* Db;
-                const actionId = yield* proposeAs(communityId, BigInt(helper), action);
-                // The time of the test is not the time of the database
-                yield* db
-                    .update(pendingAction)
-                    .set({ createdAt: new Date('2026-12-01T09:59:00Z'), expiresAt: new Date('2026-12-01T10:30:00Z') })
-                    .where(eq(pendingAction.id, actionId));
-
-                return actionId;
-            })
-    };
-});
-
-const actionRow = Effect.fn('test.actionRow')(function* (actionId: string) {
-    const db = yield* Db;
-    const [row] = yield* db.select().from(pendingAction).where(eq(pendingAction.id, actionId));
-
-    return row;
-});
 
 layer(recordedTelegramDbLayer, { timeout: 60_000 })('the approver', it => {
     it.effect('is one account, not its person, and nobody else may merge that person', () =>
@@ -120,8 +75,10 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the approver', it => {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('guard-load'));
             const { communityId: foreignId } = yield* seedCommunity(seedConfig('guard-load-other'));
-            yield* syncMember(communityId, { id: 9021n, firstName: 'Approver' }, 'active');
-            yield* syncMember(foreignId, { id: 9022n, firstName: 'Other' }, 'active');
+            const own = yield* syncMember(communityId, { id: 9021n, firstName: 'Approver' }, 'active');
+            const other = yield* syncMember(foreignId, { id: 9022n, firstName: 'Other' }, 'active');
+            yield* grantAdmin({ communityId, personId: own, grantedBy: null });
+            yield* grantAdmin({ communityId: foreignId, personId: other, grantedBy: null });
             const chat = (chatId: number) => ({ chatId, title: 'G', purpose: 'main' as const, weekdays: [] });
             const unknown = yield* loadGroups({ slug: 'guard-load', approverTgUserId: 777_777, chats: [chat(-9021)] }).pipe(Effect.flip);
             const outsider = yield* loadGroups({ slug: 'guard-load', approverTgUserId: 9022, chats: [chat(-9021)] }).pipe(Effect.flip);
@@ -285,14 +242,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('a group write in progress',
                 content: { _tag: 'text', html: 'x', hasLinkPreview: false }
             }).pipe(Effect.flip);
             const switchOff = Effect.gen(function* () {
-                while (sentTo(-9051, 'sendMessage') === 0) {
-                    yield* Effect.promise(
-                        async () =>
-                            await new Promise<void>(resolve => {
-                                setImmediate(resolve);
-                            })
-                    );
-                }
+                yield* untilSent(-9051, 'sendMessage');
                 recorder.failures.delete('sendMessage');
                 yield* linkGroup(communityId, { chatId: -9051, isPosting: false });
                 yield* TestClock.adjust('3 seconds');

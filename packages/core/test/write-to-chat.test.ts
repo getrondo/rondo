@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { expect, layer } from '@effect/vitest';
 import { person } from '@rondo/db/schema/identity.schema';
 import { community, membership, telegramChat } from '@rondo/db/schema/org.schema';
@@ -25,10 +27,14 @@ const text = { _tag: 'text', html: 'hello', hasLinkPreview: false } as const;
 const contents = [
     text,
     { _tag: 'edit', messageId: 1, html: 'hello' },
-    { _tag: 'forward', fromChatId: 42n, messageId: 1 },
+    { _tag: 'forward', fromChatId: 42n, messageId: 1, sessionId: randomUUID() },
     { _tag: 'pin', messageId: 1 },
     { _tag: 'stop_poll', messageId: 1 },
-    { _tag: 'poll', poll: { question: 'q', answers: ['a', 'b'], place: null, route: null, description: null, descriptionText: null } }
+    {
+        _tag: 'poll',
+        poll: { question: 'q', answers: ['a', 'b'], place: null, route: null, description: null, descriptionText: null },
+        sessionId: randomUUID()
+    }
 ] as const;
 
 const sentTo = (chatId: number) => recorder.calls.filter(call => call.payload.chat_id === chatId);
@@ -189,7 +195,8 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('settings of the groups', it
             const db = yield* Db;
             const slug = 'settings-fc';
             const { communityId } = yield* seedCommunity(seedConfig(slug));
-            yield* syncMember(communityId, { id: 8841n, firstName: 'Approver' }, 'active');
+            const personId = yield* syncMember(communityId, { id: 8841n, firstName: 'Approver' }, 'active');
+            yield* grantAdmin({ communityId, personId, grantedBy: null });
             yield* upsertTelegramUser({ id: 8842n, firstName: 'Stranger' });
             const chats = [
                 { chatId: -8841, title: 'Main', purpose: 'main' as const, weekdays: ['mon' as const] },

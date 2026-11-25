@@ -137,7 +137,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const limit = admin.screen().text;
 
             expect(remove.text).toBe(
-                '🗑 Видалити гру: Пт 27.11 19:00 · North Arena?\nОпитування закриється, і в пересланих копіях теж. Бот нікому не напише. Повернути гру не можна.\nСамі копії можуть лишитися видимими.'
+                '🗑 Видалити гру: Пт 27.11 19:00 · North Arena?\nОпитування закриється, і в пересланих копіях теж. Бот нікому не напише. Повернути гру не можна.\nСамі копії можуть лишитися видимими.\nЗакриється в «Games».'
             );
             expect(labelsOf(remove)).not.toContain('🏠 Меню');
             expect(labelsOf(remove)).toContain('🗑 Видалити назавжди');

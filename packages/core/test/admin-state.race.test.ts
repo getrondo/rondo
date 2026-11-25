@@ -136,7 +136,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
                                     sessionId,
                                     today: '2030-01-01',
                                     actorPersonId: null,
-                                    approval: ownerApproval
+                                    approval: { ...ownerApproval, closes: { pollIds: [pollId], chatIds: ['-1'] } }
                                 }).pipe(Effect.exit)
                             ],
                             { concurrency: 'unbounded' }
@@ -240,14 +240,12 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
             yield* linkGroup(communityId, { chatId: -2 });
             const sessionId = yield* menuGame(communityId, '19:00');
             const messageId = Math.floor(performance.now());
-            yield* db
-                .insert(telegramPoll)
-                .values({ pollId: `race-twice-${unique()}`, chatId: -2n, messageId, sessionId, options: ['in', 'out'] });
+            const pollId = `race-twice-${unique()}`;
+            const approval = { ...ownerApproval, closes: { pollIds: [pollId], chatIds: ['-2'] } };
+            yield* db.insert(telegramPoll).values({ pollId, chatId: -2n, messageId, sessionId, options: ['in', 'out'] });
             const outcomes = yield* Effect.all(
                 Array.from({ length: 4 }, () =>
-                    deleteSession({ communityId, sessionId, today: '2030-01-01', actorPersonId: null, approval: ownerApproval }).pipe(
-                        Effect.exit
-                    )
+                    deleteSession({ communityId, sessionId, today: '2030-01-01', actorPersonId: null, approval }).pipe(Effect.exit)
                 ),
                 { concurrency: 'unbounded' }
             );

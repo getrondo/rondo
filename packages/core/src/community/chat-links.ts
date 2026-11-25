@@ -83,7 +83,7 @@ export const linkChat = Effect.fn('Core.linkChat')((input: ChatOf & { readonly t
                 .values({ chatId, communityId, kind: 'supergroup', purpose, title, topicId })
                 .onConflictDoUpdate({
                     target: telegramChat.chatId,
-                    set: { purpose, title, topicId },
+                    set: { purpose, title, ...(Predicate.isUndefined(input.topicId) ? {} : { topicId }) },
                     setWhere: eq(telegramChat.communityId, communityId)
                 })
                 .returning({ chatId: telegramChat.chatId });

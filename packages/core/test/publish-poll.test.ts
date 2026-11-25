@@ -352,7 +352,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
 
             expect(outcome._tag).toBe('done');
             expect(status).toBe('confirmed');
-            expect(result).toEqual({ sessionId: game?.id, messageId: poll?.messageId });
+            expect(result).toEqual({ sessionId: game?.id, messageId: poll?.messageId, pollId: poll?.pollId });
             expect(poll?.options).toEqual(['in', 'out']);
         })
     );

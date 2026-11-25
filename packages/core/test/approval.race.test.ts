@@ -82,7 +82,8 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('approvals
             const base = yield* Random.nextIntBetween(1_000_000_000, 2_000_000_000);
             const slug = `race-link-${base}`;
             const { communityId } = yield* seedCommunity(seedConfig(slug));
-            yield* syncMember(communityId, { id: BigInt(base), firstName: 'Approver' }, 'active');
+            const personId = yield* syncMember(communityId, { id: BigInt(base), firstName: 'Approver' }, 'active');
+            yield* grantAdmin({ communityId, personId, grantedBy: null });
             const ids = Array.from({ length: racers }, (_, index) => -95_000_000 - base * 10 - index);
             yield* atOnce(index =>
                 loadGroups({
