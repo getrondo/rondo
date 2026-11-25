@@ -48,7 +48,11 @@ export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (
     }
 
     const failure: ActionFailure = outcome._tag === 'failed' ? outcome.failure : { code: 'unexpected' };
-    const shown = failureText(user.locale, failure, { ...context.target, where: escapeHtml(context.target.where) });
+    const postsPoll = action._tag === 'announce_session' || (action._tag === 'create_session' && action.announce);
+    const shown =
+        failure.code === 'result_uncertain' && !postsPoll
+            ? failureText(user.locale, failure)
+            : failureText(user.locale, failure, { ...context.target, where: escapeHtml(context.target.where) });
 
     return { _tag: 'failed', ...shown, failure } satisfies ConfirmedOutcome;
 });

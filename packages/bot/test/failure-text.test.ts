@@ -7,6 +7,7 @@ import * as Effect from 'effect/Effect';
 import { handleUpdate } from '../src/handle-update';
 import { failureText } from '../src/menu/failure-text';
 
+import { conversation } from './support/conversation';
 import { seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
@@ -56,7 +57,27 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(reworded).toBe('⚠️ Дані змінилися, нічого не надіслано. Спробуй ще раз.');
             expect(refused).toBe('⚠️ Telegram не прийняв повідомлення.');
             expect(limited).toBe(refused);
-            expect(unknown).toBe('⚠️ Не знаю, чи дійшло повідомлення. Перевір чат, перш ніж пробувати ще раз.');
+            expect(unknown).toBe('⚠️ Не знаю, чи все виконано. Перевір гру й чат, перш ніж пробувати ще раз.');
+        })
+    );
+
+    suite.effect('do not speak of a poll when a notice of a change got no answer', () =>
+        Effect.gen(function* () {
+            yield* seedSeason('failure-notice', { groupChatId: -34_101, adminId: 3411 });
+            const admin = conversation(recorder, adminNumbered(3411));
+            yield* admin.type('/newgame');
+            yield* admin.tap('👥 22');
+            yield* admin.type('14');
+            yield* admin.tap('✅ Надіслати');
+            yield* admin.type('/games');
+            yield* admin.tap('Пт 27.11 19:00');
+            yield* admin.tap('🕖 Час');
+            yield* admin.tap('19:30');
+            recorder.failures.set('sendMessage', new Error('socket hang up'));
+            yield* admin.tap('✅ Змінити й написати в «Games»');
+            recorder.failures.delete('sendMessage');
+
+            expect(admin.screen().text).toContain('⚠️ Не знаю, чи все виконано. Перевір гру й чат');
         })
     );
 });
