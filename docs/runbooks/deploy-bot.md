@@ -70,6 +70,9 @@ from a private chat:
   It needs only the database and Telegram: the AI gateway is not involved.
 - `/menu` (and `/start`) shows the next game; `/games` lists upcoming and recent games, each with a card to post
   its poll, change time, place or size, balance teams or cancel.
+- 🔁 on the preview switches where the poll goes: a linked group, several groups (one poll, forwarded), or
+  "👤 Мені, перешлю сам": the poll comes to the admin's private chat to forward by hand; votes on the copies count.
+- 🗑 on the card deletes a future game made by the bot that only admins voted in, so a test leaves no statistics.
 - Any other text goes to the assistant; `/reset` clears that conversation.
 - A place without an address gets a "📍 Address" hint on the preview: an admin sends a location pin, a Google Maps
   link or the address, and the poll shows it with a route button.
