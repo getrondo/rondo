@@ -69,11 +69,7 @@ const forwardRace = Effect.fn('test.forwardRace')(function* (
 });
 const unique = () => `${Math.floor(performance.now() * 1000)}-${Math.random().toString(36).slice(2, 8)}`;
 
-const postgresLayer = Layer.mergeAll(
-    localPostgresLayer(databaseUrl),
-    recordingTelegramLayer(raceRecorder),
-    Access.layerFor([42n])
-);
+const postgresLayer = Layer.mergeAll(localPostgresLayer(databaseUrl), recordingTelegramLayer(raceRecorder), Access.layerFor([42n]));
 
 layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin state races on a real Postgres', it => {
     it.effect.skipIf(isEmptyString(databaseUrl))('hands typed input and a confirmation to exactly one of many racers', () =>

@@ -1,5 +1,5 @@
 import { expect, layer } from '@effect/vitest';
-import { extraction, ingestRun, messageRef, sourceRef } from '@rondo/db/schema/platform.schema';
+import { extraction, importedPoll, ingestRun, messageRef, sourceRef } from '@rondo/db/schema/platform.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { refusal } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -9,7 +9,7 @@ import * as Option from 'effect/Option';
 
 import { bindChat, linkedChatsOf, mainGroupOf } from '../src/community/community.repository';
 import { syncMember } from '../src/identity/telegram-user';
-import { footballHistory } from '../src/menu/game-history.repository';
+import { footballHistory, plannedFootball } from '../src/menu/game-history.repository';
 import { createSession } from '../src/sessions/session.service';
 import { audienceOf } from '../src/signups/audience';
 import { confirmAsOwner } from '../src/testing/confirm-action';
@@ -226,6 +226,37 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('one game, one poll, several
 
             expect(unlinked).toEqual([[], [String(second)], [String(second)]]);
             expect(linked).toEqual([[String(main - 20)], [String(second)], [String(main - 20), String(second)]]);
+        })
+    );
+
+    it.effect('does not offer to post an imported game that already has an organizer poll', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig('audience-planned'));
+            const game = {
+                communityId,
+                timezone: 'Europe/Vienna',
+                localTime: '19:00',
+                venueId: null,
+                capacityMax: null,
+                title: null,
+                actorPersonId: null
+            };
+            const sessionIds = yield* Effect.all(
+                ['2026-12-02', '2026-12-04', '2026-12-07'].map(localDate => createSession({ ...game, localDate }))
+            );
+            const poll = { communityId, messageId: 1, postedAt: new Date('2026-12-01T10:00:00Z'), answers: 2 };
+            yield* db.insert(importedPoll).values([
+                { ...poll, pollId: 'planned-1', sessionId: sessionIds[0] ?? '', kind: 'participation' },
+                { ...poll, pollId: 'planned-2', sessionId: sessionIds[1] ?? '', kind: 'reserve' }
+            ]);
+            const planned = yield* plannedFootball(communityId, '2026-12-01');
+
+            expect(planned.map(({ localDate, hasPoll }) => [localDate, hasPoll])).toEqual([
+                ['2026-12-02', true],
+                ['2026-12-04', false],
+                ['2026-12-07', false]
+            ]);
         })
     );
 });

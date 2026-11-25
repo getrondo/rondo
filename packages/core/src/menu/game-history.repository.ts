@@ -77,7 +77,8 @@ export const plannedFootball = Effect.fn('Core.plannedFootball')(function* (comm
         .select({
             sessionId: session.id,
             localDate: session.localDate,
-            hasPoll: sql<boolean>`exists (select 1 from ${messageRef} where ${messageRef.entityId} = ${session.id} and ${messageRef.purpose} = 'poll')`
+            hasPoll: sql<boolean>`exists (select 1 from ${messageRef} where ${messageRef.entityId} = ${session.id} and ${messageRef.purpose} = 'poll')
+                or exists (select 1 from comms.imported_poll poll where poll.session_id = ${session.id} and poll.kind = 'participation')`
         })
         .from(session)
         .innerJoin(activity, eq(activity.id, session.activityId))

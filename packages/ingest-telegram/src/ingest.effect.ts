@@ -140,13 +140,13 @@ export const importMessages = Effect.fn('IngestTelegram.importMessages')(functio
     return yield* withCommunityLock(
         { slug: config.slug },
         Effect.gen(function* () {
-            const unhandled = yield* withoutLiveMessages(config, messages);
+            const unhandled = yield* withoutLiveMessages(config, { messages, snapshot });
             const main = assemblePlan(extractAll(unhandled, config, gamePosts(config, snapshot)), asOf);
             const others = yield* Effect.all(
                 (otherChats ?? [])
                     .map((content, index) => numberPosts(index + 1, content))
                     .map(content =>
-                        withoutLiveMessages(config, content.messages).pipe(
+                        withoutLiveMessages(config, content).pipe(
                             Effect.map((posts): ChatContent => ({ messages: posts, snapshot: content.snapshot }))
                         )
                     )

@@ -170,9 +170,9 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(709));
             yield* admin.type('/newgame');
             const main = admin.screen();
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати');
 
-            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Опублікувати', '➡️ Second']);
+            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати в «Second»']);
             expect(callsTo(-4092, 'sendPoll')).toHaveLength(1);
             expect(callsTo(-4091, 'sendPoll')).toHaveLength(0);
         })

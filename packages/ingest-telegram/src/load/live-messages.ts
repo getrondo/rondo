@@ -1,14 +1,16 @@
 import { community, telegramChat } from '@rondo/db/schema/org.schema';
-import { messageRef } from '@rondo/db/schema/platform.schema';
+import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, teamMember } from '@rondo/db/schema/play.schema';
+import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, eq, exists, gt, or, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 
 import { postIdIn } from '../extract/post-id';
 
 import type { CommunityConfig } from '../config/community-config';
-import type { TelegramMessage } from '../model/telegram-message.model';
+import type { ChatContent } from '../extract/plan-other-chats';
 
 export const liveMessages = Effect.fn('IngestTelegram.liveMessages')(function* ({ slug, otherChats }: CommunityConfig) {
     const db = yield* Db;
@@ -41,12 +43,31 @@ export const liveMessages = Effect.fn('IngestTelegram.liveMessages')(function* (
     return rows.map(row => Object.assign(row, { messageId: postIdIn(otherChats, row) }));
 });
 
+const botPollIds = Effect.fn('IngestTelegram.botPollIds')(function* (communitySlug: string) {
+    const db = yield* Db;
+    const rows = yield* db
+        .select({ pollId: telegramPoll.pollId })
+        .from(telegramPoll)
+        .innerJoin(session, eq(session.id, telegramPoll.sessionId))
+        .innerJoin(community, eq(community.id, session.communityId))
+        .where(eq(community.slug, communitySlug));
+
+    return new Set(rows.map(({ pollId }) => pollId));
+});
+
+// Posts the bot handled live, and every copy of the bot's own polls
 export const withoutLiveMessages = Effect.fn('IngestTelegram.withoutLiveMessages')(function* (
     config: CommunityConfig,
-    messages: readonly TelegramMessage[]
+    { messages, snapshot }: ChatContent
 ) {
     const live = yield* liveMessages(config);
+    const botPolls = yield* botPollIds(config.slug);
     const handled = new Set(live.filter(({ isLineup, isStored }) => !isLineup || isStored).map(({ messageId }) => messageId));
+    const pollIdOf = (messageId: number): string =>
+        snapshot.pipe(
+            Option.flatMapNullishOr(({ pollIdByMessage }) => pollIdByMessage.get(messageId)),
+            Option.getOrElse(() => '')
+        );
 
-    return messages.filter(({ id }) => !handled.has(id));
+    return messages.filter(({ id }) => !handled.has(id) && !botPolls.has(pollIdOf(id)));
 });

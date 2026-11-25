@@ -2,7 +2,7 @@ import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { aliasLink, personAlias } from '@rondo/db/schema/identity.schema';
 import { community, telegramChat } from '@rondo/db/schema/org.schema';
-import { importedPoll, messageRef, pollVote, sourceRef } from '@rondo/db/schema/platform.schema';
+import { importedPoll, messageRef, pollVote, sourceRef, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -63,14 +63,21 @@ interface Second {
     readonly votersOf?: (index: number) => readonly number[];
 }
 
-const load = Effect.fn('test.load')(function* (slug: string, second?: Second, main: readonly Message[] = postsOn(mondays, 'Олег, Семён')) {
+const load = Effect.fn('test.load')(function* (
+    slug: string,
+    second?: Second,
+    main: readonly Message[] = postsOn(mondays, 'Олег, Семён'),
+    botPolls: ReadonlyMap<number, string> = new Map()
+) {
     const db = yield* Db;
     const config = {
         ...testConfig,
         slug,
         ...(isDefined(second) ? { otherChats: [{ chatId: secondChat, exportDir: 'second', matchPatterns: ['cup'] }] } : {})
     };
-    const mainPollIds = new Map(main.filter(({ poll }) => isDefined(poll)).map(({ id }) => [id, `${slug}-m-${(id - 1) / 10}`]));
+    const mainPollIds = new Map(
+        main.filter(({ poll }) => isDefined(poll)).map(({ id }) => [id, botPolls.get(id) ?? `${slug}-m-${(id - 1) / 10}`])
+    );
     const stats = yield* importMessages({
         config,
         messages: main.map(post => ({ ...post })),
@@ -247,6 +254,43 @@ layer(testDbLayer, { timeout: 60_000 })('a community with two chats', it => {
                 [secondChat, 6, true],
                 [secondChat, 6, true]
             ]);
+        })
+    );
+
+    it.effect('never reads a poll of the bot that was forwarded to a chat as an organizer poll', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'two-bot-fc';
+            const first = yield* load(slug);
+            const [game] = yield* db
+                .insert(session)
+                .values({
+                    communityId: first.communityId,
+                    activityId: first.games[0]?.activityId ?? '',
+                    localDate: '2025-05-14',
+                    startsAt: new Date('2025-05-14T18:00:00Z'),
+                    status: 'played',
+                    source: 'bot'
+                })
+                .returning();
+            yield* db
+                .insert(telegramPoll)
+                .values({ pollId: `${slug}-bot`, chatId: -1n, messageId: 1, sessionId: game?.id ?? '', options: ['in', 'out'] });
+            const copies = (id: number): Message => pollOn(id, '2025-05-14');
+            const second: Second = { messages: [copies(51)], pollIds: new Map([[51, `${slug}-bot`]]) };
+            const { games } = yield* load(slug, second, [...postsOn(mondays, 'Олег, Семён'), copies(61)], new Map([[61, `${slug}-bot`]]));
+            const polls = yield* db
+                .select()
+                .from(importedPoll)
+                .where(eq(importedPoll.pollId, `${slug}-bot`));
+            const votes = yield* db
+                .select()
+                .from(pollVote)
+                .where(eq(pollVote.pollId, `${slug}-bot`));
+
+            expect(games.filter(({ localDate }) => localDate === '2025-05-14').map(({ id }) => id)).toEqual([game?.id]);
+            expect(polls).toEqual([]);
+            expect(votes).toEqual([]);
         })
     );
 

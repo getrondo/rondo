@@ -8,7 +8,7 @@ import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { conversation, deliver, lastPollId } from './support/conversation';
+import { conversation, deliver, groupPoll, lastPollId } from './support/conversation';
 import { seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
@@ -21,18 +21,7 @@ const forwardedPoll = (chatId: number, fromId: number, pollId: string, question:
             date: 1_795_680_000,
             chat: { id: chatId, type: 'supergroup', title: 'Copies' },
             from: { id: fromId, is_bot: false, first_name: `Admin ${fromId}` },
-            poll: {
-                id: pollId,
-                question,
-                options: ['Граю', 'Не граю'].map(text => ({ text, voter_count: 0, persistent_id: text })),
-                total_voter_count: 0,
-                is_closed: false,
-                is_anonymous: false,
-                type: 'regular',
-                allows_multiple_answers: false,
-                allows_revoting: true,
-                members_only: false
-            }
+            poll: groupPoll(pollId, question, ['Граю', 'Не граю'])
         }
     });
 

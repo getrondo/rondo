@@ -142,3 +142,16 @@ export const unknownCardPoll = (recorder: TelegramRecorder, admin: ReturnType<ty
         yield* admin.tap('✅ Надіслати в «Games»');
         recorder.failures.delete('sendPoll');
     });
+
+export const groupPoll = (id: string, question: string, answers: readonly string[]) => ({
+    id,
+    question,
+    options: answers.map(text => ({ text, voter_count: 0, persistent_id: text })),
+    total_voter_count: 0,
+    is_closed: false,
+    is_anonymous: false,
+    type: 'regular' as const,
+    allows_multiple_answers: false,
+    allows_revoting: true,
+    members_only: false
+});
