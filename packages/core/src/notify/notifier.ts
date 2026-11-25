@@ -49,11 +49,12 @@ export const sessionChangedHtml = Effect.fn('Core.sessionChangedHtml')(function*
     readonly locale: Locale;
 }) {
     const mentions = yield* mentionsOf(input.after.id);
+    const before = escapeHtml(formatSessionLabel(input.locale, input.before));
+    const after = escapeHtml(formatSessionLabel(input.locale, input.after));
 
     return [
         `<b>${text(input.locale, 'changed')}</b>`,
-        `<s>${escapeHtml(formatSessionLabel(input.locale, input.before))}</s>`,
-        `➡️ <b>${escapeHtml(formatSessionLabel(input.locale, input.after))}</b>`,
+        ...(before === after ? [`<b>${after}</b>`] : [`<s>${before}</s>`, `➡️ <b>${after}</b>`]),
         ...(input.before.capacityMax === input.after.capacityMax
             ? []
             : [`👥 ${text(input.locale, 'placesWord')}: ${input.before.capacityMax ?? '♾'} → ${input.after.capacityMax ?? '♾'}`]),

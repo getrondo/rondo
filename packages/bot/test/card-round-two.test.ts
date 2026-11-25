@@ -37,6 +37,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             );
             expect(labelsOf(ask)).toEqual(['✅ Змінити й написати в «Games»', 'Змінити, у групу не писати', '⬅️ Назад']);
             expect(notice).toContain('👥 Місць: 22 → 20');
+            expect(notice).not.toContain('<s>');
             expect(game).toMatchObject({ capacityMax: 20 });
         })
     );
