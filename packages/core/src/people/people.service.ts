@@ -230,7 +230,6 @@ export const renamePerson = Effect.fn('Core.renamePerson')(function* (input: {
         actorPersonId: input.actorPersonId,
         action: 'person.rename',
         entityType: 'person',
-        entityId: input.personId,
-        diff: { displayName: input.displayName }
+        entityId: input.personId
     });
 });

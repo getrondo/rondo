@@ -1,11 +1,12 @@
 import { expect, layer } from '@effect/vitest';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { membership } from '@rondo/db/schema/org.schema';
+import { auditLog } from '@rondo/db/schema/platform.schema';
 import { team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { syncMember, upsertTelegramUser } from '../src/identity/telegram-user';
@@ -32,9 +33,14 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('players and venues learned 
             const back = yield* statusOf();
             const followed = yield* nameOf();
             yield* renamePerson({ communityId, personId, displayName: 'Captain', actorPersonId: null });
+            const [renamed] = yield* db
+                .select()
+                .from(auditLog)
+                .where(and(eq(auditLog.action, 'person.rename'), eq(auditLog.entityId, personId)));
             yield* upsertTelegramUser({ ...user, firstName: 'Other' });
             const kept = yield* nameOf();
 
+            expect(renamed).toMatchObject({ diff: null });
             expect(left).toEqual([{ status: 'left' }]);
             expect(back).toEqual([{ status: 'active' }]);
             expect(followed).toEqual([{ name: 'Ivan P' }]);
