@@ -220,6 +220,20 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
         })
     );
 
+    it.effect('refuses the assistant post when someone joined after the confirmation was shown', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-assistant-joiner', [-7961, -7962], 79_600);
+            const action = yield* teamsActionAsOwner(game.communityId, game.sessionId, null);
+            const newcomer = yield* syncMember(game.communityId, { id: 79_699n, firstName: 'Newcomer' }, 'active');
+            yield* db.insert(signup).values({ sessionId: game.sessionId, personId: newcomer, status: 'in' });
+            const done = yield* confirmAsOwner(game.communityId, action);
+
+            expect(done).toMatchObject({ _tag: 'failed' });
+            expect(sendsTo(-7961)).toEqual([]);
+        })
+    );
+
     it.effect('keeps the recorded result when the changed squad could not be delivered', () =>
         Effect.gen(function* () {
             const db = yield* Db;

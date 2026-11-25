@@ -7,6 +7,7 @@ import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, eq, gt, isNull, lte, or, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
@@ -14,7 +15,10 @@ import { addMillis } from '../utils/add-millis.util';
 import { topicOptions } from '../utils/topic-options.util';
 
 import { badgeOfColour, badgeOfRow } from './badges';
+import { syncRoster } from './draft-state';
 import { planLineup, type PlanInput } from './lineup-plan';
+import { loadDraft } from './team-draft.service';
+import { loadTeamInputs } from './team-inputs';
 import { clearResult } from './team-result';
 
 import type { PostTeam } from './interface/lineup-post.interface';
@@ -219,13 +223,37 @@ const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: strin
     );
 });
 
+// Someone joined or left since the screen was drawn, or a newcomer is not placed yet: the admin sees the change first
+const isRosterMoved = Effect.fn('Core.isRosterMoved')(function* (communityId: string, sessionId: string) {
+    const row = yield* loadDraft(sessionId);
+
+    if (Option.isNone(row)) {
+        return false;
+    }
+
+    const { state } = row.value;
+    const inputs = yield* loadTeamInputs(communityId, sessionId);
+
+    return (
+        isNotEmptyArray(state.pending) ||
+        syncRoster(
+            state,
+            inputs.members.map(member => member.personId)
+        ) !== state
+    );
+});
+
 const startPublish = Effect.fn('Core.startPublish')(function* (
     input: PlanInput & { readonly version: number; readonly fingerprint: string }
 ) {
     const plan = yield* planLineup(input);
     const now = yield* DateTime.nowAsDate;
 
-    if (plan.version !== input.version || plan.fingerprint !== input.fingerprint) {
+    if (
+        plan.version !== input.version ||
+        plan.fingerprint !== input.fingerprint ||
+        (yield* isRosterMoved(input.communityId, input.sessionId))
+    ) {
         return yield* ActionFailedError.make({ reason: lineupChanged });
     }
 

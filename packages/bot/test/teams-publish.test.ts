@@ -1,5 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
+import { syncMember } from '@rondo/core/identity/telegram-user';
+import { joinGame } from '@rondo/core/signups/roster.service';
 import { recordResult } from '@rondo/core/teams/team-result';
 import { setTier } from '@rondo/core/teams/team.service';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
@@ -303,6 +305,31 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(admin.screen().text).toContain('⚠️ Не знаю, чи дійшли склади в «Games».');
             expect(admin.screen().text).not.toContain('Поки нічого не надіслано.');
         })
+    );
+
+    it.effect(
+        'posts nothing when someone joined while the line-up was on screen, places them and names them, also from an old screen',
+        () =>
+            Effect.gen(function* () {
+                const { sessionId, communityId } = yield* teamsGame('teams-post-joiner', { groupChatId: -3212, adminId: 312, players: 8 });
+                const admin = conversation(recorder, adminNumbered(312));
+                yield* openOverview(admin);
+                const old = admin.screen();
+                const newcomer = yield* syncMember(communityId, { id: 3_120_001n, firstName: 'Newcomer' }, 'active');
+                yield* joinGame({ communityId, sessionId, actorPersonId: null }, [newcomer]);
+                yield* admin.press(buttonData(old, '✅ Надіслати в «Games»'));
+                const refreshed = admin.screen();
+                yield* admin.press(buttonData(old, '✅ Надіслати в «Games»'));
+                const quiet = sentTo(-3212).length;
+                yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
+                const { teams } = yield* draftTeams(sessionId);
+
+                expect(quiet).toBe(0);
+                expect(refreshed.text).toContain('Newcomer');
+                expect(refreshed.text).toContain('🔄');
+                expect(teams.flat()).toContain('Newcomer');
+                expect(String(sentTo(-3212)[0]?.payload.text)).toContain('Newcomer');
+            })
     );
 
     it.effect('warns in the preview that a squad changed after the result clears it', () =>
