@@ -5,6 +5,7 @@ import { resolveLocale } from '@rondo/core/i18n/locale';
 import { text } from '@rondo/core/i18n/messages';
 import { displayNameOf, syncMember } from '@rondo/core/identity/telegram-user';
 import { ingestGroupMessage } from '@rondo/core/live/live-ingest';
+import { recordPollCopy } from '@rondo/core/signups/record-poll-copy';
 import { topicOptions } from '@rondo/core/utils/topic-options.util';
 import { learnVenuePin } from '@rondo/core/venues/venue.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
@@ -98,6 +99,14 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
             lat: location.latitude,
             lng: location.longitude
         });
+    }
+
+    const isBotPoll = isDefined(message.poll)
+        ? yield* recordPollCopy({ communityId, pollId: message.poll.id, chatId: BigInt(message.chat.id), messageId: message.message_id })
+        : false;
+
+    if (isBotPoll) {
+        return noFollowUp;
     }
 
     const profile = yield* communityProfile(communityId);
