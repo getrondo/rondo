@@ -17,9 +17,7 @@ import { failureText } from './failure-text';
 import type { MenuUser } from './screen.interface';
 import type { Action } from '@rondo/core/actions/action.model';
 
-export type ConfirmedOutcome =
-    | { readonly _tag: 'done'; readonly sessionId: string | null }
-    | { readonly _tag: 'failed'; readonly text: string };
+type ConfirmedOutcome = { readonly _tag: 'done'; readonly sessionId: string | null } | { readonly _tag: 'failed'; readonly text: string };
 
 export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (user: MenuUser, action: Action, approvedSummary: string | null) {
     const db = yield* Db;

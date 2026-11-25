@@ -96,18 +96,17 @@ export const conversation = (recorder: TelegramRecorder, user: Person) => {
             }),
         tapOn: (message: ShownMessage, label: string) => press(message, find(label, message)?.callback_data ?? 'm:gone'),
         press: (data: string) => press(screen(), data),
-        unanswered: () => {
+        tidy: () => {
             const answered = new Set(
                 recorder.calls.filter(call => call.method === 'answerCallbackQuery').map(call => call.payload.callback_query_id)
             );
-
-            return pressed.filter(id => !answered.has(id));
-        },
-        callbackData: () =>
-            recorder.calls.flatMap(call =>
+            const data = recorder.calls.flatMap(call =>
                 keyboardOf(call.payload.reply_markup)
                     .flat()
                     .map(button => button.callback_data ?? '')
-            )
+            );
+
+            return { unanswered: pressed.filter(id => !answered.has(id)), oversized: data.filter(entry => Buffer.byteLength(entry) > 64) };
+        }
     };
 };

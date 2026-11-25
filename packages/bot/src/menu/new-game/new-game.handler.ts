@@ -26,7 +26,7 @@ import type { MenuUser } from '../screen.interface';
 import type { Draft, NewGameData, TypedInput } from './draft';
 import type { AdminStateRow } from '@rondo/core/menu/admin-state.interface';
 
-export const presentNewGame = Effect.fn('Bot.presentNewGame')(function* (
+const presentNewGame = Effect.fn('Bot.presentNewGame')(function* (
     user: MenuUser,
     draft: Draft,
     data: NewGameData,

@@ -73,8 +73,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(games.text).toContain('Минулі');
             expect(unchanged).toBe(sends);
             expect(fallback).toBe(unchanged + 1);
-            expect(admin.unanswered()).toEqual([]);
-            expect(admin.callbackData().every(data => Buffer.byteLength(data) <= 64)).toBe(true);
+            expect(admin.tidy()).toEqual({ unanswered: [], oversized: [] });
         })
     );
 

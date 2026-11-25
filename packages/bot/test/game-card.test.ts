@@ -67,7 +67,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(String(posts[0]?.payload.text)).toContain('📍 <b>North Arena</b>');
             expect(game).toMatchObject({ venueId: park, capacityMax: 20 });
             expect(admin.screen().text).toContain('Пт 27.11 20:15 · Park Field');
-            expect(admin.unanswered()).toEqual([]);
+            expect(admin.tidy()).toEqual({ unanswered: [], oversized: [] });
         })
     );
 

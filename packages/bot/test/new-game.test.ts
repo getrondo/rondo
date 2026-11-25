@@ -74,8 +74,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             expect(admin.screen().id).toBe(main.id);
             expect(admin.screen().text).toContain('✅');
             expect(admin.screen().text).toContain('Пт 27.11 19:00 · North Arena');
-            expect(admin.unanswered()).toEqual([]);
-            expect(admin.callbackData().every(data => Buffer.byteLength(data) <= 64)).toBe(true);
+            expect(admin.tidy()).toEqual({ unanswered: [], oversized: [] });
         })
     );
 
@@ -111,7 +110,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             );
             expect(ready.buttons[2]?.map(button => button.text)).toEqual(['👥 −', '👥 19', '👥 +']);
             expect(game).toMatchObject({ venueId: park, capacityMax: 19 });
-            expect(admin.unanswered()).toEqual([]);
+            expect(admin.tidy()).toEqual({ unanswered: [], oversized: [] });
         })
     );
 
