@@ -903,7 +903,7 @@
                         ],
                         "patterns": [
                             {
-                                "group": ["@rondo/ingest-telegram", "@rondo/ingest-telegram/*"],
+                                "group": ["**/ingest-telegram", "**/ingest-telegram/**"],
                                 "message": "ingest-telegram depends on core and db, never the reverse."
                             }
                         ]

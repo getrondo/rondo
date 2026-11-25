@@ -179,7 +179,7 @@ jobs:
             - name: Postgres race tests
               env:
                   RONDO_TEST_DATABASE_URL: postgres://rondo:rondo@localhost:5432/rondo
-              run: pnpm --filter @rondo/core --filter @rondo/bot exec vitest run community-lock admin-state-race team-draft-race teams-race
+              run: pnpm --filter @rondo/core --filter @rondo/bot --filter @rondo/ingest-telegram exec vitest run community-lock admin-state-race team-draft-race teams-race
 
     lint-workflows:
         name: Lint workflows
