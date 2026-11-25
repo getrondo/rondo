@@ -14,6 +14,7 @@ import { requireSession } from '../sessions/session.service';
 
 import { badgeOfRow } from './badges';
 import { habitsOf } from './habits';
+import { squadOf } from './lineup-of-draft';
 import { unknownRating } from './rate-result';
 
 import type { BadgeColour } from './interface/badge.interface';
@@ -73,6 +74,47 @@ export const ratingsOf = Effect.fn('Core.ratingsOf')(function* (activityId: stri
     return { seedOf, strengthOf, hasLevels: seedOf.size + learned.size > 0 };
 });
 
+// A stored squad can name players who never signed up (no bot poll); they play unless a sign-up says out
+const unsignedSquad = Effect.fn('Core.unsignedSquad')(function* (sessionId: string) {
+    const db = yield* Db;
+    const signed = yield* db.select({ personId: signup.personId }).from(signup).where(eq(signup.sessionId, sessionId));
+    const squad = (yield* squadOf(sessionId)).filter(
+        (member, index, list) =>
+            !member.isGuest &&
+            !signed.some(row => row.personId === member.personId) &&
+            list.findIndex(entry => entry.personId === member.personId) === index
+    );
+    const account = primaryAccount(db, sessionId);
+    const rows = isNotEmptyArray(squad)
+        ? yield* db
+              .select({
+                  personId: person.id,
+                  displayName: person.displayName,
+                  tgUserId: account.tgUserId,
+                  username: telegramAccount.username
+              })
+              .from(person)
+              .leftJoin(account, eq(account.personId, person.id))
+              .leftJoin(telegramAccount, eq(telegramAccount.tgUserId, account.tgUserId))
+              .where(
+                  inArray(
+                      person.id,
+                      squad.map(member => member.personId)
+                  )
+              )
+        : [];
+
+    return rows.map(row => ({
+        personId: row.personId,
+        displayName: row.displayName,
+        tgUserId: row.tgUserId,
+        username: row.username,
+        isGuest: false,
+        hostId: null,
+        role: squad.some(member => member.personId === row.personId && member.isGk) ? ('gk' as const) : ('field' as const)
+    }));
+});
+
 export const membersOf = Effect.fn('Core.membersOf')(function* (sessionId: string, activityId: string) {
     const db = yield* Db;
     const account = primaryAccount(db, sessionId);
@@ -92,11 +134,13 @@ export const membersOf = Effect.fn('Core.membersOf')(function* (sessionId: strin
         .leftJoin(telegramAccount, eq(telegramAccount.tgUserId, account.tgUserId))
         .where(and(eq(signup.sessionId, sessionId), eq(signup.status, 'in')))
         .orderBy(asc(signup.createdAt), asc(signup.personId));
+    const unsigned = yield* unsignedSquad(sessionId);
+    const all = [...rows, ...unsigned];
     const { seedOf, strengthOf, hasLevels } = yield* ratingsOf(
         activityId,
-        rows.map(row => row.personId)
+        all.map(row => row.personId)
     );
-    const members = rows.map((row): TeamMember => {
+    const members = all.map((row): TeamMember => {
         const seed = seedOf.get(row.personId);
 
         return {

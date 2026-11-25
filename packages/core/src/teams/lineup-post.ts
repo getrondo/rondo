@@ -81,7 +81,7 @@ const memberHtml = (member: PostMember, team: PostTeam, post: LineupPost, limit:
 const teamHtml = (team: PostTeam, index: number, post: LineupPost, limit: number): string => {
     const largest = Math.max(...post.teams.map(entry => entry.members.length));
     const missing = largest - team.members.length;
-    const note = missing > 0 ? ` (+${missing} ${words[post.locale].fromLosers})` : '';
+    const note = missing > 0 && post.teams.length > 2 ? ` (+${missing} ${words[post.locale].fromLosers})` : '';
     const names = team.members.flatMap(member => memberHtml(member, team, post, limit) ?? []);
 
     return [`${team.badge} <b>${teamName(post.locale, team.badge, index)} · ${team.members.length}</b>${note}`, ...names].join('\n');

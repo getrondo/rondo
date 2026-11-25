@@ -66,6 +66,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             );
             expect(String(posted[0]?.payload.text)).not.toMatch(/[💪🌱Σ]|сильн|новач|рівн/u);
             expect(done.text).toContain('✅ Склади в «Games».');
+            expect(done.text).not.toContain('📨');
             expect(diff.text).toContain('Що змінилося:');
             expect(diff.text).toMatch(/: 🔴 → 🔵/u);
             expect(edited.map(call => call.method)).toEqual(['sendMessage', 'editMessageText']);
@@ -147,7 +148,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 expect(newest?.payload.reply_markup).toBeUndefined();
                 expect(done.text).toContain('👇 Составы ниже: нажми и удерживай → Переслать → группа.');
                 expect(done.text).not.toContain('Оновлені склади');
-                expect(done.text).toContain('📨 Составы уже у тебя.');
+                expect(done.text).not.toContain('📨 Составы уже у тебя.');
                 expect(unchanged.text).toContain('📨 Составы уже у тебя.');
                 expect(
                     labelsOf(unchanged)

@@ -96,8 +96,18 @@ describe('the posted line-up', () => {
             ...post,
             teams: [teams[0] ?? { badge: '', members: [] }, { badge: '🔵', members: [member('A'), member('B'), member('C')] }]
         };
-        expect(lineupPostHtml(short)).toContain('🔵 <b>Сині · 3</b> (+1 з команди, що програла)\nA\nB\nC');
-        expect(lineupPostHtml({ ...short, locale: 'ru' })).toContain('🔵 <b>Синие · 3</b> (+1 от проигравших)');
+        const three = {
+            ...post,
+            teams: [
+                teams[0] ?? { badge: '', members: [] },
+                teams[1] ?? { badge: '', members: [] },
+                { badge: '🟢', members: [member('A'), member('B'), member('C')] }
+            ]
+        };
+        expect(lineupPostHtml(short)).toContain('🔵 <b>Сині · 3</b>\nA\nB\nC');
+        expect(lineupPostHtml(short)).not.toContain('програла');
+        expect(lineupPostHtml(three)).toContain('🟢 <b>Зелені · 3</b> (+1 з команди, що програла)\nA\nB\nC');
+        expect(lineupPostHtml({ ...three, locale: 'ru' })).toContain('🟢 <b>Зелёные · 3</b> (+1 от проигравших)');
     });
 
     it('stays under the Telegram limit by shortening long names', () => {

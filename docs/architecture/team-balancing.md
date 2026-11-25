@@ -95,10 +95,12 @@ kick-off, «не прийшов» or «прибрати» after it; a promotion 
 `play.lineup_delivery` keeps one claim and receipt per destination and `team_draft.publish_token` one publish of the game at a
 time: each send is one bounded Telegram call with its own receipt, a refusal or timeout in one group never touches another, a
 claim younger than a minute is busy, and an unknown result gets its own ✅ Немає, надіслати в «X». The post has a bold header,
-«🔴 <b>Червоні · 7</b>» per team and one player per line; only messages the bot sent are edited. For the admin's own chat the
+«🔴 <b>Червоні · 7</b>» per team and one player per line, with «(+1 з команди, що програла)» on a short team only when three
+or more teams play (with two there is nobody to borrow from); only messages the bot sent are edited. For the admin's own chat the
 clean message to forward is the newest one and the instruction is on the screen above it; after a first post a new message
-is headed "Оновлені склади". After the kick-off the card asks «Як зіграли?» with 🏆 per team and 🤝 Нічия, then «Записав: …»
-and ↩️ Змінити результат.
+is headed "Оновлені склади". After the kick-off the card shows only the game and asks «Як зіграли?» with 🏆 per team and
+🤝 Нічия, then «Записав: …» and ↩️ Змінити результат. Right after a send the screen keeps one receipt line per destination.
+A stored squad seeds the draft with its players who never signed up (no bot poll); a sign-up that is out still removes one.
 
 Private texts follow the admin's language from their last update (stored on every message and tap), Ukrainian when it
 is unknown; group texts use the community's configured language.

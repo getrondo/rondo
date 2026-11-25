@@ -333,6 +333,33 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
         })
     );
 
+    it.effect('seeds squad members who never signed up and leaves out those whose sign-up is out', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId, people } = yield* playedGame('draft-unsigned', 8, 89_800);
+            const loose = yield* syncMember(communityId, { id: 89_810n, firstName: 'Loose' }, 'active');
+            const gone = yield* syncMember(communityId, { id: 89_811n, firstName: 'Gone' }, 'active');
+            yield* db.insert(signup).values({ sessionId, personId: gone, status: 'out', role: 'field' });
+            yield* db.insert(team).values([1, 2].map(ordinal => ({ sessionId, ordinal })));
+            yield* db.insert(lineupEntry).values(
+                [...people, loose, gone].map((personId, index) => ({
+                    sessionId,
+                    messageId: 1,
+                    teamOrdinal: (index % 2) + 1,
+                    position: index + 1,
+                    personId,
+                    resolvedBy: 'manual' as const
+                }))
+            );
+            const { row } = yield* openDraft(communityId, sessionId, null);
+            const placed = row.state.teams.flat();
+
+            expect(placed).toContain(loose);
+            expect(placed).not.toContain(gone);
+            expect(placed).toHaveLength(9);
+        })
+    );
+
     it.effect('records a result only after the kick-off, for a game that is on and for a team of its squad', () =>
         Effect.gen(function* () {
             const db = yield* Db;

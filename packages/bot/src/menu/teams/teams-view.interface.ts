@@ -12,5 +12,6 @@ export interface EditorView {
     readonly selected: string | null;
     readonly page: number;
     readonly notes: readonly string[];
+    readonly receipts: readonly bigint[];
     readonly offerLevels: boolean;
 }

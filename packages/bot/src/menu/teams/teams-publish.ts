@@ -136,7 +136,10 @@ export const publishAndShow = Effect.fn('Bot.publishAndShow')(function* (user: M
     }
 
     const notes = published.deliveries.flatMap(outcome => outcomeNote(user, outcome) ?? []);
-    const fresh = yield* loadView(user, tap.sessionId, { notes });
+    const receipts = published.deliveries.flatMap(outcome =>
+        outcome.status === 'sent' || outcome.status === 'edited' ? [outcome.chatId] : []
+    );
+    const fresh = yield* loadView(user, tap.sessionId, { notes, receipts });
 
     return yield* showTeams(user, messageId, { sessionId: tap.sessionId, screen: yield* overviewScreen(user, fresh) });
 });

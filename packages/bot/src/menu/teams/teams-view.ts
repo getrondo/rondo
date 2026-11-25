@@ -54,6 +54,7 @@ export const loadView = Effect.fn('Bot.loadTeamsView')(function* (
     options: {
         readonly page?: number;
         readonly notes?: readonly string[];
+        readonly receipts?: readonly bigint[];
         readonly row?: DraftRow;
         readonly offerLevels?: boolean;
         readonly place?: boolean;
@@ -86,6 +87,7 @@ export const loadView = Effect.fn('Bot.loadTeamsView')(function* (
         selected: null,
         page: Math.min(options.page ?? 0, pages - 1),
         notes: options.notes ?? [],
+        receipts: options.receipts ?? [],
         offerLevels: options.offerLevels === true && (yield* claimLevelsOffer(user.communityId, actor, user.now))
     } satisfies EditorView;
 });

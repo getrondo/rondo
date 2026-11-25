@@ -303,22 +303,24 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
     const closed = closedText[user.locale][game.status];
     const signedLine = yield* signedUpLine(user, game);
     const shown = signed.slice(page * namesPerPage, page * namesPerPage + namesPerPage);
-    const lines = [
-        ...(isDefined(header) ? [header.text, ''] : []),
-        ...(isUpcoming
-            ? state.unknownTo
-                  .map(chat => menuText(user.locale, 'uncertainForward', { where: escapeHtml(`«${chat.title}»`) }))
-                  .filter(line => header?.text.includes(line) !== true)
-            : []),
-        `⚽ <b>${escapeHtml(formatSessionLabel(user.locale, game))}</b>`,
-        ...(isDefined(closed) ? [closed] : []),
-        ...(isUpcoming && header?.saysPoll !== true ? pollLine(user, state, audience) : []),
-        countLine(user, game, signedLine, signed.length),
-        ...shown.map((entry, index) => `${page * namesPerPage + index + 1}. ${escapeHtml(entry.displayName)}`),
-        ...(isNotEmptyArray(waiting) ? [`${menuText(user.locale, 'waiting')}: ${names(waiting)}`] : []),
-        ...(isNotEmptyArray(keepers) ? [`${menuText(user.locale, 'keepers')}: ${names(keepers)}`] : []),
-        ...(isDefined(result) ? ['', result.line] : [])
-    ];
+    const title = `⚽ <b>${escapeHtml(formatSessionLabel(user.locale, game))}</b>`;
+    const lines = isDefined(result)
+        ? [...(isDefined(header) ? [header.text, ''] : []), title, '', result.line]
+        : [
+              ...(isDefined(header) ? [header.text, ''] : []),
+              ...(isUpcoming
+                  ? state.unknownTo
+                        .map(chat => menuText(user.locale, 'uncertainForward', { where: escapeHtml(`«${chat.title}»`) }))
+                        .filter(line => header?.text.includes(line) !== true)
+                  : []),
+              title,
+              ...(isDefined(closed) ? [closed] : []),
+              ...(isUpcoming && header?.saysPoll !== true ? pollLine(user, state, audience) : []),
+              countLine(user, game, signedLine, signed.length),
+              ...shown.map((entry, index) => `${page * namesPerPage + index + 1}. ${escapeHtml(entry.displayName)}`),
+              ...(isNotEmptyArray(waiting) ? [`${menuText(user.locale, 'waiting')}: ${names(waiting)}`] : []),
+              ...(isNotEmptyArray(keepers) ? [`${menuText(user.locale, 'keepers')}: ${names(keepers)}`] : [])
+          ];
 
     return {
         text: lines.join('\n'),

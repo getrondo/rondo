@@ -148,6 +148,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/games');
             yield* admin.tap('Пт 27.11');
             const card = labelsOf(admin.screen());
+            const cardText = admin.screen().text;
             yield* admin.press(buttonData(admin.screen(), '🏆 Червоні'));
             const saved = admin.screen().text;
             const savedLabels = labelsOf(admin.screen());
@@ -160,7 +161,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(two.flat()).not.toContain('🔢 Зробити 3 команди');
             expect(three.teams).toHaveLength(3);
             expect(card).toEqual([['🏆 Червоні', '🏆 Сині'], ['🤝 Нічия'], ['✏️ Хто грав', '🏠 Меню']]);
-            expect(saved).toContain('🏆 Записав: Червоні виграли.');
+            expect(cardText).toMatch(/^⚽ <b>[^<]+<\/b>\n\n🏆 Як зіграли\?$/u);
+            expect(saved).toMatch(/^⚽ <b>[^<]+<\/b>\n\n🏆 Записав: Червоні виграли\.$/u);
             expect(savedLabels).toEqual([['↩️ Змінити результат'], ['✏️ Хто грав', '🏠 Меню']]);
             expect(corrected.text).toContain('🏆 Записав: Сині виграли.');
             expect(ranks.map(row => row.rank)).toEqual([2, 1]);

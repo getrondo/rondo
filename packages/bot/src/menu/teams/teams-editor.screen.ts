@@ -96,7 +96,7 @@ export const sendLabel = (locale: Locale, deliveries: readonly PlannedDelivery[]
 };
 
 export const statusLines = (user: MenuUser, view: EditorView): string[] => {
-    const sent = view.plan.deliveries.filter(delivery => delivery.stored === 'sent');
+    const sent = view.plan.deliveries.filter(delivery => delivery.stored === 'sent' && !view.receipts.includes(delivery.chatId));
     const isQuiet = view.plan.deliveries.every(delivery => !isUnsure(delivery) && delivery.stored !== 'busy');
     const where = (deliveries: readonly PlannedDelivery[]) => escapeHtml(whereOf(user.locale, deliveries, 'at'));
 
@@ -109,7 +109,7 @@ export const statusLines = (user: MenuUser, view: EditorView): string[] => {
             .filter(delivery => delivery.stored === 'busy')
             .map(delivery => teamsText(user.locale, 'busy', { where: where([delivery]) })),
         ...(isNotEmptyArray(sent) ? [teamsText(user.locale, 'sent', { where: where(sent) })] : []),
-        ...(!isNotEmptyArray(sent) && isQuiet ? [teamsText(user.locale, 'quiet')] : [])
+        ...(!view.plan.deliveries.some(delivery => delivery.stored === 'sent') && isQuiet ? [teamsText(user.locale, 'quiet')] : [])
     ];
 };
 
