@@ -4,6 +4,7 @@ import { messageRef } from '@rondo/db/schema/platform.schema';
 import { team, teamColor } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
+import { chatRules } from '@rondo/ingest-telegram/extract/chat-rules';
 import { extractLineup } from '@rondo/ingest-telegram/extract/extract-lineup';
 import { extractPoll, makeVenueMatcher } from '@rondo/ingest-telegram/extract/extract-poll';
 import { extractCancellation } from '@rondo/ingest-telegram/extract/extract-signals';
@@ -208,11 +209,17 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
 
     const config = yield* withKnownVenues(communityId, importedConfig);
     const venueOf = makeVenueMatcher(config);
+    const rules = Option.fromNullishOr(config.otherChats?.find(({ chatId }) => BigInt(chatId) === message.chatId)).pipe(
+        Option.map(chat => chatRules(config, chat))
+    );
     let unknownPlace: LiveIngestResult['unknownPlace'] | null = null;
     const poll = Option.fromNullishOr(extractPoll(telegramMessage, config, venueOf)).pipe(
-        Option.filter(fact => !fact.isReserve && !fact.isChoice && fact.sport === 'football')
+        Option.filter(fact => !fact.isReserve && !fact.isChoice && fact.sport === 'football'),
+        Option.filter(fact => Option.isNone(rules) || rules.value.kindOf(fact) === 'regular')
     );
-    const lineup = Option.fromNullishOr(extractLineup(telegramMessage, config, venueOf));
+    const lineup = Option.fromNullishOr(extractLineup(telegramMessage, config, venueOf)).pipe(
+        Option.filter(fact => Option.isNone(rules) || !rules.value.isMatchDay(fact.localDate))
+    );
     const cancellation = Option.fromNullishOr(extractCancellation(telegramMessage, config, new Set([message.senderName]))).pipe(
         Option.filter(({ isExplicit }) => isExplicit)
     );

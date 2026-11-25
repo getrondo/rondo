@@ -190,4 +190,41 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             expect(games).toHaveLength(1);
         })
     );
+
+    it.effect('makes only weekly games of a chat that also has matches', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const chatId = -900;
+            const matches = { ...seedConfig('live-matches'), otherChats: [{ chatId, exportDir: 'second', matchPatterns: ['friendly'] }] };
+            const { communityId } = yield* seedCommunity(matches);
+            const personId = yield* upsertTelegramUser({ id: 900n, firstName: 'Org' });
+            const base = { senderPersonId: personId, senderTgUserId: 900n, senderName: 'Org', isTrusted: true };
+            const post = (
+                messageId: number,
+                sentAt: string,
+                chat: number,
+                content: { readonly text?: string; readonly question?: string }
+            ) =>
+                ingestGroupMessage(communityId, matches, {
+                    ...base,
+                    chatId: BigInt(chat),
+                    messageId,
+                    sentAt: new Date(sentAt),
+                    ...(isDefined(content.text) ? { text: content.text } : {}),
+                    ...(isDefined(content.question) ? { poll: { question: content.question, answers: ['+', '-'] } } : {})
+                });
+            const squad = 'Составы на сегодня, North:\n🟢Я, Иван\n🔵Олег, Семён';
+            const match = yield* post(1, '2026-05-09T08:00:00Z', chatId, { question: 'Завтра, 12.00 North' });
+            const friendly = yield* post(2, '2026-05-06T08:00:00Z', chatId, { question: 'Сегодня, 19.00 North, friendly' });
+            const matchSquad = yield* post(3, '2026-05-10T08:00:00Z', chatId, { text: squad });
+            const weekly = yield* post(4, '2026-05-13T08:00:00Z', chatId, { question: 'Сегодня, 19.00 North' });
+            const weeklySquad = yield* post(5, '2026-05-13T15:00:00Z', chatId, { text: squad });
+            const elsewhere = yield* post(6, '2026-05-16T08:00:00Z', -901, { question: 'Завтра, 12.00 North' });
+            const games = yield* db.select({ date: session.localDate }).from(session).where(eq(session.communityId, communityId));
+
+            expect([match, friendly, matchSquad].map(({ poll, lineup }) => poll || lineup)).toEqual([false, false, false]);
+            expect([weekly.poll, weeklySquad.lineup, elsewhere.poll]).toEqual([true, true, true]);
+            expect(games.map(({ date }) => date).toSorted()).toEqual(['2026-05-13', '2026-05-17']);
+        })
+    );
 });

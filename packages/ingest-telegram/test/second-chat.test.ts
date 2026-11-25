@@ -14,7 +14,7 @@ import { message, testConfig } from './fixture';
 
 import type { TelegramMessage } from '../src/model/telegram-message.model';
 
-const chat = { chatId: -1001, exportDir: 'second', matchPatterns: ['cup', 'friendly'] };
+const chat = { chatId: -1001, exportDir: 'second', matchPatterns: ['cup', 'friendly'], matchDates: ['2025-06-01', '2025-06-03'] };
 const config = {
     ...testConfig,
     otherChats: [chat],
@@ -79,7 +79,10 @@ describe('posts of several chats', () => {
                 pollOf(105, '2025-05-28T08:00:00Z', 'Четверг, 29 мая, 19.00 North'),
                 pollOf(106, '2025-05-13T08:00:00Z', 'Среда, 19.00 North, friendly'),
                 pollOf(107, '2025-05-20T08:00:00Z', 'Среда, 19.00 Stadium'),
-                message(108, '2025-05-18T12:00:00Z', squadText)
+                message(108, '2025-05-18T12:00:00Z', squadText),
+                pollOf(109, '2025-06-01T08:00:00Z', 'Сегодня, 18.00 North'),
+                pollOf(110, '2025-06-03T08:00:00Z', 'Сегодня, 18.00 North'),
+                message(111, '2025-06-03T12:00:00Z', squadText)
             ],
             {}
         );

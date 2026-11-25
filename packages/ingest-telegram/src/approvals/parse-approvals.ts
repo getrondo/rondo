@@ -1,4 +1,4 @@
-import { isNotEmptyString } from '@rnw-community/shared';
+import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
@@ -10,7 +10,8 @@ const RowSchema = Schema.Struct({
     raw: Schema.NonEmptyString,
     tgUserId: Schema.BigIntFromString.check(Schema.isGreaterThanBigInt(0n)),
     messageId: Schema.FiniteFromString,
-    date: Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/u))
+    date: Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/u)),
+    chatId: Schema.optional(Schema.NumberFromString.check(Schema.isInt()))
 });
 
 export interface ApprovalRow {
@@ -19,6 +20,7 @@ export interface ApprovalRow {
     readonly tgUserId: bigint;
     readonly messageId: number;
     readonly date: string;
+    readonly chatId?: number;
 }
 
 const decodeRow = Schema.decodeUnknownEffect(RowSchema);
@@ -29,9 +31,9 @@ export const parseApprovals = Effect.fn('Approvals.parseApprovals')(function* (f
             .split('\n')
             .filter(line => isNotEmptyString(line.trim()))
             .map(line => {
-                const [raw, tgUserId, messageId, date] = line.split('|').map(part => part.trim());
+                const [raw, tgUserId, messageId, date, chatId] = line.split('|').map(part => part.trim());
 
-                return decodeRow({ raw, tgUserId, messageId, date });
+                return decodeRow({ raw, tgUserId, messageId, date, ...(isDefined(chatId) ? { chatId } : {}) });
             })
     );
 

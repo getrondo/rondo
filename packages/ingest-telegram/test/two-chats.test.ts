@@ -9,6 +9,7 @@ import { Db } from '@rondo/db/service/db.service';
 import { testDbLayer } from '@rondo/db/testing/test-db.layer';
 import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
+import * as Exit from 'effect/Exit';
 import * as Option from 'effect/Option';
 
 import { compareApprovals, loadApprovals } from '../src/approvals/load-approvals';
@@ -320,14 +321,22 @@ layer(testDbLayer, { timeout: 60_000 })('a community with two chats', it => {
         })
     );
 
-    it.effect('compares approvals only with squads of the first chat', () =>
+    it.effect('compares approvals only with squads of their own chat', () =>
         Effect.gen(function* () {
             const slug = 'two-compare-fc';
             yield* load(slug, wednesdayPosts(slug));
-            const rows = yield* parseApprovals(`Гонзо|${ids.striker}|2|2025-05-07`, testConfig);
-            yield* loadApprovals({ slug, rows, decidedAt });
+            const line = `Гонзо|${ids.striker}|2|2025-05-07`;
+            const rows = yield* parseApprovals(line, testConfig);
+            const ofSecond = yield* parseApprovals(`${line}|${secondChat}`, testConfig);
+            const ofOther = yield* parseApprovals(`${line}|-5`, testConfig);
+            const malformed = yield* Effect.exit(parseApprovals(`${line}|second`, testConfig));
+            const loaded = yield* loadApprovals({ slug, rows: ofSecond, decidedAt });
 
+            expect(loaded).toMatchObject({ stored: 1, pinned: 1 });
             expect(yield* compareApprovals(slug, rows)).toMatchObject({ kept: 0, nicknameGone: 1, otherMessage: 1 });
+            expect(yield* compareApprovals(slug, ofSecond)).toMatchObject({ kept: 1, nicknameGone: 0, otherMessage: 0 });
+            expect(yield* compareApprovals(slug, ofOther)).toMatchObject({ kept: 0, nicknameGone: 1, otherMessage: 1 });
+            expect(Exit.isFailure(malformed)).toBe(true);
         })
     );
 
