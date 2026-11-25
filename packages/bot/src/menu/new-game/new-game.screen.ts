@@ -129,8 +129,11 @@ export const newGameText = Effect.fn('Bot.newGameText')(function* (user: MenuUse
     const prompt = prompts[draft.view];
     const venueName = data.venues.find(entry => entry.id === draft.venueId)?.name ?? '';
     const ask = isDefined(prompt) ? menuText(user.locale, prompt) : menuText(user.locale, 'pin', { name: escapeHtml(venueName) });
-    const heading =
-        draft.notice === 'tooLittle' ? [] : [`${menuText(user.locale, 'newGame')}: ${escapeHtml(selection(user, draft, data))}`];
+    const chosen = selection(user, draft, data);
+    const title = isNotEmptyString(chosen)
+        ? `${menuText(user.locale, 'newGame')}: ${escapeHtml(chosen)}`
+        : menuText(user.locale, 'newGame');
+    const heading = draft.notice === 'tooLittle' ? [] : [title];
 
     return [...heading, ...noticeText(user, draft.notice), ask].join('\n');
 });

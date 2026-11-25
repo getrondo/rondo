@@ -101,7 +101,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* vote(9301, []);
             const mentions = [-4021, -4022].map(chatId => callsTo(chatId, 'sendMessage').at(-1)?.payload.text);
 
-            expect(card.text).toContain('вільно 0 з 2');
+            expect(card.text).toContain('Записались 2 з 2 · вільно 0');
             expect(confirmation).toContain('Так буде в групі');
             expect(refused.text).toContain('Telegram не прийняв');
             expect(refused.buttons.flat().map(button => button.text)).toContain('📣 Відкрити ще для: Second');

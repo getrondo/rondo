@@ -82,6 +82,8 @@ export const gamesScreen = Effect.fn('Bot.gamesScreen')(function* (user: MenuUse
     } satisfies Screen;
 });
 
+const capitalized = (value: string): string => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+
 const names = (entries: readonly { readonly displayName: string }[]) =>
     isNotEmptyArray(entries) ? entries.map(entry => escapeHtml(entry.displayName)).join(', ') : '—';
 
@@ -125,20 +127,21 @@ export const gameCardScreen = Effect.fn('Bot.gameCardScreen')(function* (user: M
     const canDelete = yield* isDeletableSession(user.communityId, sessionId, user.today);
     const closedTo = isOpen ? chats.filter(chat => !audience.some(target => target.chatId === chat.chatId)) : [];
     const free = isDefined(game.capacityMax)
-        ? [menuText(user.locale, 'free', { free: Math.max(0, game.capacityMax - signed.length), max: game.capacityMax })]
+        ? [menuText(user.locale, 'free', { free: Math.max(0, game.capacityMax - signed.length) })]
         : [];
     const size = [
         ...(isDefined(game.fieldsPlanned) ? [countOf(user.locale, 'field', game.fieldsPlanned)] : []),
         ...(isDefined(game.capacityMax) ? [countOf(user.locale, 'place', game.capacityMax)] : []),
         statusText[user.locale][game.status] ?? game.status
     ];
+    const signedLine = yield* signedUpLine(user, game);
     const lines = [
         ...(isDefined(header) ? [header, ''] : []),
         `⚽ <b>${escapeHtml(formatSessionLabel(user.locale, game))}</b>`,
         size.join(' · '),
         menuText(user.locale, hasPoll ? 'pollPosted' : 'pollMissing'),
-        [`${menuText(user.locale, 'signed')}: ${yield* signedUpLine(user, game)}`, ...free].join(' · '),
-        names(signed),
+        [capitalized(signedLine), ...free].join(' · '),
+        ...(isNotEmptyArray(signed) ? [names(signed)] : []),
         `${menuText(user.locale, 'waiting')}: ${names(roster.filter(entry => entry.status === 'waitlisted'))}`,
         `${menuText(user.locale, 'keepers')}: ${names(roster.filter(entry => entry.status === 'in' && entry.role === 'gk'))}`
     ];
