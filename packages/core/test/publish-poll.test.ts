@@ -174,12 +174,20 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             const change: Action = { _tag: 'update_session', sessionId, localTime: '11:30', notify: true };
             const preview = yield* noticeOf(change, context);
             const before = countOfCalls('sendMessage');
-            const elsewhere = yield* confirm(communityId, { ...change, preview: { ...preview, chats: ['-555'] } });
+            const elsewhere = yield* confirm(communityId, {
+                ...change,
+                preview: { ...preview, targets: [{ chatId: '-555', topicId: null }] }
+            });
+            const otherTopic = yield* confirm(communityId, {
+                ...change,
+                preview: { ...preview, targets: preview.targets.map(target => ({ ...target, topicId: 9 })) }
+            });
             const reworded = yield* confirm(communityId, { ...change, preview: { ...preview, html: `${preview.html} ` } });
             const refusedCount = countOfCalls('sendMessage') - before;
             const exact = yield* confirm(communityId, { ...change, preview });
 
             expect(reasonIn(elsewhere.outcome)).toContain('changed after the preview');
+            expect(reasonIn(otherTopic.outcome)).toContain('changed after the preview');
             expect(reasonIn(reworded.outcome)).toContain('changed after the preview');
             expect(refusedCount).toBe(0);
             expect(exact.outcome._tag).toBe('done');

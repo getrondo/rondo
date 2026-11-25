@@ -93,13 +93,16 @@ export const confirmScreen = Effect.fn('Bot.confirmScreen')(function* (
         return { text: menuText(user.locale, 'deleteAsk', { label }), keyboard: [[ok(false)], nav] } satisfies Screen;
     }
 
-    const sees = target.me ? menuText(user.locale, 'meSees') : menuText(user.locale, 'groupSees', { where: escapeHtml(target.where) });
+    const also = target.alsoMe ? menuText(user.locale, 'alsoYouSee') : '';
+    const groupSees = menuText(user.locale, 'groupSees', { where: `${escapeHtml(target.where)}${also}` });
+    const reached = target.me ? menuText(user.locale, 'meSees') : groupSees;
+    const sees = target.silent ? menuText(user.locale, 'noAudience') : reached;
     const notes = action._tag === 'update_session' ? yield* changeNotes(user, game, { action, loud: !target.me }) : [];
     const closing = action._tag === 'cancel_session' ? [menuText(user.locale, 'pollCloses')] : [];
     const quiet = action._tag === 'update_session' || action._tag === 'cancel_session';
 
     return {
         text: [...(isDefined(notice) ? [notice] : []), sees, yield* groupHtml(user, game, action), ...notes, ...closing].join('\n'),
-        keyboard: [[ok(true)], ...(quiet ? [[ok(false)]] : []), nav]
+        keyboard: [...(target.silent && quiet ? [] : [[ok(true)]]), ...(quiet ? [[ok(false)]] : []), nav]
     } satisfies Screen;
 });

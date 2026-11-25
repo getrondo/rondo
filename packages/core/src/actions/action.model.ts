@@ -8,7 +8,9 @@ const CancelReason = Schema.Literals(['weather', 'low_turnout', 'venue', 'holida
 const TeamPlayer = Schema.Struct({ personId: Schema.String, displayName: Schema.String, strength: Schema.Finite, isGk: Schema.Boolean });
 const Team = Schema.Struct({ ordinal: Schema.Int, players: Schema.Array(TeamPlayer), strength: Schema.Finite });
 
-const NoticePreview = Schema.Struct({ html: Schema.String, chats: Schema.Array(Schema.String) });
+const NoticeTarget = Schema.Struct({ chatId: Schema.String, topicId: Schema.NullOr(Schema.Int) });
+
+const NoticePreview = Schema.Struct({ html: Schema.String, targets: Schema.Array(NoticeTarget) });
 
 const CreateSessionAction = Schema.TaggedStruct('create_session', {
     localDate: LocalDate,

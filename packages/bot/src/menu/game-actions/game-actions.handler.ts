@@ -84,11 +84,13 @@ const afterDone = Effect.fn('Bot.afterGameDone')(function* (user: MenuUser, acti
 
     if (action._tag === 'update_session' || action._tag === 'cancel_session') {
         const prefix = action._tag === 'update_session' ? 'changed' : 'cancelled';
-        const toMe = action.notify && target.me;
+        const loud = action.notify && !target.silent;
+        const toMe = loud && target.me;
         const audience = toMe ? 'Me' : 'To';
-        const key = `${prefix}${action.notify ? audience : 'Quiet'}` as const;
+        const key = `${prefix}${loud ? audience : 'Quiet'}` as const;
+        const also = target.alsoMe ? menuText(user.locale, 'alsoYouTold') : '';
         const card = yield* gameCardScreen(user, sessionId, {
-            text: menuText(user.locale, key, { where: escapeHtml(where) }),
+            text: menuText(user.locale, key, { where: `${escapeHtml(where)}${also}` }),
             saysPoll: false
         });
 

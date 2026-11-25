@@ -163,8 +163,10 @@ without the bot still arrive as poll answers with public voters.
 | 150 | SEND SAFETY | Card poll to the previewed topic | 💾 game → 📣 → topic moves → ✅ | Nothing, then the poll in the new topic after the fresh preview | «Дані змінилися…» and a fresh confirmation | Poll ref | update | `posts a card poll only to the previewed chat and topic and shows a fresh preview after a move` |
 | 151 | SEND SAFETY | Forwards to the previewed topic | Both groups with the second topic moved; card 📣 Надіслати ще в with another move | Forward only after a fresh preview | Per-group line, then «Дані змінилися…» | — | update | `forwards from the card and after /newgame only to the previewed topic of the other group` |
 | 152 | SEND SAFETY | Retry after an unknown send opens the confirmation | Card → 📣 → ✅ times out → 📣 Немає, надіслати в | — | «Так буде в «Games»:» with ✅ | — | update | `opens the normal confirmation from the button after an unknown poll send on the card` |
-| 153 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 154 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 155 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 156 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 157 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 153 | ADMIN AFTER | Notice with no linked chat left | Group unlinked, card → 🕖 → 20:15 | Nothing | Only the quiet button; «✅ Змінено. У групу нічого не надіслано.» | Game moved | update | `offers only the quiet change when no chat of the game is linked any more and says nothing was sent` |
+| 154 | ADMIN AFTER | Notice to a group and to me | Game posted to me, its copy in a linked topic; card → 🕖 → ✅ | Notice in the topic and in my chat | «Так буде в «Copies» і в тебе:», «✅ Змінено, у «Copies» і тобі написано.» | Game moved | update | `names the group and the private chat a notice goes to and sends it to exactly both` |
+| 155 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 156 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 157 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 158 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 159 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |

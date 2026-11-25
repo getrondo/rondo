@@ -13,6 +13,7 @@ import { sessionCancelledHtml, sessionChangedHtml } from './notifier';
 
 import type { Action } from '../actions/action.model';
 import type { ActionContext } from '../actions/execute-action';
+import type { GroupTarget } from '../interface/group-target.interface';
 import type { SessionView } from '../sessions/session.model';
 
 type NoticeAction = Extract<Action, { _tag: 'update_session' | 'cancel_session' | 'publish_teams' }>;
@@ -32,6 +33,9 @@ const afterChange = Effect.fn('Core.afterChange')(function* (game: SessionView, 
         venueId: action.venueId ?? game.venueId
     };
 });
+
+export const previewedTargets = (action: NoticeAction): readonly GroupTarget[] | null =>
+    isDefined(action.preview) ? action.preview.targets.map(target => ({ chatId: BigInt(target.chatId), topicId: target.topicId })) : null;
 
 export const noticeTargetsOf = Effect.fn('Core.noticeTargetsOf')(function* (context: ActionContext, sessionId: string) {
     const requester = isDefined(context.requester) ? [{ chatId: context.requester, topicId: null }] : [];
@@ -63,7 +67,7 @@ export const noticeOf = Effect.fn('Core.noticeOf')(function* (action: NoticeActi
     const html = yield* noticeHtml(action, game, context);
     const targets = yield* noticeTargetsOf(context, action.sessionId);
 
-    return { html, chats: targets.map(target => String(target.chatId)) };
+    return { html, targets: targets.map(target => ({ chatId: String(target.chatId), topicId: target.topicId })) };
 });
 
 export const requirePreviewed = Effect.fn('Core.requirePreviewed')(function* (action: NoticeAction, context: ActionContext) {
@@ -73,7 +77,7 @@ export const requirePreviewed = Effect.fn('Core.requirePreviewed')(function* (ac
 
     const current = yield* noticeOf(action, context);
 
-    if (current.html !== action.preview.html || current.chats.join(',') !== action.preview.chats.join(',')) {
+    if (current.html !== action.preview.html || JSON.stringify(current.targets) !== JSON.stringify(action.preview.targets)) {
         return yield* ActionFailedError.make({ reason: 'the notice changed after the preview, ask for a new one' });
     }
 

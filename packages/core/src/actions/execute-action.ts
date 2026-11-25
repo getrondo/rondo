@@ -8,7 +8,7 @@ import * as Predicate from 'effect/Predicate';
 import { grantAdmin, isAdminOf } from '../access/admin-access';
 import { linkedChatsOf } from '../community/community.repository';
 import { ActionFailedError } from '../error/action-failed.error';
-import { noticeTargetsOf, requirePreviewed } from '../notify/notice-preview';
+import { noticeTargetsOf, previewedTargets, requirePreviewed } from '../notify/notice-preview';
 import { notifySessionCancelled, notifySessionChanged } from '../notify/notifier';
 import { linkAlias, requireAlias, unlinkAlias } from '../people/alias-links.service';
 import { arePeopleOf, createPerson, mergePeople, renamePerson } from '../people/people.service';
@@ -41,10 +41,10 @@ const requireGroup = (context: ActionContext) =>
 
 const toAudience = Effect.fn('Core.toAudience')(function* <Value, Failure, Requirements>(
     context: ActionContext,
-    sessionId: string,
+    action: Extract<Action, { _tag: 'update_session' | 'cancel_session' }>,
     effect: (group: GroupTarget) => Effect.Effect<Value, Failure, Requirements>
 ) {
-    const targets = yield* noticeTargetsOf(context, sessionId);
+    const targets = previewedTargets(action) ?? (yield* noticeTargetsOf(context, action.sessionId));
 
     for (const group of targets) {
         yield* effect(group);
@@ -119,7 +119,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
                 yield* updateSession(before, action, context.timezone, actorPersonId);
                 const after = yield* requireSession(communityId, action.sessionId);
                 if (action.notify) {
-                    yield* toAudience(context, action.sessionId, group => notifySessionChanged({ before, after, group, locale }));
+                    yield* toAudience(context, action, group => notifySessionChanged({ before, after, group, locale }));
                 }
 
                 return { sessionId: action.sessionId };
@@ -132,9 +132,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
                 yield* cancelSession(target, action.reason, actorPersonId);
                 yield* closePollsOf(target.id);
                 if (action.notify) {
-                    yield* toAudience(context, action.sessionId, group =>
-                        notifySessionCancelled({ target, reason: action.reason, group, locale })
-                    );
+                    yield* toAudience(context, action, group => notifySessionCancelled({ target, reason: action.reason, group, locale }));
                 }
 
                 return { sessionId: action.sessionId };
@@ -144,7 +142,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
             return yield* Effect.gen(function* () {
                 yield* requirePreviewed(action, context);
                 const target = yield* requireSession(communityId, action.sessionId);
-                const groups = yield* noticeTargetsOf(context, action.sessionId);
+                const groups = previewedTargets(action) ?? (yield* noticeTargetsOf(context, action.sessionId));
 
                 if (!isNotEmptyArray(groups)) {
                     return yield* ActionFailedError.make({ reason: 'no group is linked to this community yet' });
