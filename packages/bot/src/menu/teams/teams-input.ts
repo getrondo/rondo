@@ -1,6 +1,7 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { loadAdminState } from '@rondo/core/menu/admin-state.repository';
 import { addGuests } from '@rondo/core/signups/roster.service';
+import { badgeOfColour } from '@rondo/core/teams/badges';
 import { setColour, syncByAdmin, teamIndexOf, withChange, movePlayers, type DraftState } from '@rondo/core/teams/draft-state';
 import {
     applyPaste,
@@ -18,6 +19,8 @@ import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
+
+import { failureText } from '../failure-text';
 
 import { teamsData, type TeamsTap } from './teams-callback';
 import { editorScreen, shortName } from './teams-editor.screen';
@@ -94,9 +97,9 @@ const questionScreen = (
             text: teamsText(user.locale, 'whoIs', { name: escapeHtml(member.name) }),
             keyboard: [
                 ...member.candidates.map((candidate, index) => [
-                    { text: shortName(candidate.label, 30), callback_data: teamsData(base, 'Q', [ambiguous, index]) }
+                    { text: shortName(candidate.label, 30), callback_data: teamsData(base, 'Q', [paste.revision, ambiguous, index]) }
                 ]),
-                [{ text: teamsText(user.locale, 'skip'), callback_data: teamsData(base, 'Q', [ambiguous, 'n']) }]
+                [{ text: teamsText(user.locale, 'skip'), callback_data: teamsData(base, 'Q', [paste.revision, ambiguous, 'n']) }]
             ]
         };
     }
@@ -106,8 +109,8 @@ const questionScreen = (
               text: teamsText(user.locale, 'unknownNames', { names: escapeHtml(unknown.join(', ')) }),
               keyboard: [
                   [
-                      { text: teamsText(user.locale, 'addAsGuests'), callback_data: teamsData(base, 'U', [1]) },
-                      { text: teamsText(user.locale, 'skip'), callback_data: teamsData(base, 'U', [0]) }
+                      { text: teamsText(user.locale, 'addAsGuests'), callback_data: teamsData(base, 'U', [paste.revision, 1]) },
+                      { text: teamsText(user.locale, 'skip'), callback_data: teamsData(base, 'U', [paste.revision, 0]) }
                   ]
               ]
           }
@@ -151,10 +154,18 @@ const finishPaste = Effect.fn('Bot.finishPaste')(function* (
             next
         );
     });
-    yield* showEditor(user, sessionId, options.messageId, [teamsText(user.locale, 'pasted')]);
+    yield* showEditor(user, sessionId, options.messageId, [
+        teamsText(user.locale, 'pasted'),
+        ...placed.twice.map(entry =>
+            teamsText(user.locale, 'twice', {
+                name: escapeHtml(entry.name),
+                badge: badgeOfColour(placed.colours[entry.team])?.badge ?? `${entry.team + 1}.`
+            })
+        )
+    ]);
 });
 
-export const handleTeamsInput = Effect.fn('Bot.handleTeamsInput')(function* (user: MenuUser, row: AdminStateRow, text: string) {
+const typedInput = Effect.fn('Bot.teamsTypedInput')(function* (user: MenuUser, row: AdminStateRow, text: string) {
     const draft = decodeDraft(row.draft);
 
     if (Option.isNone(draft)) {
@@ -166,7 +177,7 @@ export const handleTeamsInput = Effect.fn('Bot.handleTeamsInput')(function* (use
     const players = [...view.row.state.teams.flat(), ...view.row.state.pending];
 
     if (draft.value.step === 'guest' && !text.includes('\n')) {
-        const hostId = draft.value.host === 'n' ? null : (players[Number(draft.value.host)] ?? null);
+        const hostId = draft.value.host === 'n' || !players.includes(draft.value.host ?? '') ? null : draft.value.host;
         yield* addTypedGuests(user, sessionId, { hostId, count: 1, name: text.slice(0, 40) });
         yield* showEditor(user, sessionId, null, [teamsText(user.locale, 'guestsAdded', { names: escapeHtml(text.slice(0, 40)) })]);
 
@@ -197,25 +208,45 @@ export const handleTeamsInput = Effect.fn('Bot.handleTeamsInput')(function* (use
     return true;
 });
 
+export const handleTeamsInput = (user: MenuUser, row: AdminStateRow, text: string) =>
+    typedInput(user, row, text).pipe(
+        Effect.catchTag('ActionFailedError', error =>
+            Effect.gen(function* () {
+                const sessionId = Option.getOrNull(decodeDraft(row.draft))?.sessionId ?? '';
+                yield* showEditor(user, sessionId, null, [failureText(user.locale, error.reason, { where: '', isPrivate: false }).text]);
+
+                return true;
+            })
+        )
+    );
+
 export const handlePasteTap = Effect.fn('Bot.handlePasteTap')(function* (user: MenuUser, tap: TeamsTap, messageId: number) {
     const state = yield* loadAdminState(user.tgUserId, user.now);
     const draft = state.pipe(Option.flatMap(row => decodeDraft(row.draft)));
     const paste = draft.pipe(Option.flatMap(value => decodePaste(value.paste)));
 
-    if (Option.isNone(paste) || Option.isNone(draft) || draft.value.sessionId !== tap.sessionId) {
+    const isCurrent = Option.exists(state, row => row.messageId === messageId);
+
+    if (Option.isNone(paste) || Option.isNone(draft) || draft.value.sessionId !== tap.sessionId || !isCurrent) {
         yield* showEditor(user, tap.sessionId, messageId, []);
 
         return;
     }
 
+    const [revision, first, second] = tap.args;
+    const index = Number(first);
+    const member = paste.value.teams.flatMap(team => team.members)[index];
+
+    if (revision !== String(paste.value.revision) || (tap.op === 'Q' && !isNotEmptyArray(member?.candidates))) {
+        return;
+    }
+
     if (tap.op === 'U') {
-        yield* finishPaste(user, tap.sessionId, paste.value, { addUnknown: tap.args[0] === '1', messageId });
+        yield* finishPaste(user, tap.sessionId, paste.value, { addUnknown: first === '1', messageId });
 
         return;
     }
 
-    const index = Number(tap.args[0]);
-    const member = paste.value.teams.flatMap(team => team.members)[index];
-    const chosen = member?.candidates[Number(tap.args[1])]?.personId ?? null;
+    const chosen = member?.candidates[Number(second)]?.personId ?? null;
     yield* finishPaste(user, tap.sessionId, choose(paste.value, index, chosen), { addUnknown: null, messageId });
 });

@@ -186,13 +186,14 @@ const teamsTap = Effect.fn('Bot.teamsTap')(function* (user: MenuUser, data: stri
 
     const view = yield* loadView(user, tap.sessionId, { page: tap.page, offerLevels: tap.op === 'e' });
     const isStale = tap.version !== view.row.version && tap.op !== 'e';
+    const isGuestStep = tap.op === 'G' && !isStale;
     const shown = isStale ? { ...view, notes: [teamsText(user.locale, 'changedByOther')] } : view;
     const screen =
         tap.op === 'Y' && !isStale ? yield* tierTap(user, view, tap) : yield* viewScreen(user, shown, isStale ? { ...tap, op: 'e' } : tap);
     yield* showTeams(user, messageId, {
         sessionId: tap.sessionId,
         screen,
-        draft: { step: tap.op === 'G' ? 'guest' : 'editor', host: tap.op === 'G' ? (tap.args[0] ?? null) : null }
+        draft: isGuestStep ? { step: 'guest', host: playersOf(view.row.state)[Number(tap.args[0])] ?? 'n' } : { step: 'editor', host: null }
     });
 
     return isStale ? Option.some(teamsText(user.locale, 'changedByOther')) : Option.none<string>();

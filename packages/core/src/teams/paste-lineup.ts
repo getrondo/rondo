@@ -25,6 +25,7 @@ const PasteMemberSchema = Schema.Struct({
 });
 
 export const PasteSchema = Schema.Struct({
+    revision: Schema.Int,
     teams: Schema.Array(Schema.Struct({ colour: Schema.NullOr(Schema.String), members: Schema.Array(PasteMemberSchema) }))
 });
 
@@ -116,6 +117,7 @@ export const resolvePaste = Effect.fn('Core.resolvePaste')(function* (
     };
 
     return {
+        revision: 0,
         teams: teams.map(team => ({
             colour: badgeOfEmoji(team.emoji)?.colour ?? null,
             members: team.members.map(member => memberOf(member))
@@ -135,6 +137,7 @@ export const choose = (paste: Paste, index: number, personId: string | null): Pa
     let position = -1;
 
     return {
+        revision: paste.revision + 1,
         teams: paste.teams.map(team => ({
             colour: team.colour,
             members: team.members.flatMap(member => {
@@ -176,12 +179,19 @@ export const applyPaste = Effect.fn('Core.applyPaste')(function* (
         members.find(member => isDefined(name) && normalizeAlias(member.name) === normalizeAlias(name))?.personId ?? null;
     const teams: string[][] = [];
     const keepers: string[] = [];
+    const twice: { readonly name: string; readonly team: number }[] = [];
+    const firstTeam = new Map<string, number>();
 
-    for (const team of paste.teams) {
+    for (const [index, team] of paste.teams.entries()) {
         const placed: string[] = [];
 
         for (const member of team.members) {
-            if (isDefined(member.personId)) {
+            const earlier = firstTeam.get(member.personId ?? '');
+
+            if (isDefined(earlier)) {
+                twice.push({ name: member.name, team: earlier });
+            } else if (isDefined(member.personId)) {
+                firstTeam.set(member.personId, index);
                 placed.push(member.personId, ...(yield* placeGuests(change, member.personId, member.guests)));
             } else if (member.isGuest) {
                 placed.push(...(yield* placeGuests(change, hostOf(member.hostName), member.guests)));
@@ -190,13 +200,13 @@ export const applyPaste = Effect.fn('Core.applyPaste')(function* (
                 placed.push(...(guest?.status === 'in' ? [guest.personId] : []));
             }
 
-            if (member.isGk && isDefined(placed.at(-1))) {
-                keepers.push(placed.at(-1) ?? '');
+            if (member.isGk && isDefined(member.personId) && !isDefined(earlier)) {
+                keepers.push(member.personId);
             }
         }
 
         teams.push(placed);
     }
 
-    return { teams, keepers, colours: paste.teams.map(team => team.colour) };
+    return { teams, keepers, twice, colours: paste.teams.map(team => team.colour) };
 });

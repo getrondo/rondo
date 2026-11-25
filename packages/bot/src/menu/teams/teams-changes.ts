@@ -42,6 +42,10 @@ interface ChangeContext {
 }
 
 const swapOrPlace = (state: DraftState, first: string, second: string): DraftState => {
+    if (state.pending.includes(first) && state.pending.includes(second)) {
+        return state;
+    }
+
     if (state.pending.includes(first)) {
         return movePlayers(state, [first], teamIndexOf(state, second));
     }

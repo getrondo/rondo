@@ -95,6 +95,7 @@ export const teamsTextRu = {
     addAsGuests: '➕ Добавить как гостей',
     skip: '⏭ Пропустить',
     whoIs: '❓ «{name}» — кто именно?',
+    twice: '«{name}» дважды в списке — оставил в {badge}.',
     pasted: '📋 Взял составы из текста.',
     notUnderstood: '🤔 Не понял составы. Каждая команда — с новой строки, с цвета, напр. «🔴 Иван, Пётр».',
     guestsAdded: '➕ Добавил: {names}.',
