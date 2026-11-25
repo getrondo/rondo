@@ -47,7 +47,8 @@ isec run getrondo prod -- sh -c 'RONDO_WEBHOOK_URL=https://<production-domain>/a
    The bot posts there and reads games only there. In General, or in a group without topics, the whole
    group outside other topics counts. Send `/link` again in another topic to move. `/link` in a second group
    adds it to the community: a game's poll is then posted to one group and forwarded to the others. Turning topics on can turn
-   a group into a supergroup with a new id: then link again.
+   a group into a supergroup with a new id: the bot moves the link to the new id by itself and keeps the topic.
+   If it was offline when that happened, send `/link` in the new supergroup.
 4. Set the language of the group and the poll template once (`isec`, production database, ask the owner first).
    Placeholders: `{weekday}`, `{date}`, `{time}`, `{place}`, `{station}`, `{fields}`, `{places}`. One without a value
    disappears with the separator beside it. Without a template the bot uses a generic one. The import keeps both.

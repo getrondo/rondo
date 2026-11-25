@@ -1,3 +1,4 @@
+import { isDefined } from '@rnw-community/shared';
 import { community, telegramChat } from '@rondo/db/schema/org.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { CommunityConfigSchema, type CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
@@ -78,6 +79,19 @@ export const linkedChatsOf = Effect.fn('Core.linkedChatsOf')(function* (communit
         .from(telegramChat)
         .where(and(eq(telegramChat.communityId, communityId), eq(telegramChat.purpose, 'main')))
         .orderBy(asc(telegramChat.createdAt), asc(telegramChat.chatId));
+});
+
+export const moveChat = Effect.fn('Core.moveChat')(function* (from: bigint, to: bigint) {
+    const db = yield* Db;
+    const [taken] = yield* db.select({ chatId: telegramChat.chatId }).from(telegramChat).where(eq(telegramChat.chatId, to));
+
+    if (isDefined(taken)) {
+        yield* db.delete(telegramChat).where(eq(telegramChat.chatId, from));
+
+        return;
+    }
+
+    yield* db.update(telegramChat).set({ chatId: to, kind: 'supergroup' }).where(eq(telegramChat.chatId, from));
 });
 
 export const bindChat = Effect.fn('Core.bindChat')(function* (input: {

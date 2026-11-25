@@ -1,6 +1,13 @@
 import { isDefined } from '@rnw-community/shared';
 import { adminCommunityIds, isAdminOf } from '@rondo/core/access/admin-access';
-import { bindChat, communityProfile, findCommunityBySlug, findLinkedChat, groupLocaleOf } from '@rondo/core/community/community.repository';
+import {
+    bindChat,
+    communityProfile,
+    findCommunityBySlug,
+    findLinkedChat,
+    groupLocaleOf,
+    moveChat
+} from '@rondo/core/community/community.repository';
 import { resolveLocale } from '@rondo/core/i18n/locale';
 import { text } from '@rondo/core/i18n/messages';
 import { displayNameOf, syncMember } from '@rondo/core/identity/telegram-user';
@@ -63,6 +70,12 @@ const handleLink = Effect.fn('Bot.handleLink')(function* (message: Message, slug
 export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* (message: Message) {
     const sender = message.from;
     const body = message.text ?? message.caption;
+
+    if (isDefined(message.migrate_to_chat_id)) {
+        yield* moveChat(BigInt(message.chat.id), BigInt(message.migrate_to_chat_id));
+
+        return noFollowUp;
+    }
 
     if (!isDefined(sender) || sender.is_bot) {
         return noFollowUp;

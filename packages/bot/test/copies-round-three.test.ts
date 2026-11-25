@@ -1,5 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { bindChat } from '@rondo/core/community/community.repository';
+import { telegramChat } from '@rondo/db/schema/org.schema';
 import { messageRef } from '@rondo/db/schema/platform.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -65,6 +66,28 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(copies.map(copy => copy.chatId)).toEqual([-26_001n]);
             expect(foreignCopies).toEqual([]);
             expect(foreignGames.filter(game => game.localDate === '2026-11-27')).toEqual([]);
+        })
+    );
+
+    it.effect('moves the link of a group that became a supergroup and keeps its topic', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedSeason('r3-migrate', { groupChatId: null, adminId: 2603 });
+            yield* bindChat({ communityId, chatId: -26_003n, topicId: 7, kind: 'group', title: 'Old group' });
+            yield* deliver({
+                message: {
+                    message_id: 1,
+                    date: 1_795_680_000,
+                    chat: { id: -26_003, type: 'group', title: 'Old group' },
+                    from: { id: 2603, is_bot: false, first_name: 'Admin 2603' },
+                    migrate_to_chat_id: -1_000_026_003
+                }
+            });
+            const chats = yield* db.select().from(telegramChat).where(eq(telegramChat.communityId, communityId));
+
+            expect(chats.map(chat => ({ chatId: chat.chatId, topicId: chat.topicId, kind: chat.kind }))).toEqual([
+                { chatId: -1_000_026_003n, topicId: 7, kind: 'supergroup' }
+            ]);
         })
     );
 });
