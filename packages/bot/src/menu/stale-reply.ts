@@ -1,4 +1,4 @@
-import { loadAdminState, saveAdminState } from '@rondo/core/menu/admin-state.repository';
+import { loadAdminState } from '@rondo/core/menu/admin-state.repository';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
@@ -7,20 +7,17 @@ import { gameCardScreen } from './games.screen';
 import { menuText } from './menu-text';
 import { DoneSchema } from './new-game/draft';
 import { showScreen } from './show-screen';
+import { writeState } from './write-state';
 
 import type { MenuUser } from './screen.interface';
 
 const decodeDone = Schema.decodeUnknownOption(DoneSchema);
 
-export const rememberDone = (user: MenuUser, messageId: number, done: Omit<typeof DoneSchema.Type, 'flow'>) =>
-    saveAdminState({
-        tgUserId: user.tgUserId,
-        communityId: user.communityId,
-        messageId,
-        awaiting: null,
-        draft: { flow: 'done', ...done },
-        now: user.now
-    });
+export const rememberDone = (
+    user: MenuUser,
+    at: { readonly messageId: number; readonly expected: number | null },
+    done: Omit<typeof DoneSchema.Type, 'flow'>
+) => writeState(user, { messageId: at.messageId, awaiting: null, draft: { flow: 'done', ...done } }, at.expected);
 
 export const replyStale = Effect.fn('Bot.replyStale')(function* (user: MenuUser, messageId: number, revision: string) {
     const state = yield* loadAdminState(user.tgUserId, user.now);

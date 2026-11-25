@@ -20,7 +20,7 @@ import type { MenuUser } from './screen.interface';
 const decodeDraft = Schema.decodeUnknownOption(DraftSchema);
 
 const navigate = Effect.fn('Bot.navigate')(function* (user: MenuUser, parts: readonly string[], messageId: number) {
-    yield* clearAdminState(user.tgUserId);
+    yield* clearAdminState(user.tgUserId, { messageId, now: user.now });
     const [, screen, id, page] = parts;
 
     if (screen === 'ng') {

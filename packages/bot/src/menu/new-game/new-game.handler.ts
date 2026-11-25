@@ -4,8 +4,6 @@ import {
     consumeAdminState,
     loadAdminState,
     moveAdminMessage,
-    restoreAdminState,
-    saveAdminState,
     takeAwaiting
 } from '@rondo/core/menu/admin-state.repository';
 import { escapeHtml } from '@rondo/telegram/format/html';
@@ -19,6 +17,7 @@ import { menuText } from '../menu-text';
 import { runConfirmed } from '../run-confirmed';
 import { clearKeyboard, showScreen } from '../show-screen';
 import { rememberDone, replyStale } from '../stale-reply';
+import { writeState } from '../write-state';
 
 import { audienceOfDraft } from './audience';
 import { DraftSchema, type Draft, type NewGameData, type TypedInput } from './draft';
@@ -42,32 +41,31 @@ const presentNewGame = Effect.fn('Bot.presentNewGame')(function* (
     user: MenuUser,
     draft: Draft,
     data: NewGameData,
-    messageId: number | null
+    at: { readonly messageId: number | null; readonly expected: number | null }
 ) {
+    const { messageId } = at;
     const prepared = yield* withSummary(user, { ...draft, targets: targetsOf(draft, data) }, data);
-    const saved = yield* saveAdminState({
-        tgUserId: user.tgUserId,
-        communityId: user.communityId,
-        messageId,
-        awaiting: awaitingOf(prepared),
-        draft: prepared,
-        now: user.now
-    });
+    const saved = yield* writeState(user, { messageId, awaiting: awaitingOf(prepared), draft: prepared }, at.expected);
+
+    if (Option.isNone(saved)) {
+        return;
+    }
+
     const text = yield* newGameText(user, prepared, data);
     const shownId = yield* showScreen(user.chatId, messageId, {
         text,
-        keyboard: newGameKeyboard(prepared, data, user.locale, saved.revision)
+        keyboard: newGameKeyboard(prepared, data, user.locale, saved.value.revision)
     });
 
     if (shownId !== messageId) {
-        yield* moveAdminMessage(user.tgUserId, shownId);
+        yield* moveAdminMessage(user.tgUserId, shownId, saved.value.revision);
     }
 });
 
 export const openNewGame = Effect.fn('Bot.openNewGame')(function* (user: MenuUser, messageId: number | null) {
     const data = yield* loadNewGameData(user);
 
-    yield* presentNewGame(user, startDraft(data), data, messageId);
+    yield* presentNewGame(user, startDraft(data), data, { messageId, expected: null });
 });
 
 const clearOld = (user: MenuUser, messageId: number | null) => (isDefined(messageId) ? clearKeyboard(user.chatId, messageId) : Effect.void);
@@ -78,8 +76,9 @@ const reopenNewGame = Effect.fn('Bot.reopenNewGame')(function* (user: MenuUser) 
 
     if (Option.isSome(draft)) {
         const data = yield* loadNewGameData(user);
-        yield* clearOld(user, Option.getOrNull(state)?.messageId ?? null);
-        yield* presentNewGame(user, draft.value, data, null);
+        const row = Option.getOrNull(state);
+        yield* clearOld(user, row?.messageId ?? null);
+        yield* presentNewGame(user, draft.value, data, { messageId: null, expected: row?.revision ?? null });
     }
 });
 
@@ -156,8 +155,7 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
     const outcome = yield* runConfirmed(user, actionOf(draft, withPoll, data), { summary: withPoll ? draft.summary : null, target });
 
     if (outcome._tag === 'failed' || !isDefined(outcome.sessionId)) {
-        yield* restoreAdminState(consumed.value, user.now);
-        yield* presentNewGame(user, { ...draft, ...failureOf(outcome) }, data, messageId);
+        yield* presentNewGame(user, { ...draft, ...failureOf(outcome) }, data, { messageId, expected: consumed.value.revision });
 
         return Option.none<string>();
     }
@@ -165,16 +163,16 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
     const done = { sessionId: outcome.sessionId, created: !isDefined(draft.sessionId), revision: String(row.revision) };
 
     if (self) {
+        yield* rememberDone(user, { messageId, expected: consumed.value.revision }, { ...done, self: true });
         yield* showSelfReceipt(user, messageId, { sessionId: outcome.sessionId, status: done.created ? 'receiptMe' : 'sentMe' });
-        yield* rememberDone(user, messageId, { ...done, self: true });
 
         return Option.none<string>();
     }
 
+    yield* rememberDone(user, { messageId, expected: consumed.value.revision }, { ...done, self: false });
     const lines = withPoll ? yield* resultLines(user, draft, outcome.sessionId) : [menuText(user.locale, 'createdQuiet')];
     const card = yield* gameCardScreen(user, outcome.sessionId, { text: lines.join('\n'), saysPoll: withPoll });
     yield* showScreen(user.chatId, messageId, card);
-    yield* rememberDone(user, messageId, { ...done, self: false });
 
     return Option.none<string>();
 });
@@ -190,7 +188,7 @@ export const handleNewGameTap = Effect.fn('Bot.handleNewGameTap')(function* (
     }
 
     if (tap.op === 'x') {
-        yield* clearAdminState(user.tgUserId);
+        yield* clearAdminState(user.tgUserId, { messageId: tap.messageId, now: user.now });
         const home = yield* homeScreen(user);
         yield* showScreen(user.chatId, tap.messageId, home);
 
@@ -199,7 +197,7 @@ export const handleNewGameTap = Effect.fn('Bot.handleNewGameTap')(function* (
 
     const data = yield* loadNewGameData(user);
     const next = tap.op === 'redraw' ? draft : applyOp(draft, tap.op, tap.arg, data);
-    yield* presentNewGame(user, next, data, tap.messageId);
+    yield* presentNewGame(user, next, data, { messageId: tap.messageId, expected: row.revision });
 
     return Option.none<string>();
 });
@@ -229,13 +227,13 @@ export const handleNewGameInput = Effect.fn('Bot.handleNewGameInput')(function* 
     if (placeInput) {
         const placed = yield* applyPlaceInput(user, draft, input);
         const fresh = yield* loadNewGameData(user);
-        yield* presentNewGame(user, placed, fresh, null);
+        yield* presentNewGame(user, placed, fresh, { messageId: null, expected: taken.value.revision });
 
         return true;
     }
 
     const next = outcome?._tag === 'draft' ? outcome.draft : { ...draft, notice: outcome?._tag === 'invalid' ? outcome.notice : null };
-    yield* presentNewGame(user, next, data, null);
+    yield* presentNewGame(user, next, data, { messageId: null, expected: taken.value.revision });
 
     return true;
 });

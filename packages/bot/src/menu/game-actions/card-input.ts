@@ -139,13 +139,17 @@ export const handleGameInput = Effect.fn('Bot.handleGameInput')(function* (user:
             view: draft.value.view,
             page: draft.value.page,
             notice: typed.notice,
-            messageId: null
+            at: { messageId: null, expected: taken.value.revision }
         });
 
         return true;
     }
 
-    yield* showConfirm(user, { _tag: 'update_session', sessionId: game.value.id, notify: true, ...typed.change }, null);
+    yield* showConfirm(
+        user,
+        { _tag: 'update_session', sessionId: game.value.id, notify: true, ...typed.change },
+        { messageId: null, expected: taken.value.revision }
+    );
 
     return true;
 });

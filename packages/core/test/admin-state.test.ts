@@ -6,7 +6,8 @@ import {
     clearAdminState,
     consumeAdminState,
     loadAdminState,
-    restoreAdminState,
+    moveAdminMessage,
+    replaceAdminState,
     saveAdminState,
     takeAwaiting
 } from '../src/menu/admin-state.repository';
@@ -53,8 +54,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('admin state', it => {
                     concurrency: 2
                 }
             );
-            yield* restoreAdminState(Option.getOrThrow(won), now);
-            const restored = yield* loadAdminState(2n, now);
+            const consumed = yield* loadAdminState(2n, now);
             yield* clearAdminState(2n);
             const cleared = yield* loadAdminState(2n, now);
 
@@ -62,8 +62,36 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('admin state', it => {
             expect(Option.isNone(stale)).toBe(true);
             expect(Option.isSome(won)).toBe(true);
             expect(Option.isNone(lost)).toBe(true);
-            expect(Option.getOrNull(restored)).toMatchObject({ awaiting: null, revision: saved.revision + 1 });
+            expect(Option.isNone(consumed)).toBe(true);
             expect(Option.isNone(cleared)).toBe(true);
+        })
+    );
+
+    it.effect('never reuses a revision and writes only over the exact row it loaded', () =>
+        Effect.gen(function* () {
+            const { communityId } = yield* seedCommunity(seedConfig('state-identity-fc'));
+            const first = yield* saveAdminState({ tgUserId: 3n, communityId, messageId: 10, awaiting: null, draft: { n: 1 }, now });
+            yield* clearAdminState(3n);
+            const second = yield* saveAdminState({ tgUserId: 3n, communityId, messageId: 11, awaiting: null, draft: { n: 2 }, now });
+            yield* consumeAdminState(3n, second.revision, now);
+            const third = yield* saveAdminState({ tgUserId: 3n, communityId, messageId: 12, awaiting: null, draft: { n: 3 }, now });
+            const stale = yield* replaceAdminState(
+                { tgUserId: 3n, communityId, messageId: 12, awaiting: null, draft: { n: 'late' }, now },
+                second.revision
+            );
+            yield* moveAdminMessage(3n, 99, second.revision);
+            yield* clearAdminState(3n, { messageId: 10, now });
+            const kept = yield* loadAdminState(3n, now);
+            const fresh = yield* replaceAdminState(
+                { tgUserId: 3n, communityId, messageId: 12, awaiting: null, draft: { n: 4 }, now },
+                third.revision
+            );
+
+            expect(second.revision).toBeGreaterThan(first.revision + 1);
+            expect(third.revision).toBeGreaterThan(second.revision + 1);
+            expect(Option.isNone(stale)).toBe(true);
+            expect(Option.getOrNull(kept)).toMatchObject({ messageId: 12, draft: { n: 3 }, revision: third.revision });
+            expect(Option.getOrNull(fresh)?.revision).toBe(third.revision + 1);
         })
     );
 });

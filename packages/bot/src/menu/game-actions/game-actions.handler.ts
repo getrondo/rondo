@@ -88,19 +88,18 @@ const afterDone = Effect.fn('Bot.afterGameDone')(function* (user: MenuUser, acti
 const runGameAction = Effect.fn('Bot.runGameAction')(function* (
     user: MenuUser,
     action: Action,
-    tap: { readonly messageId: number; readonly revision: string }
+    tap: { readonly messageId: number; readonly revision: string; readonly expected: number | null }
 ) {
     const target = yield* targetOfAction(user, action, sessionOf(action));
     const outcome = yield* runConfirmed(user, action, { summary: null, target: { where: target.where, isPrivate: target.me } });
 
     if (outcome._tag === 'done') {
+        yield* rememberDone(
+            user,
+            { messageId: tap.messageId, expected: tap.expected },
+            { sessionId: sessionOf(action), created: false, self: isToMe(user, action), revision: tap.revision }
+        );
         yield* afterDone(user, action, tap.messageId, target.where);
-        yield* rememberDone(user, tap.messageId, {
-            sessionId: sessionOf(action),
-            created: false,
-            self: isToMe(user, action),
-            revision: tap.revision
-        });
 
         return Option.none<string>();
     }
@@ -124,7 +123,7 @@ const confirmTap = Effect.fn('Bot.confirmGameTap')(function* (user: MenuUser, re
     }
 
     if (String(state.value.revision) !== revision) {
-        yield* showConfirm(user, action.value, messageId);
+        yield* showConfirm(user, action.value, { messageId, expected: state.value.revision });
 
         return Option.none<string>();
     }
@@ -137,7 +136,7 @@ const confirmTap = Effect.fn('Bot.confirmGameTap')(function* (user: MenuUser, re
 
     const chosen = 'notify' in action.value ? { ...action.value, notify } : action.value;
 
-    return yield* runGameAction(user, chosen, { messageId, revision });
+    return yield* runGameAction(user, chosen, { messageId, revision, expected: consumed.value.revision });
 });
 
 const listTap = Effect.fn('Bot.gameListTap')(function* (
@@ -152,7 +151,12 @@ const listTap = Effect.fn('Bot.gameListTap')(function* (
     }
 
     const data = yield* loadNewGameData(user);
-    yield* showGameList(user, game, data, { view, page: Number(tap.arg) || 0, notice: null, messageId: tap.messageId });
+    yield* showGameList(user, game, data, {
+        view,
+        page: Number(tap.arg) || 0,
+        notice: null,
+        at: { messageId: tap.messageId, expected: null }
+    });
 
     return true;
 });
@@ -179,7 +183,7 @@ export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: Men
         return yield* runGameAction(
             user,
             { _tag: 'forward_poll', sessionId: game.value.id, chatId: String(user.tgUserId) },
-            { messageId, revision: '' }
+            { messageId, revision: '', expected: null }
         );
     }
 
@@ -190,7 +194,7 @@ export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: Men
         return Option.some(menuText(user.locale, op === 'kn' ? 'noTeams' : 'stale'));
     }
 
-    yield* showConfirm(user, action, messageId);
+    yield* showConfirm(user, action, { messageId, expected: null });
 
     return Option.none<string>();
 });
