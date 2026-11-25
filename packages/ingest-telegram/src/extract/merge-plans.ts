@@ -27,10 +27,19 @@ const mergeAccounts = (accounts: readonly AccountFact[]): AccountFact[] => {
     return [...merged.values()];
 };
 
-// The main chat describes a game of both chats. A squad of the other chat without a poll there stays out of a main game
-export const mergePlans = (main: ImportPlan, other: ImportPlan) => {
+// One day and time is one game, and the main chat describes it. A squad of the other chat without a poll there stays out of a main game
+export const mergePlans = (main: ImportPlan, other: ImportPlan, forwardedPosts: ReadonlySet<number>) => {
     const mainByKey = new Map(main.sessions.map(planned => [planned.key, planned]));
-    const otherByKey = new Map(other.sessions.map(planned => [planned.key, planned]));
+    const isOtherTime = ({ key, localTime, pollMessageIds }: PlannedSession): boolean =>
+        isNotEmptyArray(pollMessageIds) &&
+        !pollMessageIds.some(messageId => forwardedPosts.has(messageId)) &&
+        mainByKey.get(key)?.localTime !== localTime;
+    const others = other.sessions.map(planned =>
+        mainByKey.has(planned.key) && isOtherTime(planned)
+            ? Object.assign(planned, { key: `${planned.key}|${planned.localTime}` })
+            : planned
+    );
+    const otherByKey = new Map(others.map(planned => [planned.key, planned]));
     const isAttached = ({ key, pollMessageIds }: PlannedSession): boolean => !mainByKey.has(key) || isNotEmptyArray(pollMessageIds);
     const sessions = [
         ...main.sessions.map(planned => {
@@ -38,14 +47,14 @@ export const mergePlans = (main: ImportPlan, other: ImportPlan) => {
 
             return isDefined(found) && isAttached(found) ? withOtherChat(planned, found) : planned;
         }),
-        ...other.sessions.filter(({ key }) => !mainByKey.has(key))
+        ...others.filter(({ key }) => !mainByKey.has(key))
     ].toSorted((left, right) => (left.key < right.key ? -1 : 1));
     const usedPosts = new Set(sessions.flatMap(planned => [...planned.pollMessageIds, ...planned.reservePollMessageIds]));
 
     return {
         ...main,
         sessions,
-        unattached: other.sessions.filter(planned => !isAttached(planned)),
+        unattached: others.filter(planned => !isAttached(planned)),
         facts: {
             ...main.facts,
             polls: [...main.facts.polls, ...other.facts.polls],

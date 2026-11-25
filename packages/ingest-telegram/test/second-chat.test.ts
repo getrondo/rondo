@@ -42,7 +42,7 @@ const planOf = (
         { chat, pollIdByMessage: idsOf(false), mainPolls: mainPollsOf(idsOf(true), main) }
     );
 
-    return Object.assign(mergePlans(main, assemblePlan(other.facts, '2025-06-30')), { review: other.review });
+    return Object.assign(mergePlans(main, assemblePlan(other.facts, '2025-06-30'), other.forwardedPosts), { review: other.review });
 };
 
 const summaryOf = (plan: ReturnType<typeof planOf>) =>
@@ -121,7 +121,7 @@ describe('posts of several chats', () => {
             [
                 pollOf(101, '2025-05-08T08:00:00Z', 'Сегодня, 19.00 North'),
                 message(102, '2025-05-07T12:00:00Z', squadText),
-                pollOf(103, '2025-05-12T09:00:00Z', 'Сегодня, 20.00 Park, 18 мест'),
+                pollOf(103, '2025-05-12T09:00:00Z', 'Сегодня, 19.00 Park, 18 мест'),
                 message(104, '2025-05-12T13:00:00Z', squadText)
             ],
             { shared: [1, 101] }
@@ -133,6 +133,39 @@ describe('posts of several chats', () => {
         ]);
         expect(plan.sessions[1]).toMatchObject({ localTime: '19:00', venueKey: 'north' });
         expect(plan.facts.pollPosts.map(({ messageId }) => sourceOf(config.otherChats, messageId).messageId)).toEqual([1, 2, 101, 103]);
+    });
+
+    it('keeps a game of the other chat at another time of the same day, also when its squad is posted', () => {
+        const plan = planOf(
+            [pollOf(1, '2025-05-07T08:00:00Z', 'Сегодня, 20.00 North')],
+            [pollOf(101, '2025-05-07T08:00:00Z', 'Сегодня, 18.30 North'), message(102, '2025-05-07T12:00:00Z', squadText)],
+            {}
+        );
+
+        expect(summaryOf(plan)).toEqual([
+            ['2025-05-07', 'played', [1], 0],
+            ['2025-05-07', 'played', [101], 2]
+        ]);
+        expect(plan.sessions.map(({ localTime }) => localTime)).toEqual(['20:00', '18:30']);
+    });
+
+    it('joins a poll about several days only to a game of its own chat', () => {
+        const choice = ['Среда 19.00', 'Четверг 19.00', 'Не буду'];
+        const plan = planOf(
+            [pollOf(1, '2025-05-07T08:00:00Z', 'Сегодня, 19.00 North')],
+            [
+                pollOf(101, '2025-05-07T09:00:00Z', 'Сегодня, 19.00 North'),
+                pollOf(102, '2025-05-05T09:00:00Z', 'Выбираем день для игры', choice),
+                pollOf(103, '2025-05-12T09:00:00Z', 'Выбираем день для игры', choice),
+                pollOf(104, '2025-05-13T09:00:00Z', 'Среда, 19.00 North')
+            ],
+            { shared: [1, 101] }
+        );
+
+        expect(summaryOf(plan)).toEqual([
+            ['2025-05-07', 'played', [1, 101], 0],
+            ['2025-05-14', 'played', [103, 104], 0]
+        ]);
     });
 
     it('does not revive a game that the main chat cancelled', () => {

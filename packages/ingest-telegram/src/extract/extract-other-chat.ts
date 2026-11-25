@@ -56,15 +56,25 @@ export const extractOtherChat = (
         })
     );
 
+    const regular = own.filter(poll => kindOf(poll) === 'regular');
+    const lineups = facts.lineups.filter(({ localDate }) => !isMatchDay(localDate));
+    const ownDates = new Set(
+        [...regular.filter(({ isGame, isDateChoice }) => isGame && !isDateChoice), ...lineups].map(({ localDate }) => localDate)
+    );
+
     return {
         facts: {
             ...facts,
-            polls: [...forwarded, ...own.filter(poll => kindOf(poll) === 'regular')],
-            lineups: facts.lineups.filter(({ localDate }) => !isMatchDay(localDate)),
+            polls: [
+                ...forwarded,
+                ...regular.map(poll => Object.assign(poll, { joinDates: poll.joinDates.filter(date => ownDates.has(date)) }))
+            ],
+            lineups,
             prices: [],
             fixtures: [],
             authors: []
         } satisfies ExtractedFacts,
+        forwardedPosts: new Set(forwarded.map(({ messageId }) => messageId)),
         review: own.filter(poll => poll.isGame && kindOf(poll) === 'unclear')
     };
 };

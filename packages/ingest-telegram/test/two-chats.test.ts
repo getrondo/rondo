@@ -184,6 +184,36 @@ layer(testDbLayer, { timeout: 60_000 })('a community with two chats', it => {
         })
     );
 
+    it.effect('keeps two games of one day at different times apart, also in the next import', () =>
+        Effect.gen(function* () {
+            const slug = 'two-times-fc';
+            const second: Second = {
+                messages: [
+                    message(1, '2025-05-12T08:00:00Z', '', {
+                        text: undefined,
+                        authorId: ids.org,
+                        poll: { question: 'Сегодня, 21.00 North', answers: ['+', '-'] }
+                    }),
+                    squadOn(2, '2025-05-12', 'Марк, Лев')
+                ],
+                pollIds: new Map([[1, `${slug}-s-0`]])
+            };
+            const first = yield* load(slug, second);
+            const again = yield* load(slug, second);
+            const sameDay = first.games.filter(({ localDate }) => localDate === '2025-05-12');
+            const namesIn = (sessionId: string) => first.entries.filter(entry => entry.sessionId === sessionId).map(({ raw }) => raw);
+
+            expect(sameDay.map(({ startsAt }) => startsAt.toISOString()).toSorted()).toEqual([
+                '2025-05-12T17:00:00.000Z',
+                '2025-05-12T19:00:00.000Z'
+            ]);
+            expect(sameDay.filter(({ id }) => namesIn(id).includes('Марк'))).toHaveLength(1);
+            expect(sameDay.map(({ id }) => namesIn(id).length)).toEqual([4, 4]);
+            expect(again.games.map(({ id }) => id).toSorted()).toEqual(first.games.map(({ id }) => id).toSorted());
+            expect(again.entries).toEqual(first.entries);
+        })
+    );
+
     it.effect('counts a forwarded poll once, by its votes of the first chat, and answers to the forward belong to its game', () =>
         Effect.gen(function* () {
             const db = yield* Db;

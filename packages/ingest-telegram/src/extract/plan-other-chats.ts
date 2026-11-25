@@ -67,7 +67,7 @@ export const planOtherChats = ({ config, main, snapshot, others, asOf }: Chats) 
                 pollIdByMessage: content.value.pollIdByMessage,
                 mainPolls: mainPollsOf(pollIds, plan)
             });
-            const { unattached, ...next } = mergePlans(plan, assemblePlan(extracted.facts, asOf));
+            const { unattached, ...next } = mergePlans(plan, assemblePlan(extracted.facts, asOf), extracted.forwardedPosts);
             plan = next;
             review.push(
                 ...extracted.review.map(({ localDate, title }) => ({ localDate, title })),

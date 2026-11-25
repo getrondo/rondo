@@ -108,6 +108,9 @@ const matchSessions = (
     });
 };
 
+const gameKey = ({ startsAt, activityId }: { readonly startsAt: Date; readonly activityId: string }): string =>
+    `${startsAt.getTime()}|${activityId}`;
+
 const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function* (
     context: LoadContext,
     reference: ReferenceIds,
@@ -174,14 +177,14 @@ const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function
                     confidence: sql`excluded.confidence`
                 }
             })
-            .returning({ id: session.id, localDate: session.localDate, activityId: session.activityId });
+            .returning({ id: session.id, startsAt: session.startsAt, activityId: session.activityId });
 
         for (const row of rows) {
-            idByKey.set(`${row.localDate}|${row.activityId}`, row.id);
+            idByKey.set(gameKey(row), row.id);
         }
     }
 
-    const sessionIds = planned.map(({ row }) => row.id ?? idByKey.get(`${row.localDate}|${row.activityId}`) ?? '');
+    const sessionIds = planned.map(({ row }) => row.id ?? idByKey.get(gameKey(row)) ?? '');
 
     return { sessionIds, ambiguousDates: existing.ambiguousDates };
 });
@@ -257,10 +260,8 @@ const replaceEntries = Effect.fn('IngestTelegram.replaceEntries')(function* (
     directory: Directory,
     games: readonly SessionLineup[]
 ) {
-    const {
-        transaction,
-        config: { otherChats }
-    } = context;
+    const { transaction } = context;
+    const { otherChats } = context.config;
     const previous: EntryRow[] = [];
 
     for (const batch of chunks(games)) {
