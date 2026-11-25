@@ -1,5 +1,5 @@
 import { community } from '@rondo/db/schema/org.schema';
-import { importedPoll, sourceRef } from '@rondo/db/schema/platform.schema';
+import { importedPoll, pendingAction, sourceRef } from '@rondo/db/schema/platform.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { eq, sql } from 'drizzle-orm';
@@ -18,6 +18,11 @@ export const moveImportedChat = Effect.fn('Core.moveImportedChat')(function* (fr
     yield* db.update(sourceRef).set({ chatId: to }).where(eq(sourceRef.chatId, from));
     yield* db.update(importedPoll).set({ chatId: to }).where(eq(importedPoll.chatId, from));
     yield* db.update(lineupEntry).set({ chatId: to }).where(eq(lineupEntry.chatId, from));
+
+    yield* db
+        .update(pendingAction)
+        .set({ payload: sql`jsonb_set(${pendingAction.payload}, '{chatId}', to_jsonb(${String(to)}::text))` })
+        .where(sql`${pendingAction.payload} ->> 'chatId' = ${String(from)}`);
 
     for (const path of ['{ingest,otherChats}', '{groups,chats}']) {
         yield* db

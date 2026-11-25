@@ -1,10 +1,10 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
 import { telegramChat } from '@rondo/db/schema/org.schema';
-import { pendingAction, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, ne } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -16,6 +16,7 @@ import { unsignedSquad } from '../teams/team-inputs';
 import { writeToChat, type Approval } from '../telegram/write-to-chat';
 import { isSettledPoll } from '../utils/is-settled-poll.util';
 
+import { closureApproval } from './closure-approval';
 import { pollChatsOf } from './poll-chats';
 
 type PollChoice = 'in' | 'gk' | 'out';
@@ -289,20 +290,6 @@ export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId:
         : [];
 
     return rows.map(({ title }) => `«${title}»`).join(', ');
-});
-
-// A cancellation the approver allowed also allows the close that did not go through then
-const closureApproval = Effect.fn('Core.closureApproval')(function* (sessionId: string) {
-    const db = yield* Db;
-    const [row] = yield* db
-        .select({ approver: pendingAction.approverTgUserId, requester: pendingAction.requestedByTgUserId })
-        .from(pendingAction)
-        .innerJoin(session, sql`${session.id}::text = ${pendingAction.payload} ->> 'sessionId' and ${session.status} = 'cancelled'`)
-        .where(and(eq(session.id, sessionId), eq(pendingAction.kind, 'cancel_session'), eq(pendingAction.status, 'confirmed')))
-        .orderBy(desc(pendingAction.decidedAt))
-        .limit(1);
-
-    return isDefined(row) ? ({ _tag: 'approver', tgUserId: row.approver ?? row.requester } as const) : null;
 });
 
 export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function* () {

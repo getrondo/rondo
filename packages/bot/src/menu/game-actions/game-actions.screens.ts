@@ -106,11 +106,15 @@ export const confirmScreen = Effect.fn('Bot.confirmScreen')(function* (
     const reached = target.me ? menuText(user.locale, 'meSees') : groupSees;
     const sees = target.silent ? menuText(user.locale, 'noAudience') : reached;
     const notes = action._tag === 'update_session' ? yield* changeNotes(user, game, { action, loud: !target.me }) : [];
+    const isGroupPoll = (action._tag === 'announce_session' || action._tag === 'forward_poll') && !target.me;
     const closing = action._tag === 'cancel_session' ? [menuText(user.locale, 'pollCloses')] : [];
+    const later = isGroupPoll ? [menuText(user.locale, 'closesAfter')] : [];
     const quiet = action._tag === 'update_session' || action._tag === 'cancel_session';
 
     return {
-        text: [...(isDefined(notice) ? [notice] : []), sees, yield* groupHtml(user, game, action), ...notes, ...closing].join('\n'),
+        text: [...(isDefined(notice) ? [notice] : []), sees, yield* groupHtml(user, game, action), ...notes, ...closing, ...later].join(
+            '\n'
+        ),
         keyboard: [...(target.silent && quiet ? [] : [[ok(true)]]), ...(quiet ? [[ok(false)]] : []), nav]
     } satisfies Screen;
 });

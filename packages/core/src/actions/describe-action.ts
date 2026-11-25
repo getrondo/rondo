@@ -92,6 +92,7 @@ const words = {
         publishPoll: '📣 Опублікувати опитування',
         forward: '📣 Відкрити опитування для',
         remove: '🗑 Видалити гру',
+        closesAfter: 'закрию після гри',
         closes: 'Опитування закриється і в пересланих копіях',
         self: 'тобі в особисті',
         teams: '👥 Опублікувати склади',
@@ -122,6 +123,7 @@ const words = {
         publishPoll: '📣 Опубликовать опрос',
         forward: '📣 Открыть опрос для',
         remove: '🗑 Удалить игру',
+        closesAfter: 'закрою после игры',
         closes: 'Опрос закроется и в пересланных копиях',
         self: 'тебе в личку',
         teams: '👥 Опубликовать составы',
@@ -169,7 +171,9 @@ const placeOfPoll = Effect.fn('Core.placeOfPoll')(function* (
 ) {
     const topic = isDefined(topicId) ? ` 🧵 ${topicId}` : '';
 
-    return isDefined(chatId) ? ` «${yield* chatTitle(chatId, locale)}»${topic}` : '';
+    const closes = chatId?.startsWith('-') === true ? `, ${words[locale].closesAfter}` : '';
+
+    return isDefined(chatId) ? ` «${yield* chatTitle(chatId, locale)}»${topic}${closes}` : '';
 });
 
 const sizeOf = (
@@ -246,7 +250,7 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
             return `${word.remove}: ${yield* sessionLabel(locale, action.sessionId)}. ${word.closes}`;
         }
         case 'forward_poll': {
-            return `${word.forward} «${yield* chatTitle(action.chatId, locale)}»: ${yield* sessionLabel(locale, action.sessionId)}`;
+            return `${word.forward}${yield* placeOfPoll({ chatId: action.chatId }, locale)}: ${yield* sessionLabel(locale, action.sessionId)}`;
         }
         case 'publish_teams': {
             const to = action.preview.to

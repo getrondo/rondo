@@ -7,12 +7,12 @@ import { Db } from '@rondo/db/service/db.service';
 import { refusal } from '@rondo/telegram/testing/recording-telegram.layer';
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
-import * as Fiber from 'effect/Fiber';
 import * as TestClock from 'effect/testing/TestClock';
 
 import { grantAdmin } from '../src/access/admin-access';
 import { takeExpiredRequests } from '../src/actions/pending-action.service';
 import { linkChat, setChatSwitch } from '../src/community/chat-links';
+import { moveChat } from '../src/community/community.repository';
 import { isApproverOf, knownChatsOf, loadGroups } from '../src/community/group-settings';
 import { syncMember } from '../src/identity/telegram-user';
 import { mergePeople } from '../src/people/people.service';
@@ -191,6 +191,75 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('closing a poll', it => {
         })
     );
 
+    it.effect('after the game is covered by the ✅ of the poll in each of its groups, while the bot may write there', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* helped('guard-after', -9101, 9101);
+            yield* linkGroup(communityId, { chatId: -9102, title: 'Second', purpose: 'other' });
+            const summaryOf = (actionId: string) => actionRow(actionId).pipe(Effect.map(row => row?.summary));
+            const announce: Action = { _tag: 'announce_session', sessionId, chatId: '-9101' };
+            const shown = yield* proposeAs(communityId, 42n, announce).pipe(Effect.flatMap(actionId => summaryOf(actionId)));
+            yield* confirmAsOwner(communityId, announce);
+            yield* confirmAsOwner(communityId, {
+                _tag: 'create_session',
+                localDate: '2026-12-05',
+                localTime: '19:00',
+                venueId: null,
+                capacityMax: null,
+                title: null,
+                announce: true,
+                chatId: '-9101'
+            });
+            const stops = () => sentTo(-9101, 'stopPoll');
+            const copy = yield* db
+                .insert(messageRef)
+                .values({ chatId: -9102n, messageId: 910, purpose: 'poll', entityType: 'session', entityId: sessionId })
+                .returning();
+            yield* db.update(session).set({ status: 'played' }).where(eq(session.communityId, communityId));
+            yield* linkGroup(communityId, { chatId: -9101, isPosting: false });
+            yield* closeFinishedPolls();
+            const whileOff = stops();
+            yield* linkGroup(communityId, { chatId: -9101 });
+            yield* closeFinishedPolls();
+            const created = stops();
+            yield* db.update(session).set({ status: 'open' }).where(eq(session.id, sessionId));
+            yield* db.delete(messageRef).where(eq(messageRef.chatId, -9102n));
+            const forward: Action = { _tag: 'forward_poll', sessionId, chatId: '-9102' };
+            const forwarded = yield* confirmAsOwner(communityId, forward);
+            yield* db.update(session).set({ status: 'cancelled' }).where(eq(session.id, sessionId));
+            yield* closeFinishedPolls();
+            const cancelled = stops();
+            yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
+            yield* closeFinishedPolls();
+
+            expect(copy).toHaveLength(1);
+            expect(shown).toContain('«Main», закрию після гри');
+            expect(whileOff).toBe(0);
+            expect(created).toBe(1);
+            expect(forwarded._tag).toBe('done');
+            expect(cancelled).toBe(1);
+            expect(stops()).toBe(2);
+        })
+    );
+
+    it.effect('follows a group that became a supergroup, and not a ✅ of who is no longer the approver', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* helped('guard-after-move', -9111, 9111);
+            yield* confirmAsOwner(communityId, { _tag: 'announce_session', sessionId, chatId: '-9111' });
+            yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
+            yield* moveChat(-9111n, -91_110n);
+            yield* linkGroup(communityId, { chatId: -91_110 }, 9111);
+            yield* closeFinishedPolls();
+            const replaced = sentTo(-91_110, 'stopPoll');
+            yield* linkGroup(communityId, { chatId: -91_110 }, 42);
+            yield* closeFinishedPolls();
+
+            expect(replaced).toBe(0);
+            expect(sentTo(-91_110, 'stopPoll')).toBe(1);
+        })
+    );
+
     it.effect('leaves the poll of a switched off group open and says where', () =>
         Effect.gen(function* () {
             const { communityId, sessionId } = yield* helped('guard-off', -9041, 9041);
@@ -210,25 +279,25 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('a group write in progress',
             const { communityId } = yield* seedCommunity(seedConfig('guard-wait'));
             yield* linkGroup(communityId, { chatId: -9051 });
             recorder.failures.set('sendMessage', refusal('sendMessage', 'Too Many Requests: retry after 2', 429, 2));
-            const fiber = yield* Effect.forkChild(
-                writeToChat({
-                    target: { chatId: -9051n, topicId: null },
-                    approval: ownerApproval,
-                    content: { _tag: 'text', html: 'x', hasLinkPreview: false }
-                }).pipe(Effect.flip)
-            );
-            while (sentTo(-9051, 'sendMessage') === 0) {
-                yield* Effect.promise(
-                    async () =>
-                        await new Promise<void>(resolve => {
-                            setImmediate(resolve);
-                        })
-                );
-            }
-            recorder.failures.delete('sendMessage');
-            yield* linkGroup(communityId, { chatId: -9051, isPosting: false });
-            yield* TestClock.adjust('3 seconds');
-            const stopped = yield* Fiber.join(fiber);
+            const write = writeToChat({
+                target: { chatId: -9051n, topicId: null },
+                approval: ownerApproval,
+                content: { _tag: 'text', html: 'x', hasLinkPreview: false }
+            }).pipe(Effect.flip);
+            const switchOff = Effect.gen(function* () {
+                while (sentTo(-9051, 'sendMessage') === 0) {
+                    yield* Effect.promise(
+                        async () =>
+                            await new Promise<void>(resolve => {
+                                setImmediate(resolve);
+                            })
+                    );
+                }
+                recorder.failures.delete('sendMessage');
+                yield* linkGroup(communityId, { chatId: -9051, isPosting: false });
+                yield* TestClock.adjust('3 seconds');
+            });
+            const [stopped] = yield* Effect.all([write, switchOff], { concurrency: 'unbounded' });
 
             expect(stopped).toMatchObject({ failure: { code: 'group_off' } });
             expect(sentTo(-9051, 'sendMessage')).toBe(1);

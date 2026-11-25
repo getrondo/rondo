@@ -227,6 +227,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         Effect.gen(function* () {
             const { approver, communityId } = yield* twoAdmins('say-forward', 4401, -44_001);
             yield* approver.type('/newgame');
+            const form = approver.screen().text;
             yield* approver.tap('✅ Надіслати');
             yield* linkGroup(communityId, { chatId: -44_002, title: 'Second', purpose: 'other' });
             yield* approver.type('/games');
@@ -244,6 +245,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect(labelsOf(hidden).some(label => label.startsWith('✅'))).toBe(false);
             expect(shown).toContain('Надішлю саме це опитування 👇');
+            expect([form, shown].every(text => text.includes('🔒 Після гри опитування закрию без нового ✅.'))).toBe(true);
             expect(preview?.payload.message_id).toBe(sent?.payload.message_id);
             expect(forwardsTo(recorder, -44_002)).toHaveLength(1);
         })

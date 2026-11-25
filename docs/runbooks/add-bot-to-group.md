@@ -51,7 +51,8 @@ Nothing is posted in a group until the organizer (the approver) allowed that gro
 - **The approver** is one Telegram account. Loading another one voids the requests the old one still had. Only the approver can
   approve a merge of the person behind that account.
 - **Closing a poll** closes every forwarded copy, also one the bot never saw. A copy in a linked group needs the approver's ✅. The
-  nightly job closes a group's poll only after such a cancellation, so the polls of played games stay open there.
+  nightly job closes a cancelled game's poll only after such a ✅, and a played game's poll when the poll or its forward got the ✅ in
+  every linked group it is in. It closes nothing where posting is off.
 - **Imports:** linking the main group sets `org.community.live_since`. After that the importer needs
   `RONDO_ACKNOWLEDGE_LIVE=true` and refuses games after that day, so export only older messages. Unlinking keeps the date.
   Clear it by hand only when the group was linked by mistake and nothing was recorded live.
