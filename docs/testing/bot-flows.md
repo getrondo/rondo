@@ -149,8 +149,9 @@ without the bot still arrive as poll answers with public voters.
 | 136 | AUDIENCE | Forward claim | Unknown, repeat, refused, then sent | — | — | Claim kept when unknown, freed after a refusal | service | `claims a group once, keeps the claim when the result is unknown and frees it after a refusal` |
 | 137 | SEND SAFETY | Forwards at once | Eight forwards of one poll to one group (Postgres) | One forward | — | One claim | service | `forwards a poll to a group once when it is sent many times at once` |
 | 138 | GROUP SOURCE | Copy of a bot poll | Admin forwards the bot poll into a linked group; same poll in a group of another community | — | — | Copy recorded on its game; nothing in the other community; never read as an organizer poll | update | `records a copy of a bot poll on its game and never reads it as an organizer poll` |
-| 139 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 140 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 141 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 142 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 143 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 139 | SEND SAFETY | Kickoff checked at ✅ | Today 10:15 previewed, ✅ at 10:20; 28.3.2027 2:30 | Nothing | «Час гри вже минув…»; «Такого часу цього дня немає…» | No game | update | `checks the kickoff again at ✅ and refuses a time the clock change skips` |
+| 140 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 141 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 142 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 143 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 144 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |

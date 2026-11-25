@@ -13,7 +13,7 @@ import { notifySessionCancelled, notifySessionChanged } from '../notify/notifier
 import { linkAlias, requireAlias, unlinkAlias } from '../people/alias-links.service';
 import { arePeopleOf, createPerson, mergePeople, renamePerson } from '../people/people.service';
 import { deleteSession } from '../sessions/delete-session';
-import { todayIn } from '../sessions/local-time';
+import { instantOf, localTimeOf, todayIn } from '../sessions/local-time';
 import { cancelSession, createSession, findSameGame, requireSession, updateSession } from '../sessions/session.service';
 import { forwardPoll } from '../signups/forward-poll';
 import { publishPoll } from '../signups/publish-poll';
@@ -276,6 +276,41 @@ export const requireActionScope = Effect.fn('Core.requireActionScope')(function*
     return action;
 });
 
+const plannedKickoff = Effect.fn('Core.plannedKickoff')(function* (action: Action, communityId: string) {
+    if (action._tag === 'create_session') {
+        return Option.some({ localDate: action.localDate, localTime: action.localTime });
+    }
+
+    if (action._tag !== 'update_session' || (!isDefined(action.localDate) && !isDefined(action.localTime))) {
+        return Option.none<{ readonly localDate: string; readonly localTime: string }>();
+    }
+
+    const before = yield* requireSession(communityId, action.sessionId);
+
+    return Option.some({ localDate: action.localDate ?? before.localDate, localTime: action.localTime ?? before.localTime });
+});
+
+const requireKickoff = Effect.fn('Core.requireKickoff')(function* (action: Action, context: ActionContext) {
+    const planned = yield* plannedKickoff(action, context.communityId);
+
+    if (Option.isNone(planned)) {
+        return action;
+    }
+
+    const { localDate, localTime } = planned.value;
+    const startsAt = instantOf(localDate, localTime, context.timezone);
+
+    if (localTimeOf(startsAt, context.timezone) !== localTime || todayIn(context.timezone, startsAt) !== localDate) {
+        return yield* ActionFailedError.make({ reason: 'this local time does not exist on that day' });
+    }
+
+    if (startsAt.getTime() <= (yield* DateTime.nowAsDate).getTime()) {
+        return yield* ActionFailedError.make({ reason: 'the game time has already passed' });
+    }
+
+    return action;
+});
+
 export const runAdminAction = Effect.fn('Core.runAdminAction')(function* <Failure, Requirements>(
     tgUserId: bigint,
     action: Action,
@@ -287,6 +322,7 @@ export const runAdminAction = Effect.fn('Core.runAdminAction')(function* <Failur
     }
 
     yield* requireActionScope(action, context.communityId);
+    yield* requireKickoff(action, context);
 
     if ('chatId' in action && isDefined(action.chatId)) {
         yield* linkedTarget(context, action, tgUserId);

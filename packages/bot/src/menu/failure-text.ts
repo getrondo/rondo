@@ -30,6 +30,8 @@ export const failureText = (locale: Locale, reason: string, target: FailureTarge
         [/no longer available/u, () => menuText(locale, 'placeGone')],
         [/could not be closed, so the game is kept/u, () => menuText(locale, 'reasonPollOpen')],
         [/votes the bot has not seen/u, () => menuText(locale, 'reasonUnseenVotes')],
+        [/the game time has already passed/u, () => menuText(locale, 'reasonPast')],
+        [/does not exist on that day/u, () => menuText(locale, 'reasonNoSuchTime')],
         [/the game already exists/u, () => menuText(locale, 'gameExists')],
         [/only a future game made by the bot/u, () => menuText(locale, 'reasonNotDeletable')]
     ];
