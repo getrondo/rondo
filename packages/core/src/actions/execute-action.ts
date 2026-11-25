@@ -214,9 +214,6 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
 
 const peopleIn = (action: Action): readonly string[] => {
     switch (action._tag) {
-        case 'publish_teams': {
-            return action.teams.flatMap(({ players }) => players.map(({ personId }) => personId));
-        }
         case 'merge_people': {
             return [action.fromPersonId, action.intoPersonId];
         }
@@ -234,6 +231,7 @@ const peopleIn = (action: Action): readonly string[] => {
         case 'update_session':
         case 'cancel_session':
         case 'announce_session':
+        case 'publish_teams':
         case 'delete_session':
         case 'forward_poll': {
             return [];

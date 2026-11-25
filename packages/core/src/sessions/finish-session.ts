@@ -24,12 +24,13 @@ const playersOf = Effect.fn('Core.playersOf')(function* (sessionId: string) {
         .innerJoin(team, eq(team.id, teamMember.teamId))
         .where(and(eq(teamMember.sessionId, sessionId), isNotNull(team.publishedAt)));
     const signups = yield* db
-        .select({ personId: signup.personId })
+        .select({ personId: signup.personId, isGuest: signup.isGuest })
         .from(signup)
         .where(and(eq(signup.sessionId, sessionId), eq(signup.status, 'in')));
+    const guests = new Set(signups.filter(row => row.isGuest).map(row => row.personId));
     const deciding = [lineup, teams].find(rows => isNotEmptyArray(rows)) ?? signups;
 
-    return [...new Set(deciding.map(({ personId }) => personId).filter(personId => isDefined(personId)))];
+    return [...new Set(deciding.flatMap(({ personId }) => (isDefined(personId) && !guests.has(personId) ? [personId] : [])))];
 });
 
 const finishSession = Effect.fn('Core.finishSession')(function* (sessionId: string, startedBefore: Date) {

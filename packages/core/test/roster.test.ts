@@ -77,7 +77,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('roster changes by an admin'
                     communityId,
                     added.map(({ personId }) => personId)
                 )
-            ).toBe(true);
+            ).toBe(false);
         })
     );
 

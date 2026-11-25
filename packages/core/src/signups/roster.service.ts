@@ -199,16 +199,15 @@ export const joinGame = Effect.fn('Core.joinGame')(function* (change: RosterChan
     return yield* db.transaction(() =>
         Effect.gen(function* () {
             const game = yield* lockedGame(change);
-
-            if (!(yield* arePeopleOf(change.communityId, personIds))) {
-                return yield* ActionFailedError.make({ reason: 'player not found in this community' });
-            }
-
             const known = yield* db
                 .select({ personId: signup.personId, status: signup.status })
                 .from(signup)
                 .where(and(eq(signup.sessionId, change.sessionId), inArray(signup.personId, [...personIds])));
             const coming = personIds.filter(personId => known.find(row => row.personId === personId)?.status !== 'in');
+
+            if (!(yield* arePeopleOf(change.communityId, coming))) {
+                return yield* ActionFailedError.make({ reason: 'player not found in this community' });
+            }
             const free = isDefined(game.capacityMax) ? game.capacityMax - (yield* fieldPlayersIn(change.sessionId, null)) : coming.length;
             const joined = isOverLimit ? coming : coming.slice(0, Math.max(0, free));
             const waiting = coming.filter(personId => !joined.includes(personId));
