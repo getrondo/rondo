@@ -91,6 +91,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(receipt.text).toBe('✅ Опитування в тебе.\nНатисни й утримуй опитування → Переслати → група.');
             expect(mine.text).toContain('👤 Опитування в тебе, переслати треба самому');
             expect(resent).toHaveLength(1);
+            expect(teamsAsk.text).not.toContain('🔄');
             expect(teamsAsk.text.split('\n')).toEqual(
                 expect.arrayContaining([
                     '👆 Торкнись гравця, потім іншого — поміняю. Або назву команди — перенесу.',
