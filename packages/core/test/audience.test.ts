@@ -126,4 +126,42 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('one game, one poll, several
             expect(audience.map(target => target.chatId)).toEqual([BigInt(main)]);
         })
     );
+
+    it.effect('sends notices only to chats still linked to the game community or the admin chat, and never to a stand-in', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig('audience-filter'));
+            const { communityId: other } = yield* seedCommunity(seedConfig('audience-filter-other'));
+            yield* link(communityId, -7101, 'Main');
+            yield* link(other, -7102, 'Foreign');
+            const base = {
+                communityId,
+                timezone: 'Europe/Vienna',
+                localTime: '19:00',
+                venueId: null,
+                capacityMax: 10,
+                title: null,
+                actorPersonId: null
+            };
+            const mixed = yield* createSession({ ...base, localDate: '2026-12-03' });
+            const foreignOnly = yield* createSession({ ...base, localDate: '2026-12-04' });
+            const ref = (chatId: bigint, messageId: number, entityId: string) =>
+                ({ chatId, messageId, entityId, purpose: 'poll', entityType: 'session' }) as const;
+            yield* db
+                .insert(messageRef)
+                .values([
+                    ref(-7101n, 1, mixed),
+                    ref(-7102n, 2, mixed),
+                    ref(7103n, 3, mixed),
+                    ref(-7104n, 4, mixed),
+                    ref(-7102n, 5, foreignOnly)
+                ]);
+            const audience = yield* audienceOf(mixed);
+            const start = recorder.calls.length;
+            yield* confirmAsOwner(communityId, { _tag: 'update_session', sessionId: foreignOnly, localTime: '20:00', notify: true });
+
+            expect(audience.map(target => target.chatId)).toEqual([-7101n, 7103n]);
+            expect(recorder.calls.slice(start).filter(call => call.method === 'sendMessage')).toEqual([]);
+        })
+    );
 });

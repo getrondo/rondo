@@ -39,10 +39,9 @@ const requireGroup = (context: ActionContext) =>
         : Effect.fail(ActionFailedError.make({ reason: 'no group is linked to this community yet' }));
 
 const targetsOf = Effect.fn('Core.targetsOf')(function* (context: ActionContext, sessionId: string) {
-    const targets = yield* noticeTargets(sessionId, context.group);
     const requester = isDefined(context.requester) ? [{ chatId: context.requester, topicId: null }] : [];
 
-    return isNotEmptyArray(targets) ? targets : requester;
+    return yield* noticeTargets(sessionId, Option.isSome(context.group) ? [context.group.value] : requester);
 });
 
 const toAudience = Effect.fn('Core.toAudience')(function* <Value, Failure, Requirements>(
