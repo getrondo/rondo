@@ -1,5 +1,5 @@
 import { expect, layer } from '@effect/vitest';
-import { bindChat } from '@rondo/core/community/community.repository';
+import { linkGroup } from '@rondo/core/testing/link-group';
 import { telegramChat } from '@rondo/db/schema/org.schema';
 import { messageRef, pollForward, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
@@ -35,7 +35,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('✅ Надіслати опитування мені');
             const pollId = lastPollId(recorder, 2601);
             const question = String(recorder.calls.findLast(call => call.method === 'sendPoll')?.payload.question);
-            yield* bindChat({ communityId, chatId: -26_001n, topicId: null, kind: 'supergroup', title: 'Copies' });
+            yield* linkGroup(communityId, { chatId: -26_001, title: 'Copies', purpose: 'other' });
             const foreign = yield* seedSeason('r3-copy-foreign', { groupChatId: -26_002, adminId: 2602 });
             const gamesBefore = yield* db.select().from(session);
             yield* forwardedPoll(-26_001, 2601, pollId, question);
@@ -62,7 +62,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedSeason('r3-migrate', { groupChatId: null, adminId: 2603 });
-            yield* bindChat({ communityId, chatId: -26_003n, topicId: 7, kind: 'group', title: 'Old group' });
+            yield* linkGroup(communityId, { chatId: -26_003, title: 'Old group', topicId: 7 });
             yield* deliver({
                 message: {
                     message_id: 1,

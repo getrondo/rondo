@@ -1,5 +1,6 @@
 import { isNotEmptyArray } from '@rnw-community/shared';
-import { linkedChatsOf } from '@rondo/core/community/community.repository';
+import { postingChatsOf } from '@rondo/core/community/community.repository';
+import { knownChatsOf } from '@rondo/core/community/group-settings';
 import { createdGamesBy, footballHistory, lastPollChatOf, plannedFootball, venueChoices } from '@rondo/core/menu/game-history.repository';
 import { addDays } from '@rondo/core/utils/add-days.util';
 import * as Effect from 'effect/Effect';
@@ -14,8 +15,14 @@ export const loadNewGameData = Effect.fn('Bot.loadNewGameData')(function* (user:
     const history = yield* footballHistory(user.communityId, addDays(user.today, -historyDays), weeklyKinds);
     const planned = yield* plannedFootball(user.communityId, user.today);
     const venues = yield* venueChoices(user.communityId, weeklyKinds);
-    const linked = yield* linkedChatsOf(user.communityId);
-    const chats = linked.map(chat => ({ id: String(chat.chatId), title: chat.title, topicId: chat.topicId }));
+    const linked = yield* postingChatsOf(user.communityId);
+    const known = yield* knownChatsOf(user.communityId);
+    const chats = linked.map(chat => ({
+        id: String(chat.chatId),
+        title: chat.title,
+        topicId: chat.topicId,
+        weekdays: known.find(({ chatId }) => BigInt(chatId) === chat.chatId)?.weekdays ?? []
+    }));
     const lastChatId = yield* lastPollChatOf(user.tgUserId);
     const created = yield* createdGamesBy(user.tgUserId);
 

@@ -1,5 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { syncMember } from '@rondo/core/identity/telegram-user';
+import { linkGroup } from '@rondo/core/testing/link-group';
 import { recordedTelegramDbLayer, recorder } from '@rondo/core/testing/recorded-telegram.layer';
 import { seedGame as seedBareGame } from '@rondo/core/testing/seed-game';
 import { pendingAction, processedUpdate, telegramPoll } from '@rondo/db/schema/platform.schema';
@@ -25,7 +26,7 @@ const seedGame = Effect.fn('test.seedGame')(function* (slug: string) {
         { sessionId, personId: third, status: 'waitlisted' }
     ]);
 
-    return { sessionId, first, second, third };
+    return { communityId, sessionId, first, second, third };
 });
 
 const outcomesOf = Effect.fn('test.outcomesOf')(function* (sessionId: string) {
@@ -168,6 +169,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('nightly maintenance', it =>
             const played = yield* seedGame('close-played-fc');
             const cancelled = yield* seedGame('close-cancelled-fc');
             const later = yield* seedGame('close-later-fc');
+            yield* linkGroup(played.communityId, { chatId: -100 });
             yield* db.update(session).set({ status: 'cancelled' }).where(eq(session.id, cancelled.sessionId));
             yield* db
                 .update(session)

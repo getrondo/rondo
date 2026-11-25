@@ -13,7 +13,7 @@ import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 
 import { noFollowUp, type FollowUp } from '../context/follow-up';
-import { sendProposal } from '../context/send-proposal';
+import { sendPrivate, sendProposal } from '../context/private-chat';
 import { toTelegramUser } from '../context/telegram-user.mapper';
 import { handleGameInput } from '../menu/game-actions/card-input';
 import { gamesScreen } from '../menu/games.screen';
@@ -51,7 +51,7 @@ const runCommand = Effect.fn('Bot.runCommand')(function* (user: MenuUser, comman
 
     if (command === 'reset') {
         yield* clearHistory(user.tgUserId);
-        yield* telegram.call('sendMessage', api => api.sendMessage(user.chatId, '🧹'));
+        yield* sendPrivate(user.chatId, '🧹');
 
         return;
     }
@@ -83,7 +83,7 @@ const typedInput = Effect.fn('Bot.typedInput')(function* (user: MenuUser, messag
 const assistantReply = Effect.fn('Bot.assistantReply')(function* (user: MenuUser, message: Message, body: string) {
     const telegram = yield* Telegram;
     const sender = toTelegramUser(message.from ?? { id: 0, is_bot: false, first_name: '' });
-    const send = (reply: string) => telegram.call('sendMessage', api => api.sendMessage(user.chatId, reply.slice(0, telegramMessageLimit)));
+    const send = (reply: string) => sendPrivate(user.chatId, reply.slice(0, telegramMessageLimit));
     const personId = yield* upsertTelegramUser(sender);
     yield* ensureMembership(user.communityId, personId);
     const profile = yield* communityProfile(user.communityId);
@@ -124,7 +124,6 @@ const assistantReply = Effect.fn('Bot.assistantReply')(function* (user: MenuUser
 });
 
 export const handlePrivateMessage = Effect.fn('Bot.handlePrivateMessage')(function* (message: Message) {
-    const telegram = yield* Telegram;
     const sender = message.from;
     const body = message.text?.trim() ?? '';
 
@@ -136,7 +135,7 @@ export const handlePrivateMessage = Effect.fn('Bot.handlePrivateMessage')(functi
     const user = yield* menuUserOf(sender);
 
     if (Option.isNone(user)) {
-        yield* telegram.call('sendMessage', api => api.sendMessage(message.chat.id, text(resolveLocale(sender.language_code), 'notAdmin')));
+        yield* sendPrivate(message.chat.id, text(resolveLocale(sender.language_code), 'notAdmin'));
 
         return noFollowUp;
     }

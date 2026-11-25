@@ -11,6 +11,7 @@ import * as Predicate from 'effect/Predicate';
 import { actionContextFor } from '../context/action-context';
 
 import { failureText, type FailureTarget } from './failure-text';
+import { askApprover, noteOutcome } from './groups/approval';
 
 import type { MenuUser } from './screen.interface';
 import type { Action } from '@rondo/core/actions/action.model';
@@ -18,6 +19,7 @@ import type { ActionFailure } from '@rondo/core/error/action-failed.error';
 
 type ConfirmedOutcome =
     | { readonly _tag: 'done'; readonly sessionId: string | null }
+    | { readonly _tag: 'asked'; readonly text: string }
     | { readonly _tag: 'failed'; readonly text: string; readonly uncertain: boolean; readonly failure: ActionFailure };
 
 export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (
@@ -32,7 +34,7 @@ export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (
         actionId,
         tgUserId: user.tgUserId,
         confirm: true,
-        context: actionContextFor(user.tgUserId),
+        context: actionContextFor,
         now: user.now
     });
 
@@ -47,6 +49,11 @@ export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (
         } satisfies ConfirmedOutcome;
     }
 
+    if (outcome._tag === 'awaiting') {
+        return { _tag: 'asked', text: yield* askApprover(outcome.request, user.locale) } satisfies ConfirmedOutcome;
+    }
+
+    yield* noteOutcome(outcome, { decidedBy: user.tgUserId, isEdited: false });
     const failure: ActionFailure = outcome._tag === 'failed' ? outcome.failure : { code: 'unexpected' };
     const postsPoll = action._tag === 'announce_session' || (action._tag === 'create_session' && action.announce);
     const shown =

@@ -12,8 +12,10 @@ import * as Result from 'effect/Result';
 import * as Schema from 'effect/Schema';
 
 import { noFollowUp } from './context/follow-up';
+import { isForeign } from './context/is-foreign';
 import { UpdateFailedError } from './error/update-failed.error';
 import { UpdateInProgressError } from './error/update-in-progress.error';
+import { handleBotMembership } from './handlers/bot-membership.handler';
 import { handleCallbackQuery } from './handlers/callback-query.handler';
 import { handleChatMember } from './handlers/chat-member.handler';
 import { handleGroupMessage } from './handlers/group-message.handler';
@@ -80,6 +82,8 @@ const route = Effect.fn('Bot.route')(function* (update: TelegramUpdate) {
         yield* handlePollAnswer(update.poll_answer);
     } else if ('chat_member' in update) {
         yield* handleChatMember(update.chat_member);
+    } else if ('my_chat_member' in update) {
+        yield* handleBotMembership(update.my_chat_member);
     } else {
         yield* handleCallbackQuery(update.callback_query);
     }
@@ -105,7 +109,7 @@ export const handleUpdate = Effect.fn('Bot.handleUpdate')(function* (payload: un
 
     const update = decoded.success;
 
-    if (!(yield* claimUpdate(update.update_id))) {
+    if ((yield* isForeign(update)) || !(yield* claimUpdate(update.update_id))) {
         return noFollowUp;
     }
 

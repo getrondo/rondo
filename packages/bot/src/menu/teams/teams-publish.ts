@@ -1,10 +1,15 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { groupLocaleOf, mainGroupOf } from '@rondo/core/community/community.repository';
+import { approverOf, isApproverOf } from '@rondo/core/community/group-settings';
 import { publishLineup } from '@rondo/core/teams/publish-lineup';
+import { publishTeamsAction } from '@rondo/core/teams/team.service';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 
 import { toShortId } from '../../utils/to-short-id.util';
+import { menuText } from '../menu-text';
+import { runConfirmed } from '../run-confirmed';
 
 import { teamsData, type TeamsTap } from './teams-callback';
 import { isUnsure, sendLabel, statusLines, ticketOf, whereOf } from './teams-editor.screen';
@@ -117,9 +122,52 @@ const outcomeNote = (user: MenuUser, outcome: DeliveryOutcome): string | null =>
     return notes[outcome.status]();
 };
 
+// Another admin's line-up for a group goes to the approver as a proposal of exactly this post
+const askForTeams = Effect.fn('Bot.askForTeams')(function* (user: MenuUser, view: EditorView, isRepeat: boolean) {
+    const approver = yield* approverOf(user.communityId);
+    const name = Option.match(approver, { onNone: () => '', onSome: found => found.name });
+
+    if (isRepeat) {
+        return menuText(user.locale, 'onlyApprover', { name: escapeHtml(name) });
+    }
+
+    const { row, inputs } = view;
+    const nameOf = new Map(inputs.members.map(member => [member.personId, member.displayName]));
+    const action = yield* publishTeamsAction({
+        communityId: user.communityId,
+        sessionId: row.sessionId,
+        teams: row.state.teams.map((members, index) => ({
+            ordinal: index + 1,
+            players: members.map(personId => ({
+                personId,
+                displayName: nameOf.get(personId) ?? '',
+                isGk: row.state.keepers.includes(personId)
+            }))
+        })),
+        teamCount: null,
+        locale: yield* groupLocaleOf(user.communityId),
+        privateChatId: user.chatId,
+        fallback: yield* mainGroupOf(user.communityId),
+        actorPersonId: yield* actorOf(user)
+    });
+    const outcome = yield* runConfirmed(user, action, { summary: null, target: { where: '', isPrivate: false } });
+
+    return outcome._tag === 'done' ? '' : outcome.text;
+});
+
 export const publishAndShow = Effect.fn('Bot.publishAndShow')(function* (user: MenuUser, tap: TeamsTap, messageId: number) {
     const [fingerprint, ticket] = tap.args;
     const isNew = ticket === asNewMessage;
+    const view = yield* loadView(user, tap.sessionId);
+    const isToGroup = view.plan.deliveries.some(delivery => delivery.chatId < 0n && (delivery.isDue || isDefined(ticket)));
+
+    if (isToGroup && view.plan.fingerprint === fingerprint && !(yield* isApproverOf(user.tgUserId, user.communityId))) {
+        const note = yield* askForTeams(user, view, isDefined(ticket));
+        const asked = yield* loadView(user, tap.sessionId, { notes: [note] });
+
+        return yield* showTeams(user, messageId, { sessionId: tap.sessionId, screen: yield* overviewScreen(user, asked) });
+    }
+
     const published = yield* publishLineup({
         communityId: user.communityId,
         sessionId: tap.sessionId,
@@ -129,6 +177,7 @@ export const publishAndShow = Effect.fn('Bot.publishAndShow')(function* (user: M
         asNewMessage: isNew,
         locale: yield* groupLocaleOf(user.communityId),
         actorPersonId: yield* actorOf(user),
+        approval: { _tag: 'approver', tgUserId: user.tgUserId },
         privateChatId: user.chatId,
         fallback: yield* mainGroupOf(user.communityId)
     }).pipe(

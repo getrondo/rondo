@@ -142,7 +142,7 @@ const simulate = () => {
             today,
             nowTime: '12:00',
             hasGroup: true,
-            chats: [{ id: '-1', title: 'Main', topicId: null }],
+            chats: [{ id: '-1', title: 'Main', topicId: null, weekdays: [] }],
             selfChatId: '1',
             lastChatId: null,
             typingHint: false

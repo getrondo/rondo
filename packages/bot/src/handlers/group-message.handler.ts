@@ -1,20 +1,11 @@
 import { isDefined } from '@rnw-community/shared';
-import { adminCommunityIds, isAdminOf } from '@rondo/core/access/admin-access';
-import {
-    bindChat,
-    communityProfile,
-    findCommunityBySlug,
-    findLinkedChat,
-    groupLocaleOf,
-    moveChat
-} from '@rondo/core/community/community.repository';
+import { isAdminOf } from '@rondo/core/access/admin-access';
+import { communityProfile, findLinkedChat, moveChat } from '@rondo/core/community/community.repository';
 import { resolveLocale } from '@rondo/core/i18n/locale';
-import { text } from '@rondo/core/i18n/messages';
 import { displayNameOf, syncMember } from '@rondo/core/identity/telegram-user';
 import { ingestGroupMessage } from '@rondo/core/live/live-ingest';
 import { recordPollCopy } from '@rondo/core/signups/record-poll-copy';
 import { recordLineupCopy } from '@rondo/core/teams/record-lineup-copy';
-import { topicOptions } from '@rondo/core/utils/topic-options.util';
 import { learnVenuePin } from '@rondo/core/venues/venue.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
 import * as DateTime from 'effect/DateTime';
@@ -22,51 +13,17 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { noFollowUp, type FollowUp } from '../context/follow-up';
+import { sendPrivate } from '../context/private-chat';
 import { proposeToAdmin } from '../context/propose-to-admin';
 import { toTelegramUser } from '../context/telegram-user.mapper';
 import { topicOf } from '../context/topic-of';
+import { bindTopic, isTopicAwaited } from '../menu/groups/topic-awaited';
+import { menuText } from '../menu/menu-text';
 
 import { syncGroupUsers } from './chat-member.handler';
 import { proposeUnknownPlace } from './unknown-place.handler';
 
 import type { Message } from '@rondo/telegram/webhook/telegram-update.model';
-
-const linkCommand = /^\/link(?:@\w+)?\s+(\S+)/u;
-
-const handleLink = Effect.fn('Bot.handleLink')(function* (message: Message, slug: string) {
-    const telegram = yield* Telegram;
-    const sender = message.from;
-    const reply = (body: string) =>
-        telegram.call('sendMessage', api =>
-            api.sendMessage(message.chat.id, body, {
-                reply_parameters: { message_id: message.message_id },
-                ...topicOptions({ topicId: topicOf(message) })
-            })
-        );
-    const communityId = yield* findCommunityBySlug(slug);
-
-    if (!isDefined(sender) || Option.isNone(communityId) || !(yield* adminCommunityIds(BigInt(sender.id))).includes(communityId.value)) {
-        const linked = yield* findLinkedChat(BigInt(message.chat.id));
-        const locale = Option.isSome(linked) ? yield* groupLocaleOf(linked.value.communityId) : resolveLocale(sender?.language_code);
-        yield* reply(text(locale, 'unknownCommunity'));
-
-        return;
-    }
-
-    if (message.chat.type !== 'group' && message.chat.type !== 'supergroup') {
-        return;
-    }
-
-    yield* bindChat({
-        communityId: communityId.value,
-        chatId: BigInt(message.chat.id),
-        topicId: topicOf(message),
-        kind: message.chat.type,
-        title: message.chat.title ?? ''
-    });
-    const locale = yield* groupLocaleOf(communityId.value);
-    yield* reply(`${text(locale, 'linked')}: ${slug}`);
-});
 
 const recordBotCopy = Effect.fn('Bot.recordBotCopy')(function* (communityId: string, message: Message, body: string) {
     const chatId = BigInt(message.chat.id);
@@ -100,10 +57,8 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
         return noFollowUp;
     }
 
-    const link = linkCommand.exec(body ?? '');
-
-    if (isDefined(link)) {
-        yield* handleLink(message, link[1] ?? '');
+    if (yield* isTopicAwaited(sender.id, message.chat.id)) {
+        yield* bindTopic(sender.id, message.chat.id, topicOf(message));
 
         return noFollowUp;
     }
@@ -114,7 +69,7 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
         return noFollowUp;
     }
 
-    const { communityId, topicId } = chat.value;
+    const { communityId, topicId, purpose, title: groupTitle } = chat.value;
     const user = toTelegramUser(sender);
     const personId = yield* syncMember(communityId, user, 'active');
     const isTrusted = topicOf(message) === topicId && (yield* isAdminOf(user.id, communityId));
@@ -146,6 +101,7 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
 
     const result = yield* ingestGroupMessage(communityId, config.value, {
         chatId: BigInt(message.chat.id),
+        isMain: purpose === 'main',
         messageId: message.message_id,
         sentAt: DateTime.toDate(DateTime.makeUnsafe(message.date * 1000)),
         senderPersonId: personId,
@@ -157,6 +113,12 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
             ? { poll: { question: message.poll.question, answers: message.poll.options.map(option => option.text) } }
             : {})
     });
+
+    if (result.isSquadSkipped === true) {
+        yield* sendPrivate(sender.id, menuText(resolveLocale(sender.language_code), 'squadSkipped', { title: groupTitle })).pipe(
+            Effect.catchTag('TelegramApiError', error => Effect.logWarning('[group] skipped squad not told', error))
+        );
+    }
 
     if (isDefined(result.cancellation)) {
         // Telegram refuses a private message to an admin who never opened the bot, and that must not fail the update

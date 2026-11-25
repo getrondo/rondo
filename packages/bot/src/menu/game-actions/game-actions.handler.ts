@@ -131,6 +131,13 @@ const runGameAction = Effect.fn('Bot.runGameAction')(function* (
         return Option.none<string>();
     }
 
+    if (outcome._tag === 'asked') {
+        const card = yield* gameCardScreen(user, sessionOf(action), { text: outcome.text, saysPoll: false });
+        yield* showScreen(user.chatId, tap.messageId, card);
+
+        return Option.none<string>();
+    }
+
     const previewed = isNoticeAction(action) || action._tag === 'announce_session' || action._tag === 'forward_poll';
 
     if (outcome.failure.code === 'preview_changed' && previewed) {

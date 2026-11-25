@@ -1,7 +1,5 @@
 import { expect, layer } from '@effect/vitest';
-import { isDefined } from '@rnw-community/shared';
 import { footballHistory } from '@rondo/core/menu/game-history.repository';
-import { telegramChat } from '@rondo/db/schema/org.schema';
 import { extraction, ingestRun, messageRef, sourceRef } from '@rondo/db/schema/platform.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -125,38 +123,6 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(opened.text.split('\n')[0]).toBe('✅ Опитування тепер і в «Second».');
             expect(callsTo(-4022, 'sendPoll')).toHaveLength(0);
             expect(mentions.every(text => String(text).includes('Voter 9303'))).toBe(true);
-        })
-    );
-
-    it.effect('adds a group with /link and moves the topic inside one group', () =>
-        Effect.gen(function* () {
-            const db = yield* Db;
-            const { communityId } = yield* seedSeason('aud-link', { groupChatId: null, adminId: 704 });
-            const owner = { id: 42, is_bot: false as const, first_name: 'Owner' };
-            const link = (chatId: number, topic: number | null) =>
-                deliver({
-                    message: {
-                        message_id: 1,
-                        date: 0,
-                        chat: { id: chatId, type: 'supergroup', title: `Group ${-chatId}` },
-                        from: owner,
-                        text: '/link aud-link',
-                        ...(isDefined(topic) ? { message_thread_id: topic, is_topic_message: true } : {})
-                    }
-                });
-            yield* link(-4031, null);
-            yield* link(-4032, null);
-            yield* link(-4031, 5);
-            const chats = yield* db
-                .select()
-                .from(telegramChat)
-                .where(eq(telegramChat.communityId, communityId))
-                .orderBy(telegramChat.createdAt);
-
-            expect(chats.map(chat => [chat.chatId, chat.topicId])).toEqual([
-                [-4031n, 5],
-                [-4032n, null]
-            ]);
         })
     );
 

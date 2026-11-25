@@ -1,5 +1,5 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
-import { linkedChatsOf } from '@rondo/core/community/community.repository';
+import { postingChatsOf } from '@rondo/core/community/community.repository';
 import { accountNamesOf } from '@rondo/core/identity/telegram-user';
 import { isNoticeAction } from '@rondo/core/notify/notice-preview';
 import { audienceOf } from '@rondo/core/signups/audience';
@@ -19,7 +19,7 @@ export interface GameTarget {
 }
 
 export const targetOfAction = Effect.fn('Bot.targetOfAction')(function* (user: MenuUser, action: Action, sessionId: string) {
-    const chats = yield* linkedChatsOf(user.communityId);
+    const chats = yield* postingChatsOf(user.communityId);
 
     if (isNoticeAction(action) && isDefined(action.preview)) {
         const { targets } = action.preview;

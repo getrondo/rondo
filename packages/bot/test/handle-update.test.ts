@@ -6,7 +6,7 @@ import { createSession } from '@rondo/core/sessions/session.service';
 import { proposeAs, teamsActionAsOwner } from '@rondo/core/testing/confirm-action';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
 import { telegramAccount } from '@rondo/db/schema/identity.schema';
-import { community, membership, telegramChat } from '@rondo/db/schema/org.schema';
+import { community, membership } from '@rondo/db/schema/org.schema';
 import { processedUpdate, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
@@ -15,7 +15,6 @@ import { testDbLayer } from '@rondo/db/testing/test-db.layer';
 import { makeRecorder, recordingTelegramLayer } from '@rondo/telegram/testing/recording-telegram.layer';
 import { MockLanguageModelV4 } from 'ai/test';
 import { eq } from 'drizzle-orm';
-import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Option from 'effect/Option';
@@ -23,6 +22,7 @@ import * as Option from 'effect/Option';
 import { handleUpdate } from '../src/handle-update';
 
 import { groupPoll, keyboardOf } from './support/conversation';
+import { chatRow, linkGroup } from './support/groups';
 
 import type { Action } from '@rondo/core/actions/action.model';
 import type { Update } from 'grammy/types';
@@ -126,15 +126,6 @@ const promoteIn = Effect.fn('test.promoteIn')(function* (chatId: number, communi
 
     return sessionId;
 });
-const chatRow = Effect.fn('test.chatRow')(function* (chatId: number) {
-    const db = yield* Db;
-    const [row] = yield* db
-        .select()
-        .from(telegramChat)
-        .where(eq(telegramChat.chatId, BigInt(chatId)));
-
-    return row;
-});
 const callsTo = (chatId: number) => recorder.calls.filter(call => call.payload.chat_id === chatId);
 
 const testLayer = Layer.mergeAll(
@@ -145,12 +136,12 @@ const testLayer = Layer.mergeAll(
 );
 
 layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
-    it.effect('lets the owner link the group, create a game through the assistant, confirm it and collect sign-ups', () =>
+    it.effect('lets the owner create a game through the assistant, confirm it and collect sign-ups', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('e2e-fc'));
 
-            yield* handleUpdate(message(owner, groupChat, '/link e2e-fc'));
+            yield* linkGroup(communityId, { chatId: groupChat.id }, owner.id);
             yield* deliver(
                 message(
                     owner,
@@ -179,9 +170,6 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
                 .from(signup)
                 .where(eq(signup.sessionId, created?.id ?? ''));
 
-            expect(
-                recorder.calls.some(call => call.method === 'sendMessage' && String(call.payload.text).includes('Групу підключено'))
-            ).toBe(true);
             expect(String(proposal?.payload.text)).toContain('➕ Нова гра: Пт 04.12 19:30, 14 місць');
             expect(confirmData).toMatch(/^act:[\da-f-]{36}:y$/u);
             expect(created).toMatchObject({ localDate: '2026-12-04', capacityMax: 14, status: 'open' });
@@ -236,7 +224,7 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
         Effect.gen(function* () {
             const db = yield* Db;
             const update = message(player, { id: player.id, type: 'private', first_name: player.first_name }, 'привет');
-            const at = yield* DateTime.nowAsDate;
+            const at = new Date(0);
             yield* db.insert(processedUpdate).values({ updateId: update.update_id, at });
             const calls = recorder.calls.length;
             const error = yield* Effect.flip(handleUpdate(update));
@@ -261,7 +249,7 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
                 title: null,
                 actorPersonId: null
             });
-            yield* handleUpdate(message(owner, group, '/link cancel-fc'));
+            yield* linkGroup(communityId, { chatId: group.id }, owner.id);
             const before = recorder.calls.length;
             yield* handleUpdate(message(player, group, 'Сегодня отмена, дождь'));
             const ignored = recorder.calls.length;
@@ -294,7 +282,7 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
                         ...organizerPoll(question)
                     }
                 });
-            yield* handleUpdate(message(owner, group, '/link directory-fc'));
+            yield* linkGroup(communityId, { chatId: group.id }, owner.id);
             yield* handleUpdate(
                 nextUpdate({ message: { ...service, new_chat_members: [newcomer, { ...newcomer, id: 89, is_bot: true }] } })
             );
@@ -338,7 +326,7 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
             const db = yield* Db;
             const group = { id: -100_800, type: 'supergroup' as const, title: 'Fourth' };
             const { communityId } = yield* seedCommunity(seedConfig('presence-fc'));
-            yield* handleUpdate(message(owner, group, '/link presence-fc'));
+            yield* linkGroup(communityId, { chatId: group.id }, owner.id);
             const change = (id: number, status: 'member' | 'kicked', isBot = false) => {
                 const user = { id, is_bot: isBot, first_name: 'U' };
                 const member = status === 'kicked' ? { status, user, until_date: 0 } : { status, user };
@@ -365,12 +353,12 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
         })
     );
 
-    it.effect('binds the topic of /link, reads games only there and posts there', () =>
+    it.effect('reads games only in the topic of a linked group and posts there', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const chatId = -100_901;
             const { communityId, venueIdByName } = yield* seedCommunity(seedConfig('topic-fc'));
-            yield* handleUpdate(groupUpdate(owner, chatId, { text: '/link topic-fc', ...inTopic(7) }));
+            yield* linkGroup(communityId, { chatId, topicId: 7 }, owner.id);
             yield* handleUpdate(groupUpdate(owner, chatId, organizerPoll('Понедельник, 4 мая, 19.00 Park')));
             yield* handleUpdate(groupUpdate(owner, chatId, { ...organizerPoll('Вторник, 5 мая, 19.00 Park'), ...replyThread }));
             yield* handleUpdate(groupUpdate(owner, chatId, { ...organizerPoll('Среда, 6 мая, 19.00 Park'), ...inTopic(9) }));
@@ -394,7 +382,7 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
             expect(read.map(row => row.localDate)).toEqual(['2026-05-07']);
             expect(members).toHaveLength(2);
             expect(venues.map(row => row.name).toSorted()).toEqual(['Games', 'North Arena', 'Park Field']);
-            expect(posts.map(call => call.method)).toEqual(['sendMessage', 'sendPoll', ...Array.from({ length: 4 }, () => 'sendMessage')]);
+            expect(posts.map(call => call.method)).toEqual(['sendPoll', ...Array.from({ length: 4 }, () => 'sendMessage')]);
             expect(posts.every(call => call.payload.message_thread_id === 7)).toBe(true);
         })
     );
@@ -404,16 +392,14 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
             const db = yield* Db;
             const chatId = -100_902;
             const { communityId } = yield* seedCommunity(seedConfig('general-fc'));
-            yield* handleUpdate(groupUpdate(owner, chatId, { text: '/link general-fc', ...inTopic(7) }));
-            yield* handleUpdate(groupUpdate(owner, chatId, { text: '/link general-fc', ...replyThread }));
-            const before = callsTo(chatId).length;
+            yield* linkGroup(communityId, { chatId }, owner.id);
             yield* handleUpdate(groupUpdate(owner, chatId, { ...organizerPoll('Понедельник, 4 мая, 19.00 Park'), ...inTopic(7) }));
             yield* handleUpdate(groupUpdate(owner, chatId, { ...organizerPoll('Вторник, 5 мая, 19.00 Park'), ...replyThread }));
             yield* handleUpdate(groupUpdate(owner, chatId, organizerPoll('Среда, 6 мая, 19.00 Park')));
             const chat = yield* chatRow(chatId);
             const read = yield* db.select().from(session).where(eq(session.communityId, communityId)).orderBy(session.localDate);
             yield* confirmAction(communityId, { _tag: 'announce_session', sessionId: read[0]?.id ?? '' });
-            const posts = callsTo(chatId).slice(before - 1);
+            const posts = callsTo(chatId);
 
             expect(chat?.topicId).toBe(null);
             expect(read.map(row => row.localDate)).toEqual(['2026-05-05', '2026-05-06']);
@@ -428,21 +414,16 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
             const chatId = -100_903;
             const { communityId } = yield* seedCommunity(seedConfig('language-fc'));
             yield* db.update(community).set({ defaultLocale: 'ru' }).where(eq(community.id, communityId));
+            yield* linkGroup(communityId, { chatId }, owner.id);
             yield* handleUpdate(groupUpdate(owner, chatId, { text: '/link language-fc' }));
-            yield* handleUpdate(groupUpdate(owner, chatId, { text: '/link unknown-fc' }));
-            yield* handleUpdate(groupUpdate(owner, -100_904, { text: '/link unknown-fc' }));
             const sessionId = yield* promoteIn(chatId, communityId, null);
             yield* confirmAction(communityId, { _tag: 'cancel_session', sessionId, reason: 'weather', notify: true });
             const texts = callsTo(chatId).map(call => String(call.payload.text ?? call.payload.question));
-            const [elsewhere] = callsTo(-100_904);
 
-            expect(texts[0]).toContain('Группа подключена');
-            expect(texts[1]).toContain('Сообщество не найдено');
-            expect(JSON.stringify(callsTo(chatId)[2]?.payload)).toContain('Играю');
+            expect(JSON.stringify(callsTo(chatId)[0]?.payload)).toContain('Играю');
             expect(texts.some(entry => entry.includes('освободилось место'))).toBe(true);
             expect(texts.at(-1)).toContain('Отменено: Пт 04.12 19:30');
             expect(texts.at(-1)).toContain('погода');
-            expect(String(elsewhere?.payload.text)).toContain('Спільноту не знайдено');
             expect(String(callsTo(owner.id).at(-1)?.payload.text)).toContain('Виконано');
         })
     );

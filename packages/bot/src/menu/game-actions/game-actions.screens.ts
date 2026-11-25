@@ -32,7 +32,7 @@ const groupHtml = Effect.fn('Bot.groupHtml')(function* (user: MenuUser, game: Se
     }
 
     if (isNoticeAction(action)) {
-        const context = yield* actionContextFor(user.tgUserId)(user.communityId);
+        const context = yield* actionContextFor(user.communityId, user.tgUserId);
         const notice = action.preview ?? (yield* noticeOf(action, context));
 
         return `<blockquote>${notice.html}</blockquote>`;

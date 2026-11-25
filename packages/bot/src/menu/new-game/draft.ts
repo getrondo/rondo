@@ -1,5 +1,6 @@
 import * as Schema from 'effect/Schema';
 
+import type { KnownChat } from '@rondo/core/community/group-settings';
 import type { PastGame, PlannedGame } from '@rondo/core/menu/past-game.interface';
 
 const views = ['main', 'day', 'place', 'venues', 'venue_name', 'map', 'address', 'time', 'size', 'note', 'dest'] as const;
@@ -61,7 +62,12 @@ export interface NewGameData {
     readonly today: string;
     readonly nowTime: string;
     readonly hasGroup: boolean;
-    readonly chats: readonly { readonly id: string; readonly title: string; readonly topicId: number | null }[];
+    readonly chats: readonly {
+        readonly id: string;
+        readonly title: string;
+        readonly topicId: number | null;
+        readonly weekdays: KnownChat['weekdays'];
+    }[];
     readonly selfChatId: string;
     readonly lastChatId: string | null;
     readonly typingHint: boolean;

@@ -7,8 +7,9 @@ import { appendHistory, loadHistory } from './history/conversation.repository';
 import { ASSISTANT_MODEL } from './model/assistant-model.constant';
 import { buildSystemPrompt, type PromptContext } from './prompt/system.prompt';
 import { AiGateway } from './service/ai-gateway.service';
-import { buildTools, type ToolRunner, type ToolScope } from './tools/build-tools';
+import { buildTools, type ToolRunner } from './tools/build-tools';
 
+import type { ToolScope } from './tools/propose';
 import type { Locale } from '@rondo/core/i18n/locale';
 import type { Db } from '@rondo/db/service/db.service';
 import type { Telegram } from '@rondo/telegram/service/telegram.service';

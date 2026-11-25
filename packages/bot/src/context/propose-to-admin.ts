@@ -3,7 +3,7 @@ import { proposeAction } from '@rondo/core/actions/pending-action.service';
 import { resolveLocale } from '@rondo/core/i18n/locale';
 import * as Effect from 'effect/Effect';
 
-import { sendProposal } from './send-proposal';
+import { sendProposal } from './private-chat';
 
 import type { Action } from '@rondo/core/actions/action.model';
 import type { TelegramUser } from '@rondo/core/identity/telegram-user';

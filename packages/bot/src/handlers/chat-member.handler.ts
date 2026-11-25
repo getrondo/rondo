@@ -7,7 +7,7 @@ import { toTelegramUser } from '../context/telegram-user.mapper';
 
 import type { ChatMember, ChatMemberUpdated, User } from '@rondo/telegram/webhook/telegram-update.model';
 
-const presenceOf = (member: ChatMember): 'active' | 'left' | 'removed' => {
+export const presenceOf = (member: ChatMember): 'active' | 'left' | 'removed' => {
     if (member.status === 'kicked') {
         return 'removed';
     }

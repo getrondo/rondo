@@ -20,7 +20,7 @@ import { plainReceipt, rememberDone, replyStale, showAfterSuccess } from '../sta
 import { writeState } from '../write-state';
 
 import { audienceOfDraft } from './audience';
-import { DraftSchema, type Draft, type NewGameData, type TypedInput } from './draft';
+import { DraftSchema, emptyDraft, type Draft, type NewGameData, type TypedInput } from './draft';
 import { loadNewGameData } from './new-game.data';
 import { applyOp, awaitingOf, startDraft } from './new-game.flow';
 import { newGameKeyboard } from './new-game.keyboard';
@@ -30,6 +30,7 @@ import { showSelfReceipt } from './self-receipt';
 import { applyText } from './typed-input';
 
 import type { MenuUser } from '../screen.interface';
+import type { Action } from '@rondo/core/actions/action.model';
 import type { AdminStateRow } from '@rondo/core/menu/admin-state.interface';
 
 const decodeDraft = Schema.decodeUnknownOption(DraftSchema);
@@ -97,6 +98,29 @@ export const continueNewGame = Effect.fn('Bot.continueNewGame')(function* (user:
     return yield* presentNewGame(user, draft.value, data, { messageId, expected: live.value.revision });
 });
 
+// The approver changes what another admin prepared, as their own new game
+export const openNewGameFrom = Effect.fn('Bot.openNewGameFrom')(function* (
+    user: MenuUser,
+    action: Extract<Action, { _tag: 'create_session' }>
+) {
+    const data = yield* loadNewGameData(user);
+    const audience = isDefined(action.chatId) && data.chats.some(chat => chat.id === action.chatId) ? [action.chatId] : [];
+    const draft = {
+        ...emptyDraft,
+        localDate: action.localDate,
+        localTime: action.localTime,
+        venueId: action.venueId,
+        fields: action.fieldsPlanned ?? null,
+        places: action.capacityMax,
+        sized: true,
+        custom: true,
+        note: action.note ?? null,
+        audience
+    };
+
+    yield* presentNewGame(user, draft, data, { messageId: null, expected: null });
+});
+
 const reopenNewGame = Effect.fn('Bot.reopenNewGame')(function* (user: MenuUser) {
     const state = yield* loadAdminState(user.tgUserId, user.now);
     const draft = state.pipe(Option.flatMap(row => decodeDraft(row.draft)));
@@ -122,11 +146,21 @@ export const showNotUnderstood = Effect.fn('Bot.showNotUnderstood')(function* (u
     yield* reopenNewGame(user);
 });
 
+interface FailedOutcome {
+    readonly _tag: 'failed';
+    readonly text: string;
+    readonly uncertain: boolean;
+}
+
 const forwardLine = (
     user: MenuUser,
     where: string,
-    forwarded: { readonly _tag: 'done' } | { readonly _tag: 'failed'; readonly text: string; readonly uncertain: boolean }
+    forwarded: { readonly _tag: 'done' } | { readonly _tag: 'asked'; readonly text: string } | FailedOutcome
 ): string => {
+    if (forwarded._tag === 'asked') {
+        return forwarded.text;
+    }
+
     if (forwarded._tag === 'done') {
         return menuText(user.locale, 'forwardedTo', { where: escapeHtml(where) });
     }
@@ -136,9 +170,7 @@ const forwardLine = (
         : menuText(user.locale, 'forwardFailed', { where: escapeHtml(where), reason: forwarded.text.replace(/^⚠️ /u, '') });
 };
 
-const failureOf = (
-    outcome: { readonly _tag: 'done' } | { readonly _tag: 'failed'; readonly text: string; readonly uncertain: boolean }
-) => {
+const failureOf = (outcome: { readonly _tag: 'done' } | FailedOutcome) => {
     if (outcome._tag === 'done') {
         return {};
     }
@@ -184,6 +216,14 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
     const self = withPoll && (first?.id ?? data.selfChatId) === data.selfChatId;
     const target = { where: `«${first?.title ?? ''}»`, isPrivate: self };
     const outcome = yield* runConfirmed(user, actionOf(draft, withPoll, data), { summary: withPoll ? draft.summary : null, target });
+
+    if (outcome._tag === 'asked') {
+        const rest = draft.targets.length > 1 ? [menuText(user.locale, 'askedRest')] : [];
+        const home = yield* homeScreen(user);
+        yield* showScreen(user.chatId, messageId, { ...home, text: [outcome.text, ...rest].join('\n') });
+
+        return Option.none<string>();
+    }
 
     const existing = outcome._tag === 'failed' && outcome.failure.code === 'game_exists' ? outcome.failure.sessionId : null;
     const at = { messageId, expected: consumed.value.revision };

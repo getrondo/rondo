@@ -1,5 +1,5 @@
 import { expect, layer } from '@effect/vitest';
-import { bindChat } from '@rondo/core/community/community.repository';
+import { linkGroup } from '@rondo/core/testing/link-group';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -22,7 +22,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/newgame');
             yield* walkManual(admin, saveManual);
             yield* admin.tap('📣 Надіслати в «Games»');
-            yield* bindChat({ communityId, chatId: -28_001n, topicId: 9, kind: 'supergroup', title: 'Games' });
+            yield* linkGroup(communityId, { chatId: -28_001, title: 'Games', topicId: 9 });
             yield* admin.tap('✅ Надіслати в «Games»');
             const fresh = admin.screen();
             const before = pollsTo(recorder, -28_001).length;
@@ -42,12 +42,12 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/newgame');
             yield* admin.tap('📤 Куди');
             yield* admin.tap('«Games» і «Second»');
-            yield* bindChat({ communityId, chatId: -28_012n, topicId: 6, kind: 'supergroup', title: 'Second' });
+            yield* linkGroup(communityId, { chatId: -28_012, title: 'Second', topicId: 6, purpose: 'other' });
             yield* admin.tap('✅ Надіслати в обидві групи');
             const result = admin.screen().text;
             const afterNewGame = forwardsTo(recorder, -28_012).length;
             yield* admin.tap('📣 Надіслати ще в «Second»');
-            yield* bindChat({ communityId, chatId: -28_012n, topicId: 7, kind: 'supergroup', title: 'Second' });
+            yield* linkGroup(communityId, { chatId: -28_012, title: 'Second', topicId: 7, purpose: 'other' });
             yield* admin.tap('✅ Надіслати в «Second»');
             const fresh = admin.screen();
             const afterCard = forwardsTo(recorder, -28_012).length;
@@ -85,7 +85,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(2805));
             yield* admin.type('/newgame');
             yield* unknownCardPoll(recorder, admin);
-            yield* bindChat({ communityId, chatId: -28_041n, topicId: 8, kind: 'supergroup', title: 'Games' });
+            yield* linkGroup(communityId, { chatId: -28_041, title: 'Games', topicId: 8 });
             yield* admin.tap('📣 Немає, надіслати в «Games»');
             yield* admin.tap('✅ Надіслати в «Games»');
             const fresh = admin.screen();

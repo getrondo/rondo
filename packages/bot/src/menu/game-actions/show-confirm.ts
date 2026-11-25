@@ -1,7 +1,7 @@
 import { isDefined } from '@rnw-community/shared';
 import { ActionSchema, type Action } from '@rondo/core/actions/action.model';
 import { describeAction } from '@rondo/core/actions/describe-action';
-import { linkedChatsOf } from '@rondo/core/community/community.repository';
+import { postingChatsOf } from '@rondo/core/community/community.repository';
 import { moveAdminMessage } from '@rondo/core/menu/admin-state.repository';
 import { isNoticeAction, noticeOf } from '@rondo/core/notify/notice-preview';
 import * as Effect from 'effect/Effect';
@@ -52,7 +52,7 @@ const withDestination = Effect.fn('Bot.withDestination')(function* (
         return action;
     }
 
-    const chats = yield* linkedChatsOf(user.communityId);
+    const chats = yield* postingChatsOf(user.communityId);
     const chat = isDefined(action.chatId) ? chats.find(entry => String(entry.chatId) === action.chatId) : chats[0];
 
     if (!isDefined(chat)) {
@@ -71,7 +71,7 @@ const withPreview = Effect.fn('Bot.withPreview')(function* (user: MenuUser, acti
         return action;
     }
 
-    const context = yield* actionContextFor(user.tgUserId)(user.communityId);
+    const context = yield* actionContextFor(user.communityId, user.tgUserId);
     const preview = yield* noticeOf(action, context);
 
     return { ...action, preview };

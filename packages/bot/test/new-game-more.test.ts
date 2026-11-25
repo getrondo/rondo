@@ -1,8 +1,8 @@
 import { expect, layer } from '@effect/vitest';
 import { grantAdmin } from '@rondo/core/access/admin-access';
-import { bindChat } from '@rondo/core/community/community.repository';
 import { upsertTelegramUser } from '@rondo/core/identity/telegram-user';
 import { createSession } from '@rondo/core/sessions/session.service';
+import { linkGroup } from '@rondo/core/testing/link-group';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -135,7 +135,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
     it.effect('starts with the manual steps when there is too little history', () =>
         Effect.gen(function* () {
             const { communityId } = yield* seedCommunity(seedConfig('more-empty'));
-            yield* bindChat({ communityId, chatId: -5005n, topicId: null, kind: 'supergroup', title: 'Games' });
+            yield* linkGroup(communityId, { chatId: -5005, title: 'Games' });
             const personId = yield* upsertTelegramUser({ id: 805n, firstName: 'Admin 805' });
             yield* grantAdmin({ communityId, personId, grantedBy: null });
             const admin = conversation(recorder, adminNumbered(805));

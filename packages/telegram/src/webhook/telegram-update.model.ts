@@ -50,10 +50,17 @@ const PollAnswerSchema = Schema.Struct({
 const ChatMemberSchema = Schema.Struct({
     status: Schema.String,
     user: TelegramUserSchema,
-    is_member: Schema.optionalKey(Schema.Boolean)
+    is_member: Schema.optionalKey(Schema.Boolean),
+    can_pin_messages: Schema.optionalKey(Schema.Boolean),
+    can_send_messages: Schema.optionalKey(Schema.Boolean),
+    can_send_polls: Schema.optionalKey(Schema.Boolean)
 });
 
-const ChatMemberUpdatedSchema = Schema.Struct({ chat: ChatSchema, new_chat_member: ChatMemberSchema });
+const ChatMemberUpdatedSchema = Schema.Struct({
+    chat: ChatSchema,
+    old_chat_member: Schema.optionalKey(ChatMemberSchema),
+    new_chat_member: ChatMemberSchema
+});
 
 const CallbackQuerySchema = Schema.Struct({
     id: Schema.String,
@@ -66,6 +73,7 @@ export const TelegramUpdateSchema = Schema.Union([
     Schema.Struct({ update_id: Schema.Int, message: MessageSchema }),
     Schema.Struct({ update_id: Schema.Int, poll_answer: PollAnswerSchema }),
     Schema.Struct({ update_id: Schema.Int, chat_member: ChatMemberUpdatedSchema }),
+    Schema.Struct({ update_id: Schema.Int, my_chat_member: ChatMemberUpdatedSchema }),
     Schema.Struct({ update_id: Schema.Int, callback_query: CallbackQuerySchema })
 ]);
 

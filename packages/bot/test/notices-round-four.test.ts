@@ -1,5 +1,5 @@
 import { expect, layer } from '@effect/vitest';
-import { bindChat } from '@rondo/core/community/community.repository';
+import { linkGroup } from '@rondo/core/testing/link-group';
 import { telegramChat } from '@rondo/db/schema/org.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -57,7 +57,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(2912));
             yield* admin.type('/newgame');
             yield* admin.tap('✅ Надіслати опитування мені');
-            yield* bindChat({ communityId, chatId: -29_102n, topicId: 4, kind: 'supergroup', title: 'Copies' });
+            yield* linkGroup(communityId, { chatId: -29_102, title: 'Copies', topicId: 4, purpose: 'other' }, 2912);
             yield* deliver({
                 message: {
                     message_id: 77,
