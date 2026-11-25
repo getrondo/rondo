@@ -102,6 +102,24 @@ RONDO_APPROVALS_CONTENT=games RONDO_APPROVALS_FILE=/path/to/game-decisions.txt p
 After the import, run the same commands with `RONDO_APPROVALS_MODE=compare`: it only reads and prints counts and message ids, no
 names.
 
+### Erase a person
+
+Only the owner, with database access, can erase. It is irreversible: take a backup, run the preview (the default: it does everything, rolls back and
+prints counts), then erase. Deploy this release first. After the first erasure never roll back below it: an
+older release writes the names again and does not recognise what was erased. The redaction of old `person.rename` events relies on the merge
+order: #77, which writes no names into new events, is live before the migration of #78 runs.
+
+```bash
+psql "$DATABASE_URL" -c "select community_id, person_id from org.membership join identity.telegram_account using (person_id) where tg_user_id = <Telegram id>"
+export RONDO_COMMUNITY_ID=<community id> RONDO_ERASE_PERSON_ID=<person id>
+pnpm -F @rondo/core erase
+RONDO_ERASE_MODE=erase pnpm -F @rondo/core erase
+```
+
+Games, attendance and votes stay under "Former player". Later imports, approvals and group posts mask the erased nicknames, so a new player with
+the same nickname needs manual links. Not covered: a nickname shared with other players stays as theirs, free-text mentions that resolve to nobody, typed guest names, short or quoted names in other admins' messages (they expire in 30 days), organizer names in the stored config until the next import, backups and posts in Telegram. Remove the person from the private community config, the approvals file and
+kept exports by hand.
+
 ### Rehearse first
 
 On a restored copy of production on localhost:

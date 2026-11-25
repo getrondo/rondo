@@ -1,5 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { isEmptyString } from '@rnw-community/shared';
+import { person } from '@rondo/db/schema/identity.schema';
 import { lineupDelivery, team, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -13,6 +14,7 @@ import * as Layer from 'effect/Layer';
 import * as Option from 'effect/Option';
 import * as Random from 'effect/Random';
 
+import { erasePerson } from '../src/people/erase-person';
 import { finishPastSessions } from '../src/sessions/finish-session';
 import { swapPlayers } from '../src/teams/draft-state';
 import { planLineup } from '../src/teams/lineup-plan';
@@ -192,5 +194,45 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('a line-up
             expect(receipts.map(receipt => receipt.status)).toEqual(['sent', 'sent']);
             expect(yield* teamOfPlayer(target, row.state.teams[1]?.[0] ?? '')).toBe(2);
         })
+    );
+
+    it.effect.skipIf(isEmptyString(raceDatabaseUrl))(
+        'stops at an erasure during the send: nothing more is posted and no name is stored',
+        () =>
+            Effect.gen(function* () {
+                const db = yield* Db;
+                const target = yield* game('publish-erase');
+                const { row } = yield* openDraft(target.communityId, target.sessionId, null);
+                const personId = row.state.teams[0]?.[0] ?? '';
+                const [erasedPlayer] = yield* db.select({ name: person.displayName }).from(person).where(eq(person.id, personId));
+                const callsBefore = recorder.calls.length;
+                const tokenOf = db
+                    .select({ token: teamDraft.publishToken })
+                    .from(teamDraft)
+                    .where(eq(teamDraft.sessionId, target.sessionId));
+                const raced = yield* publishWhile(
+                    target,
+                    erasePerson({ communityId: target.communityId, personId }).pipe(Effect.andThen(tokenOf))
+                );
+                const receipts = yield* db.select().from(lineupDelivery).where(eq(lineupDelivery.sessionId, target.sessionId));
+                const posted = recorder.calls.length - callsBefore;
+
+                expect(raced.during).toMatchObject({ _tag: 'Success', value: [{ token: null }] });
+                expect(raced.published).toMatchObject({
+                    _tag: 'Success',
+                    success: { deliveries: [{ status: 'uncertain' }, { status: 'busy' }] }
+                });
+                expect(posted).toBe(1);
+                expect(receipts.map(receipt => [receipt.status, receipt.text])).toEqual([
+                    ['uncertain', null],
+                    ['uncertain', null]
+                ]);
+                expect(yield* teamOfPlayer(target, personId)).toBeNull();
+
+                const plan = yield* planLineup({ ...target, locale: 'uk', privateChatId: null, fallback: Option.none() });
+                expect(plan.deliveries.map(({ html }) => html).join('\n')).not.toContain(erasedPlayer?.name ?? '');
+                yield* publishPlanned(target, receipts[0]?.token ?? '');
+                expect(yield* teamOfPlayer(target, personId)).toBe(1);
+            })
     );
 });

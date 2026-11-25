@@ -4,7 +4,7 @@ import { membership } from '@rondo/db/schema/org.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/db/service/with-community-lock';
-import { and, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
@@ -155,6 +155,12 @@ export const mergePeople = Effect.fn('Core.mergePeople')((input: MergeInput) =>
                     )
                 );
 
+            const erased = yield* db.$count(person, and(inArray(person.id, people), isNotNull(person.anonymizedAt)));
+
+            if (erased > 0) {
+                return yield* ActionFailedError.make({ failure: { code: 'person_not_found' } });
+            }
+
             if (isNotEmptyArray(rejected)) {
                 return yield* ActionFailedError.make({ failure: { code: 'nickname_rejected' } });
             }
@@ -224,8 +230,17 @@ export const renamePerson = Effect.fn('Core.renamePerson')(function* (input: {
 }) {
     const db = yield* Db;
 
-    yield* db.update(person).set({ displayName: input.displayName }).where(eq(person.id, input.personId));
-    yield* recordAudit({
+    const renamed = yield* db
+        .update(person)
+        .set({ displayName: input.displayName })
+        .where(and(eq(person.id, input.personId), isNull(person.anonymizedAt)))
+        .returning({ id: person.id });
+
+    if (!isNotEmptyArray(renamed)) {
+        return yield* ActionFailedError.make({ failure: { code: 'person_not_found' } });
+    }
+
+    return yield* recordAudit({
         communityId: input.communityId,
         actorPersonId: input.actorPersonId,
         action: 'person.rename',

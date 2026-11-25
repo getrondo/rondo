@@ -72,6 +72,11 @@ export const addGuests = Effect.fn('Core.addGuests')(function* (
     return yield* db.transaction(() =>
         Effect.gen(function* () {
             const game = yield* lockedGame(change);
+
+            if (isDefined(guest.hostPersonId)) {
+                yield* db.select({ id: person.id }).from(person).where(eq(person.id, guest.hostPersonId)).for('share');
+            }
+
             const [host] = isDefined(guest.hostPersonId)
                 ? yield* db
                       .select({ displayName: person.displayName })

@@ -1,7 +1,7 @@
 import { isNotEmptyArray } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, inArray, ne, sql } from 'drizzle-orm';
+import { and, inArray, isNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 const nickname = sql`(
@@ -27,6 +27,13 @@ export const refreshNames = Effect.fn('Core.refreshNames')(function* (personIds:
         yield* db
             .update(person)
             .set({ displayName: sql`coalesce(${nickname}, ${telegramName}, ${person.displayName})` })
-            .where(and(inArray(person.id, [...new Set(personIds)]), ne(person.source, 'manual'), sql`not ${renamedByAdmin}`));
+            .where(
+                and(
+                    inArray(person.id, [...new Set(personIds)]),
+                    ne(person.source, 'manual'),
+                    isNull(person.anonymizedAt),
+                    sql`not ${renamedByAdmin}`
+                )
+            );
     }
 });

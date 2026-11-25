@@ -34,7 +34,7 @@ const applyManual = (rows: readonly EntryRow[], manual: readonly EntryRow[]): En
         row.teamOrdinal === entry.teamOrdinal && row.position === entry.position;
 
     for (const entry of manual) {
-        place(entry, row => isPlayer(row, entry) && isSamePlace(row, entry));
+        place(entry, row => row.isGuest !== true && isSamePlace(row, entry) && (row.raw === entry.raw || !isDefined(entry.raw)));
     }
 
     for (const entry of manual.filter(candidate => ![...overrides.values()].includes(candidate))) {

@@ -293,6 +293,29 @@ layer(testDbLayer, { timeout: 60_000 })('database invariants', it => {
         })
     );
 
+    it.effect('removes names from old rename events, keeps the events and leaves the log append-only', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const event = { actorKind: 'user' as const, entityType: 'person', entityId: 'renamed' };
+            yield* db.insert(auditLog).values([
+                { ...event, action: 'person.rename', diff: { displayName: 'Old Name' } },
+                { ...event, action: 'person.rename', diff: { displayName: 'Old Name', note: 1 } },
+                { ...event, action: 'venue.create', diff: { displayName: 'Venue' } }
+            ]);
+            const file = fileURLToPath(new URL('../drizzle/20261125145839_audit_rename_names/migration.sql', import.meta.url));
+            yield* db.execute(sql.raw(readFileSync(file, 'utf8')));
+            const events = yield* db.select().from(auditLog).where(eq(auditLog.entityId, 'renamed')).orderBy(auditLog.id);
+            const mutated = yield* Effect.exit(db.update(auditLog).set({ diff: null }));
+
+            expect(events.map(({ action, diff }) => [action, diff])).toEqual([
+                ['person.rename', null],
+                ['person.rename', { note: 1 }],
+                ['venue.create', { displayName: 'Venue' }]
+            ]);
+            expect(Exit.isFailure(mutated)).toBe(true);
+        })
+    );
+
     it.effect('stores the money red bib as red, keeps its squads on the same row and merges it into an existing red', () =>
         Effect.gen(function* () {
             const db = yield* Db;

@@ -9,6 +9,7 @@ import { countOccurrences } from '../identity/count-occurrences';
 import { ensureAliases } from '../identity/ensure-aliases';
 import { loadDirectory } from '../identity/load-directory';
 import { markShared } from '../identity/mark-shared';
+import { maskLineups, scrubErasedEntries } from '../identity/mask-erased';
 
 import { alignGuests } from './align-guests';
 import { entriesOf } from './entries-of';
@@ -25,8 +26,15 @@ interface LiveLineup {
     readonly chatId?: number;
 }
 
-export const storeLineup = Effect.fn('Core.storeLineup')(function* ({ communityId, sessionId, lineup, senderName, chatId }: LiveLineup) {
+export const storeLineup = Effect.fn('Core.storeLineup')(function* ({
+    communityId,
+    sessionId,
+    lineup: posted,
+    senderName,
+    chatId
+}: LiveLineup) {
     const db = yield* Db;
+    const [lineup = posted] = yield* maskLineups(communityId, [posted]);
     const known = yield* loadDirectory(communityId);
 
     yield* ensureAliases({ communityId, source: 'bot', aliases: aliasesIn([lineup], known, senderName) });
@@ -44,5 +52,6 @@ export const storeLineup = Effect.fn('Core.storeLineup')(function* ({ communityI
     yield* applyApproved(communityId);
     yield* markUndecidedTeams(communityId);
     yield* alignGuests(communityId);
+    yield* scrubErasedEntries(communityId);
     yield* syncSessionRoster([sessionId]);
 });
