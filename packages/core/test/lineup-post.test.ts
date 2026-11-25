@@ -57,7 +57,7 @@ const forwardOf = (html: string) => {
             mentions.push({ offset: text.length, text: name, userId: Number(link.groups?.id) });
             text = `${text}${name}`;
         } else {
-            text = `${text}${unescape(part.replaceAll(/<[^<>]*>/gu, ''))}`;
+            text = `${text}${unescape(part.split(/<[^<>]*>/u).join(''))}`;
         }
     }
 

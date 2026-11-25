@@ -1,6 +1,8 @@
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { escapeHtml, mentionHtml } from '@rondo/telegram/format/html';
 
+import { plainText } from '../utils/plain-text.util';
+
 import { badgeOfEmoji } from './badges';
 
 import type { Locale } from '../i18n/locale';
@@ -87,7 +89,7 @@ const teamHtml = (team: PostTeam, index: number, post: LineupPost, limit: number
     return [`${team.badge} <b>${teamName(post.locale, team.badge, index)} · ${team.members.length}</b>${note}`, ...names].join('\n');
 };
 
-const visibleLength = (html: string): number => html.replaceAll(/<[^<>]*>/gu, '').replaceAll(/&(?:amp|lt|gt|quot);/gu, '-').length;
+const visibleLength = (html: string): number => plainText(html).length;
 
 export const lineupPostHtml = (post: LineupPost): string => {
     const render = (limit: number) =>

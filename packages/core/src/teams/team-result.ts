@@ -1,6 +1,6 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { rating, ratingEvent, team } from '@rondo/db/schema/play.schema';
-import { session } from '@rondo/db/schema/scheduling.schema';
+import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import { and, asc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
@@ -15,6 +15,23 @@ import { rateResult } from './rate-result';
 import { ratingsOf } from './team-inputs';
 
 const correctionMs = 12 * 60 * 60_000;
+
+// Who played: the squad without sign-ups that are out and without no-shows an admin marked
+const playedSquad = Effect.fn('Core.playedSquad')(function* (sessionId: string) {
+    const db = yield* Db;
+    const members = yield* squadOf(sessionId);
+    const out = yield* db
+        .select({ personId: signup.personId })
+        .from(signup)
+        .where(and(eq(signup.sessionId, sessionId), eq(signup.status, 'out')));
+    const missed = yield* db
+        .select({ personId: attendance.personId })
+        .from(attendance)
+        .where(and(eq(attendance.sessionId, sessionId), eq(attendance.outcome, 'no_show'), eq(attendance.source, 'manual')));
+    const gone = new Set([...out, ...missed].map(row => row.personId));
+
+    return members.filter(member => !gone.has(member.personId));
+});
 
 const revertResult = Effect.fn('Core.revertResult')(function* (sessionId: string, isSameEvening: boolean) {
     const db = yield* Db;
@@ -74,7 +91,7 @@ export const recordResult = Effect.fn('Core.recordResult')(
             Effect.gen(function* () {
                 const db = yield* Db;
                 const target = yield* requireSession(input.communityId, input.sessionId);
-                const members = yield* squadOf(input.sessionId);
+                const members = yield* playedSquad(input.sessionId);
                 const teams = (yield* db.select().from(team).where(eq(team.sessionId, input.sessionId)).orderBy(asc(team.ordinal))).filter(
                     entry => members.some(member => member.ordinal === entry.ordinal)
                 );

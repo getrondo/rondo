@@ -2,7 +2,7 @@ import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { loadAdminState, replaceAdminState } from '@rondo/core/menu/admin-state.repository';
 import { addGuests } from '@rondo/core/signups/roster.service';
 import { badgeOfColour } from '@rondo/core/teams/badges';
-import { setColour, syncByAdmin, teamIndexOf, withChange, movePlayers, type DraftState } from '@rondo/core/teams/draft-state';
+import { setColour, teamIndexOf, withChange, movePlayers, type DraftState } from '@rondo/core/teams/draft-state';
 import {
     applyPaste,
     choose,
@@ -14,7 +14,6 @@ import {
     type Paste
 } from '@rondo/core/teams/paste-lineup';
 import { changeDraft, loadDraft } from '@rondo/core/teams/team-draft.service';
-import { loadTeamInputs } from '@rondo/core/teams/team-inputs';
 import { Db } from '@rondo/db/service/db.service';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
@@ -44,15 +43,10 @@ const changeLatest = Effect.fn('Bot.changeLatestDraft')(function* (
         Effect.flatMap(found => Effect.fromOption(found)),
         Effect.orDie
     );
-    const inputs = yield* loadTeamInputs(user.communityId, sessionId);
-    const synced = syncByAdmin(
-        row.state,
-        inputs.members.map(member => member.personId)
-    );
 
     return yield* changeDraft(
         { sessionId, version: row.version, key: `${user.tgUserId}:typed:${row.version}`, actorPersonId: yield* actorOf(user) },
-        state => Effect.succeed(transform(state === row.state ? synced : state))
+        state => Effect.succeed(transform(state))
     );
 });
 

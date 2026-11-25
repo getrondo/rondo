@@ -121,6 +121,8 @@ export const shuffled = (inputs: TeamInputs, state: DraftState): DraftState => {
     return isDefined(best) ? withChange(state, { teams: best.teams, pending: [] }) : state;
 };
 
+export const goalkeepersOf = (inputs: TeamInputs): string[] => inputs.members.flatMap(member => (member.isGk ? [member.personId] : []));
+
 const storedSquad = Effect.fn('Core.storedSquad')(function* (sessionId: string) {
     const db = yield* Db;
     const teams = yield* db
@@ -222,7 +224,8 @@ export const openDraft = Effect.fn('Core.openDraft')(function* (communityId: str
     const row = Option.isSome(found) ? found.value : yield* createDraft(inputs, { actorPersonId, proposedAt: null });
     const synced = syncRoster(
         row.state,
-        inputs.members.map(member => member.personId)
+        inputs.members.map(member => member.personId),
+        goalkeepersOf(inputs)
     );
     const saved = synced === row.state ? Option.fromNullishOr(row) : yield* saveState(row, synced, { actorPersonId });
     const current = Option.isSome(saved) ? saved.value : yield* requireDraft(sessionId);
@@ -268,7 +271,8 @@ export const changeDraft = <Failure, Requirements>(
 export const prepareProposal = Effect.fn('Core.prepareProposal')(function* (inputs: TeamInputs, row: DraftRow) {
     const synced = syncRoster(
         row.state,
-        inputs.members.map(member => member.personId)
+        inputs.members.map(member => member.personId),
+        goalkeepersOf(inputs)
     );
     const placed = isEmptyArray(row.state.history) ? freshState(inputs, usualTeamCount(inputs.players.length)) : rebalanced(inputs, synced);
     const next = isNotEmptyArray(synced.pending) || isEmptyArray(row.state.history) ? { ...placed, joined: [], left: [] } : synced;

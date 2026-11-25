@@ -14,7 +14,7 @@ import {
     undo,
     type DraftState
 } from '@rondo/core/teams/draft-state';
-import { changeDraft, freshState, rebalanced, shuffled } from '@rondo/core/teams/team-draft.service';
+import { changeDraft, freshState, goalkeepersOf, rebalanced, shuffled } from '@rondo/core/teams/team-draft.service';
 import { loadTeamInputs } from '@rondo/core/teams/team-inputs';
 import * as Effect from 'effect/Effect';
 
@@ -59,7 +59,8 @@ const afterRoster = (context: ChangeContext, state: DraftState, place: (synced: 
             ...place(
                 syncByAdmin(
                     state,
-                    inputs.members.map(member => member.personId)
+                    inputs.members.map(member => member.personId),
+                    goalkeepersOf(inputs)
                 ),
                 inputs
             )

@@ -4,11 +4,11 @@ import { person } from '@rondo/db/schema/identity.schema';
 import { telegramChat } from '@rondo/db/schema/org.schema';
 import { messageRef } from '@rondo/db/schema/platform.schema';
 import { lineupDelivery, ratingEvent, team, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
-import { session, signup } from '@rondo/db/schema/scheduling.schema';
+import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { testDbLayer } from '@rondo/db/testing/test-db.layer';
 import { makeRecorder, recordingTelegramLayer, refusal } from '@rondo/telegram/testing/recording-telegram.layer';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Option from 'effect/Option';
@@ -297,6 +297,80 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             expect(published.deliveries.map(delivery => delivery.status)).toEqual(['sent', 'refused']);
             expect(published.deliveries[1]?.reason).toBe('the game is already over or cancelled');
             expect(sendsTo(-7912)).toEqual([]);
+        })
+    );
+
+    it.effect('keeps the recorded result and the stored squad when the changed squad may not have arrived', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-result-uncertain', [-7931, -7932], 79_300);
+            yield* publishPlanned(game);
+            const before = yield* db
+                .select({ personId: teamMember.personId, teamId: teamMember.teamId })
+                .from(teamMember)
+                .where(eq(teamMember.sessionId, game.sessionId));
+            yield* recordResult({ ...game, winner: 1, actorPersonId: null, now: new Date('2026-12-04T20:30:00Z') });
+            const { row } = yield* openDraft(game.communityId, game.sessionId, null);
+            const [first = '', second = ''] = row.state.teams.map(members => members[0] ?? '');
+            yield* changeDraft({ sessionId: game.sessionId, version: row.version, key: 'w', actorPersonId: null }, state =>
+                Effect.succeed(swapPlayers(state, first, second))
+            );
+            blocked.set(-7931, new Error('socket hang up'));
+            blocked.set(-7932, new Error('socket hang up'));
+            const published = yield* publishPlanned(game);
+            blocked.delete(-7931);
+            blocked.delete(-7932);
+            const ranks = yield* db.select({ rank: team.rank }).from(team).where(eq(team.sessionId, game.sessionId)).orderBy(team.ordinal);
+            const after = yield* db
+                .select({ personId: teamMember.personId, teamId: teamMember.teamId })
+                .from(teamMember)
+                .where(eq(teamMember.sessionId, game.sessionId));
+
+            expect(published.deliveries.map(delivery => delivery.status)).toEqual(['uncertain', 'uncertain']);
+            expect(ranks.map(entry => entry.rank)).toEqual([1, 2]);
+            expect(after.toSorted((a, b) => a.personId.localeCompare(b.personId))).toEqual(
+                before.toSorted((a, b) => a.personId.localeCompare(b.personId))
+            );
+        })
+    );
+
+    it.effect('sends a new message instead of editing when the group moved the line-up to another topic', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-topic', [-7941, -7942], 79_400);
+            yield* publishPlanned(game);
+            yield* db.update(telegramChat).set({ topicId: 7 }).where(eq(telegramChat.chatId, -7941n));
+            const plan = yield* planLineup({ ...game, locale: 'uk', privateChatId: null, fallback: Option.none() });
+            yield* publishPlanned(game);
+            const last = recorder.calls.findLast(call => call.payload.chat_id === -7941);
+
+            expect(plan.deliveries[0]?.messageId).toBeNull();
+            expect(sendsTo(-7941)).toEqual(['sendMessage', 'sendMessage']);
+            expect(last?.payload.message_thread_id).toBe(7);
+        })
+    );
+
+    it.effect('rates only who played: not a sign-up that is out and not a marked no-show', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-result-roster', [-7951, -7952], 79_500);
+            yield* publishPlanned(game);
+            const { row } = yield* openDraft(game.communityId, game.sessionId, null);
+            const [out = '', missing = ''] = row.state.teams.map(members => members[1] ?? '');
+            yield* db
+                .update(signup)
+                .set({ status: 'out' })
+                .where(and(eq(signup.sessionId, game.sessionId), eq(signup.personId, out)));
+            yield* db.insert(attendance).values({ sessionId: game.sessionId, personId: missing, outcome: 'no_show', source: 'manual' });
+            yield* recordResult({ ...game, winner: 1, actorPersonId: null, now: new Date('2026-12-04T20:30:00Z') });
+            const rated = yield* db
+                .select({ personId: ratingEvent.personId })
+                .from(ratingEvent)
+                .where(eq(ratingEvent.sessionId, game.sessionId));
+
+            expect(rated).toHaveLength(6);
+            expect(rated.map(entry => entry.personId)).not.toContain(out);
+            expect(rated.map(entry => entry.personId)).not.toContain(missing);
         })
     );
 

@@ -269,7 +269,7 @@ const finishPublish = Effect.fn('Core.finishPublish')(function* (
         .set({ publishToken: null, publishAt: null })
         .where(and(eq(teamDraft.sessionId, input.sessionId), eq(teamDraft.publishToken, published.token)))
         .returning({ sessionId: teamDraft.sessionId });
-    const isStored = isNotEmptyArray(released) && published.delivered.some(entry => entry.status !== 'refused' && entry.status !== 'busy');
+    const isStored = isNotEmptyArray(released) && published.delivered.some(entry => entry.status === 'sent' || entry.status === 'edited');
 
     if (!isStored) {
         return;

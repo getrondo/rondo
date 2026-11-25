@@ -11,6 +11,7 @@ import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 import { arePeopleOf } from '../people/people.service';
 import { requireSession } from '../sessions/session.service';
+import { unsignedSquad } from '../teams/team-inputs';
 
 import { fieldPlayersIn, fillFreeSeats, lockSession } from './signup.service';
 
@@ -72,7 +73,10 @@ export const addGuests = Effect.fn('Core.addGuests')(function* (
                       .where(and(eq(signup.sessionId, change.sessionId), eq(signup.personId, guest.hostPersonId), eq(signup.status, 'in')))
                 : [];
 
-            if (isDefined(guest.hostPersonId) && !isDefined(host)) {
+            const squad = isDefined(guest.hostPersonId) && !isDefined(host) ? yield* unsignedSquad(change.sessionId) : [];
+            const squadHost = squad.find(member => member.personId === guest.hostPersonId);
+
+            if (isDefined(guest.hostPersonId) && !isDefined(host) && !isDefined(squadHost)) {
                 return yield* ActionFailedError.make({ reason: 'the host does not play in this game' });
             }
 
@@ -83,7 +87,8 @@ export const addGuests = Effect.fn('Core.addGuests')(function* (
             const added: { readonly personId: string; readonly status: 'in' | 'waitlisted' }[] = [];
 
             for (let index = 0; index < Math.max(1, Math.min(guest.count, 9)); index += 1) {
-                const numbered = `${isDefined(host) ? `${host.displayName} ` : ''}+${existing.length + index + 1}`;
+                const hostName = host?.displayName ?? squadHost?.displayName;
+                const numbered = `${isDefined(hostName) ? `${hostName} ` : ''}+${existing.length + index + 1}`;
                 const typed = guest.name?.trim() ?? '';
                 const displayName = isNotEmptyString(typed) && guest.count === 1 ? typed : numbered;
                 const [created] = yield* db.insert(person).values({ displayName, source: 'manual' }).returning({ id: person.id });

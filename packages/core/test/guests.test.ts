@@ -21,6 +21,37 @@ const attendedAfterFinishing = Effect.fn('test.attendedAfterFinishing')(function
 });
 
 layer(recordedTelegramDbLayer, { timeout: 60_000 })('guests of one game', it => {
+    it.effect('reconciles the automatic attendance with the final roster and keeps what an admin marked', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* seedGame('guests-reconciled');
+            const [stayed = '', gone = '', marked = ''] = yield* Effect.all(
+                [1, 2, 3].map(index => syncMember(communityId, { id: BigInt(88_200 + index), firstName: `Final${index}` }, 'active'))
+            );
+            yield* db.insert(signup).values([
+                { sessionId, personId: stayed, status: 'in' },
+                { sessionId, personId: gone, status: 'out' },
+                { sessionId, personId: marked, status: 'in' }
+            ]);
+            yield* db.insert(attendance).values([
+                { sessionId, personId: gone, outcome: 'attended', source: 'bot' },
+                { sessionId, personId: marked, outcome: 'no_show', source: 'manual' }
+            ]);
+            yield* finishPastSessions(new Date('2026-12-05T00:00:00Z'));
+            const rows = yield* db
+                .select({ personId: attendance.personId, outcome: attendance.outcome })
+                .from(attendance)
+                .where(eq(attendance.sessionId, sessionId));
+
+            expect(rows.toSorted((a, b) => a.personId.localeCompare(b.personId))).toEqual(
+                [
+                    { personId: stayed, outcome: 'attended' },
+                    { personId: marked, outcome: 'no_show' }
+                ].toSorted((a, b) => a.personId.localeCompare(b.personId))
+            );
+        })
+    );
+
     it.effect('keeps a guest inside his game: not found, not joinable elsewhere and never counted as attended', () =>
         Effect.gen(function* () {
             const db = yield* Db;

@@ -3,7 +3,7 @@ import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
-import { and, eq, inArray, isNotNull, lt, ne } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lt, ne, notInArray } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import type { SessionStatus } from './session.model';
@@ -48,6 +48,16 @@ const finishSession = Effect.fn('Core.finishSession')(function* (sessionId: stri
 
     yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
     const players = yield* playersOf(sessionId);
+    // Automatic attendance follows the final roster, what an admin marked stays
+    yield* db
+        .delete(attendance)
+        .where(
+            and(
+                eq(attendance.sessionId, sessionId),
+                ne(attendance.source, 'manual'),
+                ...(isNotEmptyArray(players) ? [notInArray(attendance.personId, players)] : [])
+            )
+        );
 
     if (isNotEmptyArray(players)) {
         yield* db

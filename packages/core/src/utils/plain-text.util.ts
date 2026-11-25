@@ -2,6 +2,7 @@ const entities: Readonly<Record<string, string>> = { '&amp;': '&', '&lt;': '<', 
 
 export const plainText = (html: string): string =>
     html
-        .replaceAll(/<[^<>]*>/gu, '')
+        .split(/<[^<>]*>/u)
+        .join('')
         .replaceAll(/&(?:amp|lt|gt|quot);/gu, entity => entities[entity] ?? entity)
         .trim();

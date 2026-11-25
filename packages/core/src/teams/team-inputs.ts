@@ -1,6 +1,7 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { community, playerProfile } from '@rondo/db/schema/org.schema';
+import { telegramPoll } from '@rondo/db/schema/platform.schema';
 import { rating, team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -74,9 +75,19 @@ export const ratingsOf = Effect.fn('Core.ratingsOf')(function* (activityId: stri
     return { seedOf, strengthOf, hasLevels: seedOf.size + learned.size > 0 };
 });
 
-// A stored squad can name players who never signed up (no bot poll); they play unless a sign-up says out
-const unsignedSquad = Effect.fn('Core.unsignedSquad')(function* (sessionId: string) {
+// A game without a bot poll can have a stored squad of players who never signed up. They play unless a sign-up says out
+export const unsignedSquad = Effect.fn('Core.unsignedSquad')(function* (sessionId: string) {
     const db = yield* Db;
+    const polls = yield* db
+        .select({ pollId: telegramPoll.pollId })
+        .from(telegramPoll)
+        .where(eq(telegramPoll.sessionId, sessionId))
+        .limit(1);
+
+    if (isNotEmptyArray(polls)) {
+        return [];
+    }
+
     const signed = yield* db.select({ personId: signup.personId }).from(signup).where(eq(signup.sessionId, sessionId));
     const squad = (yield* squadOf(sessionId)).filter(
         (member, index, list) =>

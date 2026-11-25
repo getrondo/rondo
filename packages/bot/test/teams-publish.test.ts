@@ -119,7 +119,9 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                         chat: { id: -3202, type: 'supergroup', title: 'Games' },
                         from: { id: 323, is_bot: false, first_name: 'Admin 323' },
                         forward_origin: { type: 'user', date: 0, sender_user: { id: 777, is_bot: true, first_name: 'Rondo' } },
-                        text: String(update[0]?.payload.text).replaceAll(/<[^<>]*>/gu, '')
+                        text: String(update[0]?.payload.text)
+                            .split(/<[^<>]*>/u)
+                            .join('')
                     }
                 });
                 yield* deliver({

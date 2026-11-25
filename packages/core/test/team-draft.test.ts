@@ -1,6 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { telegramAccount, telegramAuthor } from '@rondo/db/schema/identity.schema';
-import { auditLog } from '@rondo/db/schema/platform.schema';
+import { auditLog, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, rating, ratingEvent, team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -9,6 +9,7 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { syncMember } from '../src/identity/telegram-user';
+import { addGuests } from '../src/signups/roster.service';
 import { playersOf, swapPlayers, undo } from '../src/teams/draft-state';
 import { storedTeams } from '../src/teams/lineup-of-draft';
 import { planLineup } from '../src/teams/lineup-plan';
@@ -213,10 +214,6 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
                 yield* db
                     .insert(rating)
                     .values({ personId: absent, activityId: game?.activityId ?? '', model: 'openskill_pl', mu: 40, sigma: 2, games: 30 });
-                yield* db
-                    .update(signup)
-                    .set({ status: 'out' })
-                    .where(and(eq(signup.sessionId, sessionId), eq(signup.personId, absent)));
                 const evening = new Date('2026-12-04T20:30:00Z');
                 yield* recordResult({ communityId, sessionId, winner: 1, actorPersonId: null, now: evening });
                 const [event] = yield* db
@@ -357,6 +354,67 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
             expect(placed).toContain(loose);
             expect(placed).not.toContain(gone);
             expect(placed).toHaveLength(9);
+        })
+    );
+
+    it.effect('seeds a squad member without a sign-up only when the game never had a bot poll', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId, people } = yield* playedGame('draft-unsigned-poll', 8, 89_950);
+            const loose = yield* syncMember(communityId, { id: 89_960n, firstName: 'Loose' }, 'active');
+            yield* db
+                .insert(telegramPoll)
+                .values({ pollId: 'poll-unsigned', chatId: -1n, messageId: 1, sessionId, options: ['in', 'out'] });
+            yield* db.insert(team).values([1, 2].map(ordinal => ({ sessionId, ordinal })));
+            yield* db.insert(lineupEntry).values(
+                [...people, loose].map((personId, index) => ({
+                    sessionId,
+                    messageId: 1,
+                    teamOrdinal: (index % 2) + 1,
+                    position: index + 1,
+                    personId,
+                    resolvedBy: 'manual' as const
+                }))
+            );
+            const { row } = yield* openDraft(communityId, sessionId, null);
+
+            expect(row.state.teams.flat()).not.toContain(loose);
+            expect(row.state.teams.flat()).toHaveLength(8);
+        })
+    );
+
+    it.effect('lets a squad member without a sign-up bring a guest', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId, people } = yield* playedGame('draft-unsigned-host', 8, 89_970);
+            const loose = yield* syncMember(communityId, { id: 89_980n, firstName: 'Loose' }, 'active');
+            yield* db.insert(team).values([1, 2].map(ordinal => ({ sessionId, ordinal })));
+            yield* db.insert(lineupEntry).values(
+                [...people, loose].map((personId, index) => ({
+                    sessionId,
+                    messageId: 1,
+                    teamOrdinal: (index % 2) + 1,
+                    position: index + 1,
+                    personId,
+                    resolvedBy: 'manual' as const
+                }))
+            );
+            const added = yield* addGuests({ communityId, sessionId, actorPersonId: null }, { hostPersonId: loose, count: 1, name: null });
+
+            expect(added).toHaveLength(1);
+        })
+    );
+
+    it.effect('adds a goalkeeper who voted after the draft was made to the keepers', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* playedGame('draft-late-keeper', 8, 89_990);
+            yield* openDraft(communityId, sessionId, null);
+            const keeper = yield* syncMember(communityId, { id: 89_999n, firstName: 'Late keeper' }, 'active');
+            yield* db.insert(signup).values({ sessionId, personId: keeper, status: 'in', role: 'gk' });
+            const { row } = yield* openDraft(communityId, sessionId, null);
+
+            expect(row.state.keepers).toContain(keeper);
         })
     );
 

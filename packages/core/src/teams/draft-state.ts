@@ -114,7 +114,8 @@ export const pickVariant = (state: DraftState, variant: number): DraftState => {
     return withChange(state, { teams: free, pending: [] }, variant);
 };
 
-export const syncRoster = (state: DraftState, roster: readonly string[]): DraftState => {
+// A goalkeeper among those who joined becomes a keeper of the draft
+export const syncRoster = (state: DraftState, roster: readonly string[], goalkeepers: readonly string[] = []): DraftState => {
     const placed = playersOf(state);
     const left = placed.filter(personId => !roster.includes(personId));
     const joined = roster.filter(personId => !placed.includes(personId));
@@ -128,14 +129,15 @@ export const syncRoster = (state: DraftState, roster: readonly string[]): DraftS
         teams: without(state.teams, left),
         pending: [...state.pending.filter(personId => !left.includes(personId)), ...joined],
         locks: state.locks.filter(personId => !left.includes(personId)),
+        keepers: [...state.keepers, ...joined.filter(personId => goalkeepers.includes(personId) && !state.keepers.includes(personId))],
         joined: [...state.joined.filter(personId => !left.includes(personId)), ...joined],
         left: [...state.left.filter(personId => !joined.includes(personId)), ...left.filter(personId => !state.joined.includes(personId))],
         variant: -1
     };
 };
 
-export const syncByAdmin = (state: DraftState, roster: readonly string[]): DraftState => {
-    const synced = syncRoster(state, roster);
+export const syncByAdmin = (state: DraftState, roster: readonly string[], goalkeepers: readonly string[] = []): DraftState => {
+    const synced = syncRoster(state, roster, goalkeepers);
 
     return synced === state ? state : { ...synced, joined: state.joined.filter(personId => roster.includes(personId)), left: state.left };
 };

@@ -115,9 +115,11 @@ export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInp
         const isBusy = found?.status === 'claimed' && found.updatedAt.getTime() > now.getTime() - busyMs;
         const status = isBusy ? 'busy' : (found?.status ?? null);
         const isPrivate = target.chatId > 0n;
+        // A post in another topic of the same chat is a new message, never an edit or a receipt of the old one
+        const isSameTopic = (found?.topicId ?? null) === target.topicId;
         const isDue = isDueBy(
             status,
-            found?.text ?? null,
+            isSameTopic ? (found?.text ?? null) : null,
             clean,
             isDefined(found) && isNotEmptyString(input.retryToken) && found.token.startsWith(input.retryToken)
         );
@@ -128,7 +130,7 @@ export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInp
             title: target.title,
             html: isPrivate && isUpdate && isDue ? post(true) : clean,
             text: clean,
-            messageId: isPrivate ? null : (found?.messageId ?? null),
+            messageId: isPrivate || !isSameTopic ? null : (found?.messageId ?? null),
             stored: status,
             token: found?.token ?? null,
             isDue
