@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import * as Schema from 'effect/Schema';
 
 const VenueConfigSchema = Schema.Struct({
@@ -37,6 +39,12 @@ const OtherChatConfigSchema = Schema.Struct({
     ownGameDates: Schema.optional(Schema.Array(Schema.String))
 });
 
+const uniqueChats = Schema.makeFilter(
+    (chats: readonly (typeof OtherChatConfigSchema.Type)[]) =>
+        new Set(chats.map(({ chatId }) => chatId)).size === chats.length &&
+        new Set(chats.map(({ exportDir }) => path.resolve(exportDir))).size === chats.length
+);
+
 export const CommunityConfigSchema = Schema.Struct({
     slug: Schema.String,
     name: Schema.String,
@@ -48,7 +56,7 @@ export const CommunityConfigSchema = Schema.Struct({
     squads: Schema.Array(SquadConfigSchema),
     guestPatterns: Schema.optional(Schema.Array(Schema.String)),
     gamesTopicId: Schema.optional(Schema.Int),
-    otherChats: Schema.optional(Schema.Array(OtherChatConfigSchema))
+    otherChats: Schema.optional(Schema.Array(OtherChatConfigSchema).check(uniqueChats))
 });
 
 export type OtherChatConfig = typeof OtherChatConfigSchema.Type;

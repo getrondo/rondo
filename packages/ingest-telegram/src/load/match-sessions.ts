@@ -3,10 +3,12 @@ import { extraction, sourceRef } from '@rondo/db/schema/platform.schema';
 import { session, sessionChange } from '@rondo/db/schema/scheduling.schema';
 import { and, eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 
 import { postIdIn, sourceOf } from '../extract/post-id';
 
 import { sessionEntity } from './load-provenance';
+import { mainChatId } from './main-chat-id';
 import { sessionMillis, startOf } from './start-of';
 
 import type { CommunityConfig } from '../config/community-config';
@@ -40,6 +42,7 @@ export const existingSessions = Effect.fn('IngestTelegram.existingSessions')(fun
         .from(sessionChange)
         .innerJoin(session, eq(session.id, sessionChange.sessionId))
         .where(eq(session.communityId, communityId));
+    const chats = { mainChatId: yield* mainChatId(config), otherChats: config.otherChats };
     const rowById = new Map(rows.map(row => [row.id, row]));
     const byDay = new Map<string, typeof rows>();
 
@@ -59,8 +62,8 @@ export const existingSessions = Effect.fn('IngestTelegram.existingSessions')(fun
             return isDefined(first) && isDefined(second) ? [first.localDate] : [];
         }),
         byMessage: new Map([
-            ...references.map(row => [postIdIn(config.otherChats, row), rowById.get(row.sessionId)] as const),
-            ...live.map(({ messageId, sessionId }) => [messageId, rowById.get(sessionId)] as const)
+            ...references.flatMap(row => Option.toArray(postIdIn(chats, row)).map(postId => [postId, rowById.get(row.sessionId)] as const)),
+            ...live.flatMap(({ postId, sessionId }) => Option.toArray(postId).map(id => [id, rowById.get(sessionId)] as const))
         ]),
         byDay
     };

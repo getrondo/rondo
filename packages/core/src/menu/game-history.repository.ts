@@ -67,7 +67,7 @@ export const footballHistory = Effect.fn('Core.footballHistory')(function* (
         fieldsPlanned: row.fieldsPlanned,
         capacityMax: row.capacityMax,
         status: row.status,
-        chatIds: row.chatIds
+        chatIds: [...new Set(row.chatIds)]
     }));
 });
 

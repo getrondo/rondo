@@ -10,11 +10,15 @@ import * as Option from 'effect/Option';
 
 import { postIdIn } from '../extract/post-id';
 
-import type { CommunityConfig } from '../config/community-config';
-import type { ChatContent } from '../extract/plan-other-chats';
+import { mainChatId } from './main-chat-id';
 
-export const liveMessages = Effect.fn('IngestTelegram.liveMessages')(function* ({ slug, otherChats }: CommunityConfig) {
+import type { CommunityConfig } from '../config/community-config';
+import type { ChatContent } from '../interface/chat-content.interface';
+
+export const liveMessages = Effect.fn('IngestTelegram.liveMessages')(function* (config: CommunityConfig) {
     const db = yield* Db;
+    const { slug, otherChats } = config;
+    const mainId = yield* mainChatId(config);
     const rows = yield* db
         .select({
             chatId: sql<number>`${messageRef.chatId}`.mapWith(Number),
@@ -25,7 +29,14 @@ export const liveMessages = Effect.fn('IngestTelegram.liveMessages')(function* (
                     db
                         .select()
                         .from(lineupEntry)
-                        .where(and(eq(lineupEntry.sessionId, messageRef.entityId), gt(lineupEntry.teamOrdinal, 0)))
+                        .where(
+                            and(
+                                eq(lineupEntry.sessionId, messageRef.entityId),
+                                gt(lineupEntry.teamOrdinal, 0),
+                                eq(lineupEntry.messageId, messageRef.messageId),
+                                sql`coalesce(${lineupEntry.chatId}, ${Option.getOrNull(mainId)}::bigint) = ${messageRef.chatId}`
+                            )
+                        )
                 ),
                 exists(
                     db
@@ -41,7 +52,12 @@ export const liveMessages = Effect.fn('IngestTelegram.liveMessages')(function* (
         .innerJoin(community, eq(community.id, telegramChat.communityId))
         .where(and(eq(community.slug, slug), eq(messageRef.entityType, 'session')));
 
-    return rows.map(row => Object.assign(row, { messageId: postIdIn(otherChats, row) }));
+    return rows.map(({ chatId, messageId, ...row }) =>
+        Object.assign(row, {
+            postId: postIdIn({ mainChatId: mainId, otherChats }, { chatId, messageId }),
+            isOtherChat: (otherChats ?? []).some(chat => chat.chatId === chatId)
+        })
+    );
 });
 
 const storedBotPolls = Effect.fn('IngestTelegram.storedBotPolls')(function* (communitySlug: string) {
@@ -87,7 +103,7 @@ export const withoutBotPosts = Effect.fn('IngestTelegram.withoutBotPosts')(funct
 ) {
     const live = yield* liveMessages(config);
     const botPolls = new Set([...(yield* storedBotPolls(config.slug)), ...botPollsIn(chats)]);
-    const handled = new Set(live.filter(({ isLineup, isStored }) => !isLineup || isStored).map(({ messageId }) => messageId));
+    const handled = new Set(live.filter(({ isLineup, isStored }) => !isLineup || isStored).flatMap(({ postId }) => Option.toArray(postId)));
 
     return chats.map(({ messages, snapshot }): ChatContent => ({
         messages: messages.filter(({ id }) => !handled.has(id) && !botPolls.has(pollIdOf(snapshot, id))),

@@ -33,5 +33,5 @@ export const chatRules = (config: CommunityConfig, { matchPatterns, matchDates =
         return isTraining ? 'unclear' : 'match';
     };
 
-    return { isMatchDay, kindOf };
+    return { kindOf };
 };

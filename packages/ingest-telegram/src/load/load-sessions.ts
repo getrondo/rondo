@@ -3,6 +3,7 @@ import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 
 import { postIdIn, sourceOf } from '../extract/post-id';
 import { markShared } from '../identity/mark-shared';
@@ -14,6 +15,7 @@ import { lookupId } from '../utils/lookup-id.util';
 
 import { deleteStaleSessions } from './delete-stale-sessions';
 import { liveMessages } from './live-messages';
+import { mainChatId } from './main-chat-id';
 import { existingSessions, matchSessions, messageIdsOf, nearTo } from './match-sessions';
 import { sessionMillis, startOf } from './start-of';
 
@@ -196,10 +198,16 @@ const replaceEntries = Effect.fn('IngestTelegram.replaceEntries')(function* (
         );
     }
 
+    const chats = { mainChatId: yield* mainChatId(context.config), otherChats };
     const manual = previous
         .filter(entry => entry.resolvedBy === 'manual')
         .map(entry =>
-            Object.assign(entry, { messageId: postIdIn(otherChats, { chatId: entry.chatId ?? null, messageId: entry.messageId }) })
+            Object.assign(entry, {
+                messageId: Option.getOrElse(
+                    postIdIn(chats, { chatId: entry.chatId ?? null, messageId: entry.messageId }),
+                    () => entry.messageId
+                )
+            })
         );
     const requests = guestRequestEntries(context, directory, games);
     const entries = games.flatMap(({ sessionId, lineup }) =>
@@ -238,9 +246,7 @@ export const loadSessions = Effect.fn('IngestTelegram.loadSessions')(function* (
         .where(and(eq(session.communityId, context.communityId), eq(teamMember.assignedBy, 'balancer')));
     const isMainPost = (messageId: number): boolean => !isDefined(sourceOf(context.config.otherChats, messageId).chatId);
     const stored = lineups.filter(({ isStored }) => isStored);
-    const storedLineups = new Set(
-        [...stored.filter(({ messageId }) => isMainPost(messageId)), ...published].map(({ sessionId }) => sessionId)
-    );
+    const storedLineups = new Set([...stored.filter(({ isOtherChat }) => !isOtherChat), ...published].map(({ sessionId }) => sessionId));
     const otherLineups = new Set(stored.map(({ sessionId }) => sessionId));
     const { sessionIds, ambiguousDates } = yield* upsertSessionRows(context, reference, live);
 

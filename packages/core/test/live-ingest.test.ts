@@ -1,7 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { personAlias } from '@rondo/db/schema/identity.schema';
-import { messageRef } from '@rondo/db/schema/platform.schema';
+import { extraction, ingestRun, messageRef, sourceRef } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -10,6 +10,7 @@ import * as Effect from 'effect/Effect';
 
 import { upsertTelegramUser } from '../src/identity/telegram-user';
 import { ingestGroupMessage } from '../src/live/live-ingest';
+import { createSession } from '../src/sessions/session.service';
 import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -324,20 +325,134 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             const { communityId, post } = yield* seedMatchChat('live-second-cancel', cancelChat);
             const inDay = (date: string) => and(eq(session.communityId, communityId), eq(session.localDate, date));
             const cancel = { text: 'Сегодня отмена, дождь' };
-            yield* post(-911, 1, '2026-05-13T08:00:00Z', { question: 'Сегодня, 19.00 North' });
+            yield* post(-921, 1, '2026-05-13T08:00:00Z', { question: 'Сегодня, 19.00 North' });
             const foreign = yield* post(cancelChat, 2, '2026-05-13T09:00:00Z', cancel);
             yield* post(cancelChat, 3, '2026-05-20T08:00:00Z', { question: 'Сегодня, 19.00 North' });
             const own = yield* post(cancelChat, 4, '2026-05-20T09:00:00Z', cancel);
-            yield* post(-911, 5, '2026-05-23T08:00:00Z', { question: 'Сегодня, 19.00 North' });
+            yield* post(-921, 5, '2026-05-23T08:00:00Z', { question: 'Сегодня, 19.00 North' });
             const [saturday] = yield* db.select().from(session).where(inDay('2026-05-23'));
             yield* db
                 .insert(messageRef)
                 .values({ chatId: BigInt(cancelChat), messageId: 6, purpose: 'poll', entityType: 'session', entityId: saturday?.id ?? '' });
             const weekend = yield* post(cancelChat, 7, '2026-05-23T09:00:00Z', cancel);
-            const main = yield* post(-911, 8, '2026-05-23T10:00:00Z', cancel);
+            const main = yield* post(-921, 8, '2026-05-23T10:00:00Z', cancel);
 
             expect([foreign, weekend].map(({ cancellation }) => isDefined(cancellation))).toEqual([false, false]);
             expect([own, main].map(({ cancellation }) => isDefined(cancellation))).toEqual([true, true]);
+        })
+    );
+
+    it.effect('keeps main posts away from a game polled only in the second chat', () =>
+        Effect.gen(function* () {
+            const { communityId, post, entries } = yield* seedMatchChat('live-scope-only', -930);
+            const db = yield* Db;
+            yield* post(-930, 1, '2026-05-13T08:00:00Z', { question: 'Сегодня, 19.00 North' });
+            const [second] = yield* db.select().from(session).where(eq(session.communityId, communityId));
+            const cancelled = yield* post(-931, 2, '2026-05-13T09:00:00Z', { text: 'Сегодня отмена, дождь' });
+            yield* post(-931, 3, '2026-05-13T15:00:00Z', { text: 'Составы на сегодня, North:\n🟢Я, Иван\n🔵Олег, Семён' });
+            const rows = yield* entries;
+            const [untouched] = yield* db
+                .select()
+                .from(session)
+                .where(eq(session.id, second?.id ?? ''));
+            const secondEntries = yield* db
+                .select()
+                .from(lineupEntry)
+                .where(eq(lineupEntry.sessionId, second?.id ?? ''));
+
+            expect(isDefined(cancelled.cancellation)).toBe(false);
+            expect(untouched).toEqual(second);
+            expect([rows.length, secondEntries.length]).toEqual([4, 0]);
+        })
+    );
+
+    it.effect('finds the own game of each chat on a day with two', () =>
+        Effect.gen(function* () {
+            const { communityId, post } = yield* seedMatchChat('live-scope-two', -940);
+            const db = yield* Db;
+            yield* post(-940, 1, '2026-05-13T08:00:00Z', { question: 'Сегодня, 20.30 North' });
+            yield* post(-941, 2, '2026-05-13T08:00:00Z', { question: 'Сегодня, 17.30 North' });
+            const games = yield* db.select().from(session).where(eq(session.communityId, communityId)).orderBy(session.startsAt);
+            const cancelOf = (chatId: number) => post(chatId, 3, '2026-05-13T09:00:00Z', { text: 'Сегодня отмена, дождь' });
+            const cancelled = [yield* cancelOf(-941), yield* cancelOf(-940)];
+            const squad = { text: 'Составы на сегодня, North:\n🟢Я, Иван\n🔵Олег, Семён' };
+            yield* post(-941, 4, '2026-05-13T15:00:00Z', squad);
+            yield* post(-940, 5, '2026-05-13T15:00:00Z', squad);
+            const squads = yield* db
+                .selectDistinct({ sessionId: lineupEntry.sessionId, chatId: lineupEntry.chatId })
+                .from(lineupEntry)
+                .innerJoin(session, eq(session.id, lineupEntry.sessionId))
+                .where(eq(session.communityId, communityId));
+
+            expect(cancelled.map(({ cancellation }) => cancellation?.sessionId)).toEqual(games.map(({ id }) => id));
+            expect(squads).toHaveLength(2);
+            expect(squads).toEqual(
+                expect.arrayContaining([
+                    { sessionId: games[0]?.id, chatId: null },
+                    { sessionId: games[1]?.id, chatId: -940 }
+                ])
+            );
+        })
+    );
+
+    it.effect('finds main games without a poll, with an imported poll or with an imported squad', () =>
+        Effect.gen(function* () {
+            const { communityId, post } = yield* seedMatchChat('live-scope-main', -950);
+            const db = yield* Db;
+            const importedRef = Effect.fn('test.importedRef')(function* (entityId: string, chatId: number | null, kind: 'poll' | 'lineup') {
+                const [run] = yield* db
+                    .insert(ingestRun)
+                    .values({ communityId, source: 'telegram_json', fileSha256: 'sha', parserVersion: '2' })
+                    .returning();
+                const [ref] = yield* db
+                    .insert(sourceRef)
+                    .values({
+                        runId: run?.id ?? '',
+                        communityId,
+                        chatId,
+                        messageId: Number(`${kind.length}${Math.abs(chatId ?? 0)}`),
+                        sentAt: new Date(0),
+                        kind
+                    })
+                    .returning();
+                yield* db.insert(extraction).values({ sourceRefId: ref?.id ?? '', entityType: 'scheduling.session', entityId });
+            });
+            const gameOn = (localDate: string) =>
+                createSession({
+                    communityId,
+                    timezone: 'Europe/Vienna',
+                    localDate,
+                    localTime: '19:00',
+                    venueId: null,
+                    capacityMax: null,
+                    title: null,
+                    actorPersonId: null
+                });
+            const bare = yield* gameOn('2026-05-13');
+            const polled = yield* gameOn('2026-05-20');
+            const squadOnly = yield* gameOn('2026-05-27');
+            yield* importedRef(polled, null, 'poll');
+            yield* importedRef(squadOnly, null, 'lineup');
+            yield* importedRef(squadOnly, -950, 'poll');
+            const unposted = yield* post(-950, 8, '2026-05-13T08:00:00Z', { text: 'Сегодня отмена, дождь' });
+            const foreign = yield* post(-950, 9, '2026-05-20T08:00:00Z', { text: 'Сегодня отмена, дождь' });
+            const cancelOn = (messageId: number, date: string) =>
+                post(-951, messageId, `${date}T09:00:00Z`, { text: 'Сегодня отмена, дождь' });
+            const found = [yield* cancelOn(1, '2026-05-13'), yield* cancelOn(2, '2026-05-20'), yield* cancelOn(3, '2026-05-27')];
+
+            expect([unposted, foreign].map(({ cancellation }) => isDefined(cancellation))).toEqual([false, false]);
+            expect(found.map(({ cancellation }) => cancellation?.sessionId)).toEqual([bare, polled, squadOnly]);
+        })
+    );
+
+    it.effect('reads match words and places in cancellations of the second chat', () =>
+        Effect.gen(function* () {
+            const { post } = yield* seedMatchChat('live-cancel-words', -960);
+            yield* post(-960, 1, '2026-05-13T08:00:00Z', { question: 'Сегодня, 19.00 North' });
+            const friendly = yield* post(-960, 2, '2026-05-13T09:00:00Z', { text: 'Friendly сегодня отменяется' });
+            const own = yield* post(-960, 3, '2026-05-13T10:00:00Z', { text: 'Сегодня отмена, дождь' });
+
+            expect([friendly, own].map(({ cancellation }) => isDefined(cancellation))).toEqual([false, true]);
         })
     );
 });

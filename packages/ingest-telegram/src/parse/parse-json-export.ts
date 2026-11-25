@@ -25,6 +25,7 @@ const ExportMessageSchema = Schema.Struct({
     location_information: Schema.optional(Schema.Struct({ latitude: Schema.Finite, longitude: Schema.Finite }))
 });
 
+const ChatSchema = Schema.Struct({ id: Schema.optional(Schema.Int) });
 const ExportSchema = Schema.Struct({ messages: Schema.Array(ExportMessageSchema) });
 
 const plainText = (value: typeof TextSchema.Type): string =>
@@ -88,4 +89,10 @@ export const parseJsonExport = Effect.fn('IngestTelegram.parseJsonExport')(funct
     const decoded = yield* Schema.decodeEffect(Schema.fromJsonString(ExportSchema))(json);
 
     return decoded.messages.map(raw => toMessage(raw));
+});
+
+export const parseChatId = Effect.fn('IngestTelegram.parseChatId')(function* (json: string) {
+    const { id } = yield* Schema.decodeEffect(Schema.fromJsonString(ChatSchema))(json);
+
+    return Option.fromNullishOr(id);
 });

@@ -93,7 +93,9 @@ const farAhead = 90;
 export const resolvePollDate = (text: string, postedDate: string): { date: string; confidence: number } => {
     const resolved = resolveGameDate(text, postedDate);
 
-    return resolved.date < postedDate || resolved.date > addDays(postedDate, farAhead)
+    const isOutOfRange = resolved.date < postedDate || resolved.date > addDays(postedDate, farAhead);
+
+    return isOutOfRange && weekdayOf(resolved.date) !== findWeekday(text)
         ? weekdayDate(text, postedDate).pipe(
               Option.map(date => ({ date, confidence: statedDateConfidence })),
               Option.getOrElse(() => resolved)

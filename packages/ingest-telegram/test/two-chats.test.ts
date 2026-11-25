@@ -2,7 +2,7 @@ import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { aliasLink, personAlias } from '@rondo/db/schema/identity.schema';
 import { community, telegramChat } from '@rondo/db/schema/org.schema';
-import { importedPoll, messageRef, pollVote, sourceRef, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { extraction, importedPoll, messageRef, pollVote, sourceRef, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -542,6 +542,53 @@ layer(testDbLayer, { timeout: 60_000 })('a community with two chats', it => {
             const again = yield* load(slug);
 
             expect(again.games.map(({ id }) => id)).toEqual(games.map(({ id }) => id));
+        })
+    );
+
+    it.effect('never matches main posts with live posts of a linked chat that is not configured', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'two-stray-fc';
+            const { communityId, games } = yield* load(slug);
+            const [mainChat, strayChat] = [secondChat - 30, secondChat - 31];
+            const linkedAt = (day: number) => ({ communityId, kind: 'supergroup' as const, createdAt: new Date(Date.UTC(2025, 0, day)) });
+            yield* db.insert(telegramChat).values([
+                { ...linkedAt(1), chatId: BigInt(mainChat), title: 'Main' },
+                { ...linkedAt(2), chatId: BigInt(strayChat), title: 'Stray' }
+            ]);
+            yield* db.insert(messageRef).values([
+                { chatId: BigInt(strayChat), messageId: 11, purpose: 'poll', entityType: 'session', entityId: games[0]?.id ?? '' },
+                { chatId: BigInt(mainChat), messageId: 21, purpose: 'poll', entityType: 'session', entityId: games[2]?.id ?? '' }
+            ]);
+            const again = yield* load(slug);
+            const refs = yield* db
+                .select({ messageId: sourceRef.messageId, sessionId: extraction.entityId })
+                .from(sourceRef)
+                .innerJoin(extraction, eq(extraction.sourceRefId, sourceRef.id))
+                .where(and(eq(sourceRef.communityId, communityId), eq(sourceRef.kind, 'poll')))
+                .orderBy(asc(sourceRef.messageId));
+
+            expect(again.games.map(({ id }) => id)).toEqual(games.map(({ id }) => id));
+            expect(refs).toEqual([1, 11, 31].map((messageId, index) => ({ messageId, sessionId: games[[0, 1, 3][index] ?? 0]?.id })));
+        })
+    );
+
+    it.effect('leaves a squad to a live post only when the squad came from that post', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'two-own-roster-fc';
+            const { communityId, games } = yield* load(slug);
+            const mainChat = BigInt(secondChat - 40);
+            yield* db.insert(telegramChat).values({ chatId: mainChat, communityId, kind: 'supergroup', title: 'Main' });
+            yield* db.insert(messageRef).values([
+                { chatId: mainChat, messageId: 12, purpose: 'lineup', entityType: 'session', entityId: games[1]?.id ?? '' },
+                { chatId: mainChat, messageId: 900, purpose: 'lineup', entityType: 'session', entityId: games[2]?.id ?? '' }
+            ]);
+            const { entries } = yield* load(slug, undefined, postsOn(mondays, 'Олег, Павел'));
+            const namesOn = (date: string) => entries.filter(entry => entry.date === date).map(({ raw }) => raw);
+
+            expect(namesOn('2025-05-12')).toContain('Семён');
+            expect(namesOn('2025-05-19')).toContain('Павел');
         })
     );
 

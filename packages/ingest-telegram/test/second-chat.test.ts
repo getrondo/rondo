@@ -2,10 +2,8 @@ import { describe, expect, it } from '@effect/vitest';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
-import { assemblePlan } from '../src/extract/assemble-plan';
-import { extractAll } from '../src/extract/extract-all';
 import { resolvePollDate } from '../src/extract/game-date';
-import { planOtherChats } from '../src/extract/plan-other-chats';
+import { numberPosts, planChats } from '../src/extract/plan-other-chats';
 import { postIdOf, sourceOf } from '../src/extract/post-id';
 import { isPublicHoliday } from '../src/extract/public-holiday';
 import { parseTelethonExport } from '../src/parse/parse-telethon-export';
@@ -44,11 +42,9 @@ const planOf = (
         );
     const snapshotOf = (isMain: boolean) =>
         Option.fromNullishOr({ users: new Map(), pollIdByMessage: idsOf(isMain), votes: [] } satisfies TelegramSnapshot);
-    const main = assemblePlan(extractAll(mainPosts, config, { pollIdByMessage: idsOf(true) }), '2025-06-30');
-    const { plan, review } = planOtherChats({
+    const { plan, review } = planChats({
         config,
-        main,
-        snapshot: snapshotOf(true),
+        main: { messages: mainPosts, snapshot: snapshotOf(true) },
         others: [{ messages: otherPosts.map(post => Object.assign(post, { id: postIdOf(1, post.id) })), snapshot: snapshotOf(false) }],
         asOf: '2025-06-30'
     });
@@ -302,11 +298,80 @@ describe('posts of several chats', () => {
     });
 });
 
+describe('posts numbered by chat', () => {
+    it('are copies, so the same content can be numbered again', () => {
+        const messages = [message(5, '2025-05-07T08:00:00Z', 'a', { replyTo: 4 })];
+        const content = {
+            messages,
+            snapshot: Option.some({ users: new Map(), pollIdByMessage: new Map([[5, 'poll']]), votes: [] } satisfies TelegramSnapshot)
+        };
+        const once = numberPosts(1, content);
+        const again = numberPosts(1, content);
+
+        expect(messages[0]).toMatchObject({ id: 5, replyTo: 4 });
+        expect(again).toEqual(once);
+        expect([...Option.getOrThrow(again.snapshot).pollIdByMessage.keys()]).toEqual([postIdOf(1, 5)]);
+    });
+});
+
+describe('a poll first posted in the other chat', () => {
+    it('keeps the date of its first post when the main chat forwards it later', () => {
+        const plan = planOf(
+            [pollOf(1, '2025-05-07T07:00:00Z', 'Завтра, 19.00 North')],
+            [pollOf(101, '2025-05-06T08:00:00Z', 'Завтра, 19.00 North')],
+            { shared: [1, 101] }
+        );
+
+        expect(summaryOf(plan)).toEqual([['2025-05-07', 'played', [1, 101], 0]]);
+        expect(plan.facts.polls.map(({ postedAt }) => postedAt)).toEqual([new Date('2025-05-07T07:00:00Z')]);
+    });
+
+    it('stays a match when the main chat forwards it', () => {
+        const plan = planOf(
+            [pollOf(1, '2025-05-07T09:00:00Z', 'Сегодня, 19.00 North, friendly')],
+            [pollOf(101, '2025-05-07T08:00:00Z', 'Сегодня, 19.00 North, friendly')],
+            { shared: [1, 101] }
+        );
+
+        expect(plan.sessions).toEqual([]);
+    });
+
+    it('is a game of its own when the main chat has it outside its game posts', () => {
+        const plan = planOf(
+            [{ ...pollOf(1, '2025-05-07T09:00:00Z', 'Сегодня, 19.00 North'), kind: 'service' }],
+            [pollOf(101, '2025-05-07T08:00:00Z', 'Сегодня, 19.00 North')],
+            {
+                shared: [1, 101]
+            }
+        );
+
+        expect(summaryOf(plan)).toEqual([['2025-05-07', 'played', [101], 0]]);
+    });
+});
+
+describe('cancellations of the other chat', () => {
+    it('cancel its game, but not with match words or places', () => {
+        const textsOf = (...texts: readonly string[]) =>
+            planOf(
+                [],
+                [
+                    pollOf(101, '2025-05-07T08:00:00Z', 'Сегодня, 19.00 North'),
+                    ...texts.map((text, index) => message(102 + index, '2025-05-07T10:00:00Z', text))
+                ],
+                {}
+            ).sessions.map(({ status }) => status);
+
+        expect(textsOf('Friendly сегодня отменяется', 'Сегодня отмена на Stadium')).toEqual(['played']);
+        expect(textsOf('Сегодня отмена, дождь')).toEqual(['cancelled']);
+    });
+});
+
 describe('dates of polls', () => {
     it('reads a weekday with a Latin letter, and the weekday when the stated date is months away', () => {
         expect(resolvePollDate('Cреда, 19.00 North', '2025-08-12')).toEqual({ date: '2025-08-13', confidence: 0.8 });
         expect(resolvePollDate('Среда, 15 декабря, 19.00 North', '2025-01-14').date).toBe('2025-01-15');
         expect(resolvePollDate('Среда, 12 марта, 19.00 North', '2025-01-14').date).toBe('2025-03-12');
+        expect(resolvePollDate('Суббота, 20 декабря', '2025-08-10').date).toBe('2025-12-20');
     });
 });
 

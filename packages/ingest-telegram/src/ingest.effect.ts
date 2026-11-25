@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { isDefined, isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
 import * as DateTime from 'effect/DateTime';
@@ -10,22 +10,24 @@ import * as Schema from 'effect/Schema';
 
 import { CommunityConfigSchema, type CommunityConfig } from './config/community-config';
 import { ExportPagesNotFoundError } from './error/export-pages-not-found.error';
+import { MainChatError } from './error/main-chat.error';
 import { MissingChatExportError } from './error/missing-chat-export.error';
-import { assemblePlan } from './extract/assemble-plan';
-import { extractAll } from './extract/extract-all';
-import { numberPosts, planOtherChats, type ChatContent } from './extract/plan-other-chats';
+import { numberPosts, planChats } from './extract/plan-other-chats';
 import { instantToLocalDate } from './extract/zoned-time';
 import { assertKnownChats } from './load/assert-known-chats';
 import { withoutBotPosts } from './load/live-messages';
 import { loadPlan } from './load/load-plan';
 import { withCommunityLock } from './load/with-community-lock';
 import { parseHtmlPage } from './parse/parse-html-export';
-import { parseJsonExport } from './parse/parse-json-export';
+import { parseChatId, parseJsonExport } from './parse/parse-json-export';
 import { parseSnapshot } from './parse/parse-snapshot';
 import { parseTelethonExport } from './parse/parse-telethon-export';
 
+import type { ChatContent } from './interface/chat-content.interface';
 import type { TelegramMessage } from './model/telegram-message.model';
 import type { TelegramSnapshot } from './model/telegram-snapshot.model';
+
+const supergroupOffset = 1_000_000_000_000;
 
 const pageOrder = (name: string): number => Number(/messages(\d*)\.html$/u.exec(name)?.[1] || 1);
 
@@ -54,6 +56,17 @@ const readExport = Effect.fn('IngestTelegram.readExport')(function* (exportDir: 
     return { messages, fileSha256: hash.digest('hex') };
 });
 
+// Telegram Desktop writes a group id without its sign and the -100 of supergroups
+const assertOtherChats = Effect.fn('IngestTelegram.assertOtherChats')(function* (
+    { otherChats = [] }: CommunityConfig,
+    mainId: Option.Option<number>
+) {
+    const mainIds = new Set(Option.toArray(mainId).flatMap(id => [-id, -supergroupOffset - id]));
+    const found = otherChats.find(({ chatId }) => mainIds.has(chatId));
+
+    return yield* isDefined(found) ? MainChatError.make({ exportDir: found.exportDir }) : Effect.void;
+});
+
 const readMessages = Effect.fn('IngestTelegram.readMessages')(function* (exportDir: string, config: CommunityConfig) {
     const fs = yield* FileSystem.FileSystem;
     const jsonPath = join(exportDir, 'result.json');
@@ -64,7 +77,19 @@ const readMessages = Effect.fn('IngestTelegram.readMessages')(function* (exportD
 
     const json = yield* fs.readFileString(jsonPath);
 
+    const mainId = yield* parseChatId(json);
+    yield* assertOtherChats(config, mainId);
+
     return { messages: yield* parseJsonExport(json), fileSha256: createHash('sha256').update(json).digest('hex') };
+});
+
+const assertOtherFolders = Effect.fn('IngestTelegram.assertOtherFolders')(function* (
+    exportDir: string,
+    { otherChats = [] }: CommunityConfig
+) {
+    const found = otherChats.find(chat => resolve(exportDir, chat.exportDir) === resolve(exportDir));
+
+    return yield* isDefined(found) ? MainChatError.make({ exportDir: found.exportDir }) : Effect.void;
 });
 
 const readerOf = Effect.fn('IngestTelegram.readerOf')(function* (exportDir: string) {
@@ -123,15 +148,6 @@ interface ExportContent extends ChatContent {
     readonly otherChats?: readonly ChatContent[];
 }
 
-const gamePosts = (config: CommunityConfig, snapshot: Option.Option<TelegramSnapshot>) =>
-    Option.match(snapshot, {
-        onNone: () => ({}),
-        onSome: ({ topicByMessage, pollIdByMessage }) => ({
-            pollIdByMessage,
-            isGamePost: (messageId: number) => topicByMessage?.get(messageId) === config.gamesTopicId
-        })
-    });
-
 export const importMessages = Effect.fn('IngestTelegram.importMessages')(function* ({
     config,
     messages,
@@ -149,9 +165,8 @@ export const importMessages = Effect.fn('IngestTelegram.importMessages')(functio
         Effect.gen(function* () {
             yield* assertKnownChats(config);
             const numbered = [{ messages, snapshot }, ...(otherChats ?? []).map((content, index) => numberPosts(index + 1, content))];
-            const [mainChat, ...others] = yield* withoutBotPosts(config, numbered);
-            const main = assemblePlan(extractAll(mainChat?.messages ?? [], config, gamePosts(config, snapshot)), asOf);
-            const all = planOtherChats({ config, main, snapshot, others, asOf });
+            const [main = { messages, snapshot }, ...others] = yield* withoutBotPosts(config, numbered);
+            const all = planChats({ config, main, others, asOf });
             const stats = yield* loadPlan(config, all.plan, {
                 fileSha256,
                 snapshot: Option.getOrUndefined(all.snapshot),
@@ -178,6 +193,7 @@ export const ingest = Effect.fn('IngestTelegram.ingest')(function* ({
 }: IngestInput) {
     const fs = yield* FileSystem.FileSystem;
     const config = yield* readConfig(configPath);
+    yield* assertOtherFolders(exportDir, config);
     const { messages, fileSha256 } = yield* readMessages(exportDir, config);
     const snapshot = yield* readSnapshot(exportDir);
     const otherChats = yield* Effect.all((config.otherChats ?? []).map(chat => readTelethonChat(join(exportDir, chat.exportDir))));
@@ -187,8 +203,10 @@ export const ingest = Effect.fn('IngestTelegram.ingest')(function* ({
 
     if (Option.isSome(reviewFile)) {
         const lines = review.map(({ chatId, messageId, localDate }) => `${chatId ?? 'main'}|${messageId}|${localDate}\n`);
-        yield* fs.writeFileString(reviewFile.value, lines.join(''), { mode: 0o600 });
-        yield* fs.chmod(reviewFile.value, 0o600);
+        const temporary = `${reviewFile.value}.new`;
+        yield* fs.remove(temporary, { force: true });
+        yield* fs.writeFileString(temporary, lines.join(''), { mode: 0o600, flag: 'wx' });
+        yield* fs.rename(temporary, reviewFile.value);
     }
 
     return stats;

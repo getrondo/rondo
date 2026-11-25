@@ -15,7 +15,7 @@ import type { TelegramMessage } from '../src/model/telegram-message.model';
 const venueOf = makeVenueMatcher(testConfig);
 const squad = (text: string) => extractLineup(message(1, '2025-05-05T15:00:00Z', text), testConfig, venueOf);
 const namesOf = (text: string) => squad(text)?.teams.map(team => team.members.map(({ alias }) => alias)) ?? null;
-const cancel = (text: string) => extractCancellation(message(1, '2025-05-05T10:00:00Z', text), testConfig, new Set(['Org']));
+const cancel = (text: string) => extractCancellation(message(1, '2025-05-05T10:00:00Z', text), testConfig, new Set(['Org']), venueOf);
 const pollMessage = (id: number, sentAt: string, question: string, answers: readonly string[] = ['+', '-']) =>
     message(id, sentAt, '', { text: undefined, poll: { question, answers } });
 const planOf = (messages: readonly TelegramMessage[], isGamePost?: (messageId: number) => boolean) =>

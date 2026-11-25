@@ -1,5 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
+import { footballHistory } from '@rondo/core/menu/game-history.repository';
 import { telegramChat } from '@rondo/db/schema/org.schema';
 import { extraction, ingestRun, messageRef, sourceRef } from '@rondo/db/schema/platform.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
@@ -23,6 +24,22 @@ const pollIdIn = (chatId: number) => {
 
     return sent?.poll?.id ?? '';
 };
+
+const importPosts = Effect.fn('test.importPosts')(function* (communityId: string, posted: readonly (typeof messageRef.$inferSelect)[]) {
+    const db = yield* Db;
+    const [run] = yield* db
+        .insert(ingestRun)
+        .values({ communityId, source: 'telegram_json', fileSha256: 'sha', parserVersion: '2' })
+        .returning();
+
+    for (const { chatId, messageId, entityId } of posted) {
+        const [ref] = yield* db
+            .insert(sourceRef)
+            .values({ runId: run?.id ?? '', communityId, chatId: Number(chatId), messageId, sentAt: new Date(0), kind: 'poll' })
+            .returning();
+        yield* db.insert(extraction).values({ sourceRefId: ref?.id ?? '', entityType: 'scheduling.session', entityId });
+    }
+});
 
 layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('one poll, several groups', it => {
     it.effect('posts the usual Wednesday to the second group in two taps', () =>
@@ -152,20 +169,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const db = yield* Db;
             const { communityId, park } = yield* seedSeason('aud-imported', { groupChatId: -4091, adminId: 709 });
             yield* seedSecondGroup(communityId, { main: -4091, second: -4092, venueId: park });
-            const posted = yield* db.delete(messageRef).where(eq(messageRef.chatId, -4092n)).returning();
-            const [run] = yield* db
-                .insert(ingestRun)
-                .values({ communityId, source: 'telegram_json', fileSha256: 'sha', parserVersion: '2' })
-                .returning();
-
-            for (const { messageId, entityId } of posted) {
-                const [ref] = yield* db
-                    .insert(sourceRef)
-                    .values({ runId: run?.id ?? '', communityId, chatId: -4092, messageId, sentAt: new Date(0), kind: 'poll' })
-                    .returning();
-                yield* db.insert(extraction).values({ sourceRefId: ref?.id ?? '', entityType: 'scheduling.session', entityId });
-            }
-
+            yield* importPosts(communityId, yield* db.delete(messageRef).where(eq(messageRef.chatId, -4092n)).returning());
             yield* setNow(Date.parse('2026-12-01T09:00:00Z'));
             const admin = conversation(recorder, adminNumbered(709));
             yield* admin.type('/newgame');
@@ -175,6 +179,21 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати в «Second»']);
             expect(callsTo(-4092, 'sendPoll')).toHaveLength(1);
             expect(callsTo(-4091, 'sendPoll')).toHaveLength(0);
+        })
+    );
+
+    it.effect('posts once to a group whose games the bot and an import both know', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, park } = yield* seedSeason('aud-known-twice', { groupChatId: -4101, adminId: 710 });
+            yield* seedSecondGroup(communityId, { main: -4101, second: -4102, venueId: park });
+            yield* importPosts(communityId, yield* db.select().from(messageRef).where(eq(messageRef.chatId, -4102n)));
+            const history = yield* footballHistory(communityId, '2026-01-01', ['training']);
+
+            const inSecond = history.map(({ chatIds }) => chatIds ?? []).filter(ids => ids.includes('-4102'));
+
+            expect(inSecond.length).toBeGreaterThan(0);
+            expect(inSecond.map(ids => new Set(ids).size)).toEqual(inSecond.map(ids => ids.length));
         })
     );
 });

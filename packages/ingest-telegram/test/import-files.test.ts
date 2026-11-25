@@ -11,7 +11,10 @@ import * as FileSystem from 'effect/FileSystem';
 import * as Layer from 'effect/Layer';
 import * as Logger from 'effect/Logger';
 import * as Option from 'effect/Option';
+import * as Result from 'effect/Result';
+import * as Schema from 'effect/Schema';
 
+import { CommunityConfigSchema } from '../src/config/community-config';
 import { ingest } from '../src/ingest.effect';
 
 import { testConfig } from './fixture';
@@ -36,17 +39,24 @@ const desktopPoll = (id: number, date: string, question: string) => ({
     poll: { question, answers: ['+', '-'].map(text => ({ text, voters: 0 })) }
 });
 
-const makeExport = Effect.fn('test.makeExport')(function* (slug: string, second?: string) {
+const withDefaults = (other: { readonly chatId?: number; readonly exportDir?: string }) => ({
+    chatId: 1,
+    exportDir: 'a',
+    matchPatterns: [],
+    ...other
+});
+
+const makeExport = Effect.fn('test.makeExport')(function* (slug: string, second?: string, otherChat: object = {}) {
     const fs = yield* FileSystem.FileSystem;
     const root = yield* fs.makeTempDirectoryScoped();
     const write = (name: string, content: string) => fs.writeFileString(`${root}/${name}`, content);
     yield* fs.makeDirectory(`${root}/second`);
     yield* write(
         'config.json',
-        JSON.stringify({ ...testConfig, slug, otherChats: [{ chatId, exportDir: 'second', matchPatterns: ['cup'] }] })
+        JSON.stringify({ ...testConfig, slug, otherChats: [{ chatId, exportDir: 'second', matchPatterns: ['cup'], ...otherChat }] })
     );
     const question = 'Сегодня, 19.00 North';
-    yield* write('result.json', JSON.stringify({ messages: [desktopPoll(1, '2025-05-07T08:00:00Z', question)] }));
+    yield* write('result.json', JSON.stringify({ id: 77, messages: [desktopPoll(1, '2025-05-07T08:00:00Z', question)] }));
     yield* write('users.json', '[]');
     yield* write('messages.jsonl', JSON.stringify({ id: 1, poll: { id: 'main-poll', answers: [{ text: '+', option: '30' }] } }));
     yield* write('votes.jsonl', '');
@@ -90,6 +100,8 @@ layer(Layer.mergeAll(NodeServices.layer, testDbLayer), { timeout: 60_000 })('imp
                 ].join('\n')
             );
             yield* fs.writeFileString(`${root}/review`, 'old');
+            yield* fs.writeFileString(`${root}/review.new`, 'stale');
+            yield* fs.link(`${root}/review`, `${root}/opened`);
             yield* run.pipe(Effect.provide(Logger.layer([logger])));
             const { mode } = yield* fs.stat(`${root}/review`);
             const [home] = yield* db.select().from(community).where(eq(community.slug, 'review-file'));
@@ -100,9 +112,42 @@ layer(Layer.mergeAll(NodeServices.layer, testDbLayer), { timeout: 60_000 })('imp
 
             expect(yield* fs.readFileString(`${root}/review`)).toBe(`${chatId}|8|2025-05-10\n`);
             expect(mode % 0o1000).toBe(0o600);
+            expect(yield* fs.readFileString(`${root}/opened`)).toBe('old');
+            expect(yield* fs.exists(`${root}/review.new`)).toBe(false);
             expect(logged.join('')).toContain('"review":1');
             expect(logged.join('')).not.toContain(String(chatId));
             expect(refs).toEqual([{ sentAt: new Date('2025-05-07T09:00:00Z') }]);
+        })
+    );
+
+    it.effect('refuses a chat that is the main one or its folder', () =>
+        Effect.gen(function* () {
+            const line = pollLine(7, '2025-05-07T09:00:00Z', 'own-poll', 'Сегодня, 19.00 North');
+            const asMain = yield* makeExport('main-id', line, { chatId: -1_000_000_000_077 });
+            const asGroup = yield* makeExport('main-id', line, { chatId: -77 });
+            const folder = yield* makeExport('main-id', line, { exportDir: 'second/..' });
+            const errors = yield* Effect.all([asMain, asGroup, folder].map(({ run }) => Effect.flip(run)));
+
+            expect(errors.map(error => error._tag)).toEqual(['MainChatError', 'MainChatError', 'MainChatError']);
+        })
+    );
+
+    it.effect('refuses a chat or a folder listed twice', () =>
+        Effect.gen(function* () {
+            const decode = (...others: readonly Parameters<typeof withDefaults>[0][]) =>
+                Effect.result(
+                    Schema.decodeEffect(CommunityConfigSchema)({
+                        ...testConfig,
+                        otherChats: others.map(other => withDefaults(other))
+                    })
+                );
+            const results = yield* Effect.all([
+                decode({}, { chatId: 2, exportDir: 'b' }),
+                decode({}, { exportDir: 'b' }),
+                decode({}, { chatId: 2, exportDir: './a/' })
+            ]);
+
+            expect(results.map(result => Result.isSuccess(result))).toEqual([true, false, false]);
         })
     );
 });

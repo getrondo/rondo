@@ -52,6 +52,7 @@ export const extractOtherChat = (
                 })
             ),
             lineups,
+            cancellations: facts.cancellations.filter(cancellation => kindOf(cancellation) === 'regular'),
             prices: [],
             fixtures: [],
             authors: []
@@ -66,9 +67,12 @@ export const extractOtherChat = (
 // A forward belongs to the game of its first post, whatever the forwarded text would mean on its own day
 export const gameOfPolls = (
     pollIdByMessage: ReadonlyMap<number, string>,
-    { sessions }: ImportPlan
+    { sessions }: ImportPlan,
+    isOriginalHere: (pollId: string) => boolean
 ): ReadonlyMap<string, ForwardedGame | null> => {
-    const games = new Map<string, ForwardedGame | null>([...pollIdByMessage.values()].map(pollId => [pollId, null]));
+    const games = new Map<string, ForwardedGame | null>(
+        [...pollIdByMessage.values()].filter(pollId => !isOriginalHere(pollId)).map(pollId => [pollId, null])
+    );
 
     for (const { key, pollMessageIds, reservePollMessageIds } of sessions) {
         for (const messageId of [...reservePollMessageIds, ...pollMessageIds]) {

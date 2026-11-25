@@ -71,6 +71,8 @@ export interface CancellationFact {
     readonly localDate: string;
     readonly reason: 'weather' | 'low_turnout' | 'venue' | 'holiday' | 'organizer' | 'other';
     readonly isExplicit: boolean;
+    readonly title: string;
+    readonly venueKey?: string;
 }
 
 export interface FixtureFact {

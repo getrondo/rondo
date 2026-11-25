@@ -18,8 +18,8 @@ import { todayIn } from '../sessions/local-time';
 import { createSession, getSession, listSessions } from '../sessions/session.service';
 import { findVenueByName, withKnownVenues } from '../venues/venue.service';
 
+import { gamesOfChat } from './games-of-chat';
 import { hasMainRoster } from './has-main-roster';
-import { polledInChat } from './polled-in-chat';
 
 import type { CancelReason, SessionView } from '../sessions/session.model';
 import type { CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
@@ -108,7 +108,7 @@ const ensureSession = Effect.fn('Core.ensureSession')(function* (
     communityId: string,
     config: CommunityConfig,
     fact: Pick<PollFact, 'localDate' | 'localTime' | 'venueKey'> & { readonly capacityMax?: number; readonly title?: string },
-    onlyGames: Option.Option<readonly SessionView[]> = Option.none()
+    { games, canCreate }: { readonly games: readonly SessionView[]; readonly canCreate: boolean }
 ) {
     const db = yield* Db;
     const venueId = yield* venueIdFor(communityId, config, fact.venueKey);
@@ -117,7 +117,7 @@ const ensureSession = Effect.fn('Core.ensureSession')(function* (
         Number(isDefined(fact.localTime) && fact.localTime !== game.localTime);
     const isOtherGame = (game: SessionView): boolean =>
         countConflicts(game) > 1 || (isDefined(fact.localTime) && minutesApart(fact.localTime, game.localTime) >= gameMinutes);
-    const possible = (Option.getOrNull(onlyGames) ?? (yield* gamesOn(communityId, fact.localDate))).filter(game => !isOtherGame(game));
+    const possible = games.filter(game => !isOtherGame(game));
     const exact = possible.filter(game => countConflicts(game) === 0);
     const [match, ...others] = isNotEmptyArray(exact) ? exact : possible;
 
@@ -138,7 +138,7 @@ const ensureSession = Effect.fn('Core.ensureSession')(function* (
         return Option.fromNullishOr(match.id);
     }
 
-    if (Option.isSome(onlyGames)) {
+    if (!canCreate) {
         return Option.none<string>();
     }
 
@@ -166,14 +166,6 @@ const rememberMessage = Effect.fn('Core.rememberMessage')(function* (message: Gr
 });
 
 // A squad of another chat joins a game polled there, or makes the only game of its day
-const gamesForSquad = Effect.fn('Core.gamesForSquad')(function* (communityId: string, localDate: string, chatId: bigint) {
-    const games = yield* footballOn(communityId, localDate);
-
-    const polled = yield* polledInChat(games, chatId);
-
-    return isEmptyArray(games) ? Option.none() : Option.some(polled.filter(({ status }) => status !== 'cancelled'));
-});
-
 const applyLineup = Effect.fn('Core.applyLineup')(function* (
     communityId: string,
     config: CommunityConfig,
@@ -182,8 +174,12 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
 ) {
     const db = yield* Db;
     const otherChatId = config.otherChats?.find(({ chatId }) => BigInt(chatId) === message.chatId)?.chatId;
-    const onlyGames = isDefined(otherChatId) ? yield* gamesForSquad(communityId, fact.localDate, message.chatId) : Option.none();
-    const found = yield* ensureSession(communityId, config, fact, onlyGames);
+    const sameDay = yield* footballOn(communityId, fact.localDate);
+    const own = yield* gamesOfChat(sameDay, { communityId, config, chatId: message.chatId });
+    const found = yield* ensureSession(communityId, config, fact, {
+        games: own.filter(({ status }) => status !== 'cancelled'),
+        canCreate: !isDefined(otherChatId) || isEmptyArray(sameDay)
+    });
 
     if (Option.isNone(found) || (isDefined(otherChatId) && (yield* hasMainRoster(found.value)))) {
         return;
@@ -245,13 +241,14 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
     const lineup = Option.fromNullishOr(extractLineup(telegramMessage, config, venueOf)).pipe(
         Option.filter(fact => Option.isNone(rules) || rules.value.kindOf(fact) === 'regular')
     );
-    const cancellation = Option.fromNullishOr(extractCancellation(telegramMessage, config, new Set([message.senderName]))).pipe(
+    const cancellation = Option.fromNullishOr(extractCancellation(telegramMessage, config, new Set([message.senderName]), venueOf)).pipe(
         Option.filter(({ isExplicit }) => isExplicit),
-        Option.filter(({ localDate }) => Option.isNone(rules) || !rules.value.isMatchDay(localDate))
+        Option.filter(fact => Option.isNone(rules) || rules.value.kindOf(fact) === 'regular')
     );
 
     if (Option.isSome(poll)) {
-        const sessionId = yield* ensureSession(communityId, config, poll.value);
+        const games = yield* gamesOn(communityId, poll.value.localDate);
+        const sessionId = yield* ensureSession(communityId, config, poll.value, { games, canCreate: true });
 
         if (Option.isSome(sessionId)) {
             yield* rememberMessage(message, 'poll', sessionId.value);
@@ -268,7 +265,7 @@ export const ingestGroupMessage = Effect.fn('Core.ingestGroupMessage')(function*
     }
 
     const sameDay = Option.isSome(cancellation) ? yield* gamesOn(communityId, cancellation.value.localDate) : [];
-    const [target, ...others] = Option.isSome(rules) ? yield* polledInChat(sameDay, message.chatId) : sameDay;
+    const [target, ...others] = yield* gamesOfChat(sameDay, { communityId, config, chatId: message.chatId });
     const toCancel = isDefined(target) && isEmptyArray(others) && target.status !== 'played' ? target : null;
 
     return {
