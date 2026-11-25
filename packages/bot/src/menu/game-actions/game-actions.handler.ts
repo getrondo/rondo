@@ -20,7 +20,7 @@ import { showScreen } from '../show-screen';
 import { plainReceipt, rememberDone, replyStale, showAfterSuccess } from '../stale-reply';
 
 import { GameDraftSchema, listViews, sessionOf } from './game-draft';
-import { targetOfAction } from './game-target';
+import { targetOfAction, type GameTarget } from './game-target';
 import { showConfirm, showGameList } from './show-confirm';
 
 import type { MenuUser } from '../screen.interface';
@@ -65,7 +65,8 @@ const teamsOf = Effect.fn('Bot.teamsOf')(function* (sessionId: string, count: nu
 const isToMe = (user: MenuUser, action: Action): boolean =>
     (action._tag === 'announce_session' || action._tag === 'forward_poll') && action.chatId === String(user.tgUserId);
 
-const afterDone = Effect.fn('Bot.afterGameDone')(function* (user: MenuUser, action: Action, messageId: number, where: string) {
+const afterDone = Effect.fn('Bot.afterGameDone')(function* (user: MenuUser, action: Action, messageId: number, target: GameTarget) {
+    const { where } = target;
     const sessionId = sessionOf(action);
 
     if (action._tag === 'delete_session') {
@@ -77,6 +78,25 @@ const afterDone = Effect.fn('Bot.afterGameDone')(function* (user: MenuUser, acti
 
     if (isToMe(user, action)) {
         yield* showSelfReceipt(user, messageId, { sessionId, status: 'sentMe' });
+
+        return;
+    }
+
+    if (action._tag === 'update_session' || action._tag === 'cancel_session') {
+        const prefix = action._tag === 'update_session' ? 'changed' : 'cancelled';
+        const toMe = action.notify && target.me;
+        const audience = toMe ? 'Me' : 'To';
+        const key = `${prefix}${action.notify ? audience : 'Quiet'}` as const;
+        const card = yield* gameCardScreen(user, sessionId, {
+            text: menuText(user.locale, key, { where: escapeHtml(where) }),
+            saysPoll: false
+        });
+
+        if (toMe) {
+            yield* showScreen(user.chatId, messageId, { text: menuText(user.locale, 'noticeBelow'), keyboard: [] });
+        }
+
+        yield* showScreen(user.chatId, toMe ? null : messageId, card);
 
         return;
     }
@@ -106,7 +126,7 @@ const runGameAction = Effect.fn('Bot.runGameAction')(function* (
         yield* showAfterSuccess(
             user,
             tap.messageId,
-            afterDone(user, action, tap.messageId, target.where),
+            afterDone(user, action, tap.messageId, target),
             plainReceipt(user, sessionOf(action), 'changedDone')
         );
 

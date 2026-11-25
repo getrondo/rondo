@@ -1,0 +1,65 @@
+import { expect, layer } from '@effect/vitest';
+import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
+import * as Effect from 'effect/Effect';
+
+import { conversation, deliver, lastPollId } from './support/conversation';
+import { seedSeason } from './support/season';
+import { adminNumbered, menuTestLayer } from './support/test-layer';
+
+const recorder = makeRecorder();
+
+const voteIn = (chatId: number, id: number) =>
+    deliver({
+        poll_answer: {
+            poll_id: lastPollId(recorder, chatId),
+            user: { id, is_bot: false, first_name: `Player ${id}` },
+            option_ids: [0],
+            option_persistent_ids: []
+        }
+    });
+
+layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('design round three', it => {
+    it.effect('says where a change or a cancellation went and puts the receipt under a notice sent to me', () =>
+        Effect.gen(function* () {
+            yield* seedSeason('r3-receipts', { groupChatId: -29_001, adminId: 2901 });
+            const admin = conversation(recorder, adminNumbered(2901));
+            yield* admin.type('/newgame');
+            yield* admin.tap('✅ Надіслати');
+            yield* voteIn(-29_001, 9_290_001);
+            yield* admin.tap('🕖 Час');
+            yield* admin.type('20:15');
+            yield* admin.tap('✅ Змінити й написати в «Games»');
+            const [loud] = admin.screen().text.split('\n');
+            yield* admin.tap('👥 Ліміт');
+            yield* admin.type('20');
+            yield* admin.tap('Змінити, у групу не писати');
+            const [quiet] = admin.screen().text.split('\n');
+            yield* admin.tap('✖️ Скасувати гру');
+            yield* admin.tap('Погода');
+            yield* admin.tap('✅ Скасувати й написати в «Games»');
+            const cancelled = admin.screen().text;
+
+            yield* seedSeason('r3-receipts-me', { groupChatId: null, adminId: 2902 });
+            const self = conversation(recorder, adminNumbered(2902, 'ru'));
+            yield* self.type('/newgame');
+            yield* self.tap('✅ Отправить опрос мне');
+            yield* self.tap('✏️ Изменить');
+            yield* self.tap('🕖 Время');
+            yield* self.type('20:15');
+            const confirmation = self.screen();
+            yield* self.tap('✅ Изменить и прислать мне');
+            const seen = self.seen();
+            const notice = seen.findIndex(message => message.text.includes('20:15') && message.id > confirmation.id);
+            const receipt = seen.at(-1);
+
+            expect(loud).toBe('✅ Змінено, у «Games» написано.');
+            expect(quiet).toBe('✅ Змінено. У групу нічого не надіслано.');
+            expect(cancelled.split('\n')[0]).toBe('✅ Скасовано, у «Games» написано.');
+            expect(cancelled).not.toContain('вільно');
+            expect(notice).toBeGreaterThan(-1);
+            expect(receipt?.id).toBeGreaterThan(seen[notice]?.id ?? Number.MAX_SAFE_INTEGER);
+            expect(receipt?.text.split('\n')[0]).toBe('✅ Изменено. Сообщение выше перешли в группу: нажми и удерживай → Переслать.');
+            expect(seen.find(message => message.id === confirmation.id)?.text).toBe('✅ Сообщение ниже 👇');
+        })
+    );
+});

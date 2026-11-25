@@ -46,7 +46,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('Погода');
             yield* admin.tap('✅ Скасувати й надіслати мені');
             const cancelled = recorder.calls.findLast(
-                call => call.method === 'sendMessage' && String(call.payload.text).includes('Скасовано')
+                call => call.method === 'sendMessage' && String(call.payload.text).includes('<b>❌ Скасовано:')
             );
 
             expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати опитування мені']);

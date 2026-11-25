@@ -152,8 +152,9 @@ without the bot still arrive as poll answers with public voters.
 | 139 | SEND SAFETY | Kickoff checked at ✅ | Today 10:15 previewed, ✅ at 10:20; 28.3.2027 2:30 | Nothing | «Час гри вже минув…»; «Такого часу цього дня немає…» | No game | update | `checks the kickoff again at ✅ and refuses a time the clock change skips` |
 | 140 | SEND SAFETY | Screen after a sent poll fails | ✅ sends, then showing the receipt fails; the admin taps ✅ again | One poll | «✅ Гру вже створено…», never «нічого не надіслано» | One game | update | `never says nothing was sent when the screen after a sent poll could not be shown` |
 | 141 | AUDIENCE | Group becomes a supergroup | Service message with migrate_to_chat_id | — | — | The linked chat row moves to the new id, topic kept | update | `moves the link of a group that became a supergroup and keeps its topic` |
-| 142 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 143 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 144 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 145 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 146 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 142 | ADMIN AFTER | Receipt after a change or a cancellation | 🕖 → ✅ notify; 👥 → quiet; ✖️ → ✅ notify; kept with me: 🕖 → ✅ | Notices as chosen | «✅ Змінено, у «Games» написано», «…У групу нічого не надіслано», «✅ Скасовано, у…», no «вільно» on a cancelled card; with me the receipt is a new message under the notice | Game updated | update | `says where a change or a cancellation went and puts the receipt under a notice sent to me` |
+| 143 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 144 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 145 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 146 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 147 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |

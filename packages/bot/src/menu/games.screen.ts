@@ -171,7 +171,10 @@ const countLine = (user: MenuUser, game: SessionView, signedLine: string, signed
         return [menuText(user.locale, 'nobodyYet'), ...places].join(' · ');
     }
 
-    const free = isDefined(game.capacityMax) ? [menuText(user.locale, 'free', { free: Math.max(0, game.capacityMax - signed) })] : [];
+    const free =
+        isDefined(game.capacityMax) && !['cancelled', 'played', 'moved'].includes(game.status)
+            ? [menuText(user.locale, 'free', { free: Math.max(0, game.capacityMax - signed) })]
+            : [];
 
     return [capitalized(signedLine), ...free].join(' · ');
 };
