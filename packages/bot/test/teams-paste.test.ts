@@ -42,7 +42,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* db.update(session).set({ status: 'cancelled' }).where(eq(session.id, sessionId));
             yield* admin.type('Andriy +1');
 
-            expect(admin.screen().text).toContain('⚠️');
+            expect(admin.screen().text).toContain('⚠️ Гра вже завершена або скасована, нічого не надіслано.');
             expect(admin.screen().text).toContain('👕');
         })
     );

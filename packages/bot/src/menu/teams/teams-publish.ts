@@ -115,7 +115,9 @@ export const publishAndShow = Effect.fn('Bot.publishAndShow')(function* (user: M
     const diff = toMe && isNotEmptyArray(published.diff) ? [teamsText(user.locale, 'changes'), escapeHtml(published.diff.join('\n'))] : [];
     const fresh = yield* loadView(user, tap.sessionId, {
         page: tap.page,
-        notes: isNotEmptyArray(notes) ? [...notes, ...diff] : [teamsText(user.locale, 'unchanged')]
+        notes: published.deliveries.every(outcome => outcome.status === 'unchanged')
+            ? [teamsText(user.locale, 'unchanged')]
+            : [...notes, ...diff]
     });
 
     if (toMe) {

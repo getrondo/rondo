@@ -26,7 +26,7 @@ const lockedGame = Effect.fn('Core.lockedGame')(function* (change: RosterChange)
     yield* requireSession(change.communityId, change.sessionId);
     const locked = yield* lockSession(change.sessionId);
 
-    return Option.isSome(locked) ? locked.value : yield* ActionFailedError.make({ reason: 'the game is over or cancelled' });
+    return Option.isSome(locked) ? locked.value : yield* ActionFailedError.make({ reason: 'the game is already over or cancelled' });
 });
 
 const setStatus = Effect.fn('Core.setRosterStatus')(function* (

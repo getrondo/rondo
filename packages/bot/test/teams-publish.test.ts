@@ -246,6 +246,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(changed.text).toContain('Andriy K');
             expect(quiet).toBe(0);
             expect(unknown.text.split('⚠️ Не знаю, чи дійшли склади в «Games». Зазирни туди.')).toHaveLength(2);
+            expect(unknown.text).not.toContain('Нічого не змінилося');
             expect(labelsOf(unknown).flat()).not.toContain('✅ Надіслати в «Games»');
             expect(confirm.text).toContain('Так буде в «Games»:');
             expect(done.text).toContain('✅ Склади в «Games».');
