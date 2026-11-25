@@ -97,6 +97,11 @@ interface CardState {
 
 const retryRoom = (user: MenuUser): number => full - labelWidth(menuText(user.locale, 'resendTo', { where: '«»' }));
 
+export const retryLabel = (user: MenuUser, title: string | null): string =>
+    isDefined(title)
+        ? menuText(user.locale, 'retryCard', { where: `«${fitLabel(title, retryRoom(user))}»` })
+        : menuText(user.locale, 'retryCardMe');
+
 const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuButton[][] => {
     const id = toShortId(game.id);
     const button = (key: MenuKey, op: string): MenuButton => ({ text: menuText(user.locale, key), callback_data: `c:${op}:${id}` });
@@ -107,7 +112,7 @@ const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuBu
         ? [
               [
                   {
-                      text: menuText(user.locale, 'retryCard', { where: `«${fitLabel(retryTitle, retryRoom(user))}»` }),
+                      text: retryLabel(user, retryTitle),
                       callback_data: `c:pa:${id}:${retryChat.chatId}:${retryChat.topicId ?? ''}`
                   }
               ]

@@ -181,8 +181,9 @@ without the bot still arrive as poll answers with public voters.
 | 168 | AUDIENCE | Supergroup move with conflicts | New chat already holds the same message ref and an older claim | — | — | The move commits; the existing ref wins, the newer claim stays | update | `moves a supergroup even when the new chat already holds the same message or an older claim` |
 | 169 | AUDIENCE | Forward retry to the first attempt's topic | Unknown forward, the topic moves, card → ✅ Немає, надіслати в | Nothing, then the forward in the new topic after the fresh confirmation | «Дані змінилися…» | Claim token renewed | update | `retries a forward only to the topic of the first attempt and shows a fresh confirmation after a move` |
 | 170 | SEND SAFETY | Card poll retry to the first attempt's chat and topic | Unknown card poll, the topic moves, 📣 Немає → ✅ | Nothing, then the poll in the new topic | «Дані змінилися…» | Poll ref | update | `retries an unknown card poll only to the chat and topic of the first attempt` |
-| 171 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 172 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 173 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 174 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 175 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 171 | SEND SAFETY | Card retry keeps a newer draft | Draft open on a newer message; 📣 Немає, надіслати on an older card | — | «Є незавершена нова гра…» with ▶️ Продовжити and the retry again; the draft still takes +1 | Draft kept until the admin chooses | update | `asks before a card retry replaces a draft on a newer message` |
+| 172 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 173 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 174 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 175 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 176 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |

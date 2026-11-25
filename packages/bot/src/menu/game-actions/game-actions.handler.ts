@@ -4,8 +4,6 @@ import { consumeAdminState, loadAdminState } from '@rondo/core/menu/admin-state.
 import { isNoticeAction } from '@rondo/core/notify/notice-preview';
 import { requireSession } from '@rondo/core/sessions/session.service';
 import { claimOfToken } from '@rondo/core/signups/forward-poll';
-import { proposeTeams } from '@rondo/core/teams/team.service';
-import { requireVenue } from '@rondo/core/venues/venue.service';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -20,8 +18,10 @@ import { runConfirmed } from '../run-confirmed';
 import { showScreen } from '../show-screen';
 import { plainReceipt, rememberDone, replyStale, showAfterSuccess } from '../stale-reply';
 
+import { changeOf, ownVenue, teamsOf } from './card-changes';
 import { GameDraftSchema, listViews, sessionOf } from './game-draft';
 import { targetOfAction, type GameTarget } from './game-target';
+import { confirmRetry } from './retry-confirm';
 import { showConfirm, showGameList } from './show-confirm';
 
 import type { MenuUser } from '../screen.interface';
@@ -29,40 +29,6 @@ import type { SessionView } from '@rondo/core/sessions/session.model';
 
 const decodeGameDraft = Schema.decodeUnknownOption(GameDraftSchema);
 const decodeAction = Schema.decodeUnknownOption(ActionSchema);
-const reasonLiterals = new Set(['weather', 'low_turnout', 'venue', 'holiday', 'organizer', 'other']);
-
-const compact = (value: string): string => `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
-
-const changeOf = (user: MenuUser, sessionId: string, tap: { readonly op: string; readonly arg: string }): Action | null => {
-    const self = String(user.tgUserId);
-    const venueId = tap.op === 'vs' ? fromShortId(tap.arg) : null;
-    const changes: Readonly<Record<string, () => Action | null>> = {
-        p: () => ({ _tag: 'announce_session', sessionId }),
-        pm: () => ({ _tag: 'announce_session', sessionId, chatId: self }),
-        d: () => ({ _tag: 'delete_session', sessionId }),
-        f: () => (/^-\d+$/u.test(tap.arg) ? { _tag: 'forward_poll', sessionId, chatId: tap.arg } : null),
-        ts: () => ({ _tag: 'update_session', sessionId, localTime: `${tap.arg.slice(0, 2)}:${tap.arg.slice(2, 4)}`, notify: true }),
-        ds: () => ({ _tag: 'update_session', sessionId, localDate: compact(tap.arg), notify: true }),
-        vs: () => (isDefined(venueId) ? { _tag: 'update_session', sessionId, venueId, notify: true } : null),
-        zs: () => ({ _tag: 'update_session', sessionId, capacityMax: tap.arg === '0' ? null : Number(tap.arg), notify: true }),
-        xr: () =>
-            reasonLiterals.has(tap.arg)
-                ? Option.getOrNull(decodeAction({ _tag: 'cancel_session', sessionId, reason: tap.arg, notify: true }))
-                : null
-    };
-
-    return changes[tap.op]?.() ?? null;
-};
-
-const ownVenue = (user: MenuUser, venueId: string) => requireVenue(user.communityId, venueId).pipe(Effect.option);
-
-const teamsOf = Effect.fn('Bot.teamsOf')(function* (sessionId: string, count: number) {
-    const teams = yield* proposeTeams(sessionId, count);
-    const players = teams.reduce((total, team) => total + team.players.length, 0);
-
-    return players >= count * 2 ? Option.some<Action>({ _tag: 'publish_teams', sessionId, teams }) : Option.none<Action>();
-});
-
 const isToMe = (user: MenuUser, action: Action): boolean =>
     (action._tag === 'announce_session' || action._tag === 'forward_poll') && action.chatId === String(user.tgUserId);
 
@@ -263,7 +229,7 @@ const resendForward = Effect.fn('Bot.resendForward')(function* (
 });
 
 export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: MenuUser, parts: readonly string[], messageId: number) {
-    const [, op = '', id = '', arg = '', topic = ''] = parts;
+    const [, op = '', id = '', arg = ''] = parts;
 
     if (op === 'ok') {
         return yield* confirmTap(user, id, arg === '1', messageId);
@@ -285,16 +251,7 @@ export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: Men
     }
 
     if (op === 'pa' || op === 'pam') {
-        const chosen: Action =
-            op === 'pam'
-                ? { _tag: 'announce_session', sessionId: game.value.id, chatId: String(user.tgUserId) }
-                : {
-                      _tag: 'announce_session',
-                      sessionId: game.value.id,
-                      ...(/^-\d+$/u.test(arg) ? { chatId: arg, topicId: /^\d+$/u.test(topic) ? Number(topic) : null } : {})
-                  };
-
-        yield* showConfirm(user, chosen, { messageId, expected: null });
+        yield* confirmRetry(user, game.value, parts, messageId);
 
         return Option.none<string>();
     }

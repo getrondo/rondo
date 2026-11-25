@@ -2,7 +2,7 @@ import { expect, layer } from '@effect/vitest';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import * as Effect from 'effect/Effect';
 
-import { conversation, labelsOf } from './support/conversation';
+import { conversation, labelsOf, walkManual } from './support/conversation';
 import { seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
@@ -71,6 +71,33 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(long.text.split('\n').at(-1)).toMatch(/^⚠️ Опитування задовге: \d{3} символів із 300\. Скороти рядок\.$/u);
             expect(labelsOf(long).some(label => label.startsWith('✅'))).toBe(false);
             expect(ru.screen().text.split('\n').at(-1)).toMatch(/^⚠️ Опрос слишком длинный: \d{3} символов из 300\. Сократи строку\.$/u);
+        })
+    );
+
+    it.effect('asks before a card retry replaces a draft on a newer message', () =>
+        Effect.gen(function* () {
+            yield* seedSeason('r5-retry-draft', { groupChatId: -32_005, adminId: 3205 });
+            const admin = conversation(recorder, adminNumbered(3205));
+            yield* admin.type('/newgame');
+            yield* walkManual(admin, ['🛠 З нуля', 'Сб 28.11', 'Park Field', '18:30', '👥 18', '💾 Зберегти без опитування']);
+            yield* admin.tap('📣 Надіслати в «Games»');
+            recorder.failures.set('sendPoll', new Error('socket hang up'));
+            yield* admin.tap('✅ Надіслати в «Games»');
+            recorder.failures.delete('sendPoll');
+            const card = admin.screen();
+            yield* admin.type('/newgame');
+            const draft = admin.screen();
+            yield* admin.tapOn(card, '📣 Немає, надіслати в «Games»');
+            const asked = admin.seen().find(message => message.id === card.id);
+            yield* admin.tapOn(draft, '+1');
+            const kept = admin.seen().find(message => message.id === draft.id);
+            yield* admin.tapOn(asked ?? card, '📣 Немає, надіслати в «Games»');
+            const confirmation = admin.screen();
+
+            expect(asked?.text).toBe('Є незавершена нова гра. Продовжити її чи почати заново?');
+            expect(labelsOf(asked ?? card)).toEqual(['▶️ Продовжити', '📣 Немає, надіслати в «Games»']);
+            expect(labelsOf(kept ?? draft)).toContain('👥 23');
+            expect(confirmation.text.split('\n')[0]).toBe('Так буде в «Games»:');
         })
     );
 });
