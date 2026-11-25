@@ -68,7 +68,7 @@ const confirm = Effect.fn('test.confirm')(function* (communityId: string, action
     return { actionId, outcome, status: stored?.status, result: stored?.result };
 });
 
-const reasonIn = (value: unknown): string => (Predicate.hasProperty(value, 'reason') ? String(value.reason) : '');
+const reasonIn = (value: unknown): string => (Predicate.hasProperty(value, 'failure') ? JSON.stringify(value.failure) : '');
 
 const countOfCalls = (method: string) => recorder.calls.filter(call => call.method === method).length;
 
@@ -107,9 +107,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             const again = yield* decide(actionId);
 
             expect(outcome._tag).toBe('failed');
-            expect(reasonIn(outcome)).toContain('uncertain, check the group');
+            expect(reasonIn(outcome)).toContain('result_uncertain');
             expect(status).toBe('failed');
-            expect(reasonIn(result)).toContain('uncertain, check the group');
+            expect(reasonIn(result)).toContain('result_uncertain');
             expect(again._tag).toBe('missing');
             expect(countOfCalls('sendPoll') - before).toBe(1);
             expect(yield* gamesOf(communityId)).toEqual([]);
@@ -136,9 +136,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             const polls = yield* db.select().from(telegramPoll).where(eq(telegramPoll.chatId, group.chatId));
             const messages = yield* db.select().from(messageRef).where(eq(messageRef.chatId, group.chatId));
 
-            expect(reasonIn(closed)).toContain('was closed');
+            expect(reasonIn(closed)).toContain('poll_unsaved_closed');
             expect(stopped?.method).toBe('stopPoll');
-            expect(reasonIn(left)).toContain('check the group');
+            expect(reasonIn(left)).toContain('poll_unsaved_open');
             expect(yield* gamesOf(communityId)).toEqual([]);
             expect([...polls, ...messages]).toEqual([]);
         })
@@ -154,7 +154,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             const over = yield* confirm(communityId, { _tag: 'announce_session', sessionId });
             const long = yield* confirm(communityId, { ...createAction, note: 'x'.repeat(300) });
 
-            expect(over.outcome).toMatchObject({ _tag: 'failed', reason: 'the game is already over or cancelled' });
+            expect(over.outcome).toMatchObject({ _tag: 'failed', failure: { code: 'game_over' } });
             expect(long.outcome._tag).toBe('failed');
             expect(reasonIn(long.outcome)).toContain('300');
             expect(countOfCalls('sendPoll')).toBe(before);
@@ -188,9 +188,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             const refusedCount = countOfCalls('sendMessage') - before;
             const exact = yield* confirm(communityId, { ...change, preview });
 
-            expect(reasonIn(elsewhere.outcome)).toContain('changed after the preview');
-            expect(reasonIn(otherTopic.outcome)).toContain('changed after the preview');
-            expect(reasonIn(reworded.outcome)).toContain('changed after the preview');
+            expect(reasonIn(elsewhere.outcome)).toContain('preview_changed');
+            expect(reasonIn(otherTopic.outcome)).toContain('preview_changed');
+            expect(reasonIn(reworded.outcome)).toContain('preview_changed');
             expect(refusedCount).toBe(0);
             expect(exact.outcome._tag).toBe('done');
             expect(recorder.calls.findLast(call => call.method === 'sendMessage')?.payload.text).toBe(preview.html);
@@ -210,7 +210,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
                 settle: () => Effect.void
             }).pipe(Effect.flip);
 
-            expect(reasonIn(late)).toBe('the game time has already passed');
+            expect(reasonIn(late)).toContain('time_passed');
             expect(countOfCalls('sendPoll')).toBe(before);
         })
     );
@@ -237,11 +237,11 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             const first = yield* confirm(communityId, announce);
             const second = yield* confirm(communityId, announce);
 
-            expect(reasonIn(prefixed)).toContain('changed after the preview');
-            expect(reasonIn(changed)).toContain('changed after the preview');
+            expect(reasonIn(prefixed)).toContain('preview_changed');
+            expect(reasonIn(changed)).toContain('preview_changed');
             expect(sentChanged).toBe(0);
             expect(first.outcome._tag).toBe('done');
-            expect(reasonIn(second.outcome)).toContain('already has an open poll');
+            expect(reasonIn(second.outcome)).toContain('poll_open');
             expect(countOfCalls('sendPoll') - before).toBe(1);
         })
     );
@@ -318,7 +318,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             expect(countOfCalls('sendMessage') - sends).toBe(1);
             expect(edited.outcome._tag).toBe('done');
             expect(outcome._tag).toBe('failed');
-            expect(reasonIn(outcome)).toContain('message to edit not found');
+            expect(reasonIn(outcome)).toContain('message_gone');
             expect(yield* membersOf()).toEqual(afterEdit);
             expect(afterEdit.find(row => row.personId === players[2])?.ordinal).toBe(1);
         })
@@ -362,7 +362,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
 
             expect(running._tag).toBe('missing');
             expect(outcome._tag).toBe('failed');
-            expect(reasonIn(outcome)).toContain('uncertain, check the group');
+            expect(reasonIn(outcome)).toContain('result_uncertain');
             expect(stored?.status).toBe('failed');
             expect(yield* gamesOf(communityId)).toEqual([]);
         })

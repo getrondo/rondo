@@ -103,7 +103,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
             const lateTap = yield* decideAction({ actionId: stale, tgUserId: admin, confirm: true, context: contextFor(null) });
             const declined = yield* decideAction({ actionId: rejected, tgUserId: admin, confirm: false, context: contextFor(null) });
 
-            expect(notCreated).toMatchObject({ _tag: 'failed', reason: 'no group is linked to this community yet' });
+            expect(notCreated).toMatchObject({ _tag: 'failed', failure: { code: 'no_group' } });
             expect(sessions).toEqual([]);
             expect(failed).toMatchObject({ _tag: 'failed' });
             expect([expired._tag, lateTap._tag]).toEqual(['expired', 'expired']);
@@ -186,9 +186,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
             const over = yield* decide(ownId, admin);
             const statuses = yield* db.select({ status: session.status }).from(session).where(eq(session.id, foreignId));
 
-            expect(formerAdmin).toMatchObject({ _tag: 'failed', reason: 'not an admin any more' });
+            expect(formerAdmin).toMatchObject({ _tag: 'failed', failure: { code: 'not_admin' } });
             expect(otherCommunity).toMatchObject({ _tag: 'failed' });
-            expect(over).toMatchObject({ _tag: 'failed', reason: 'the game is already over or cancelled' });
+            expect(over).toMatchObject({ _tag: 'failed', failure: { code: 'game_over' } });
             expect(statuses).toEqual([{ status: 'open' }]);
         })
     );

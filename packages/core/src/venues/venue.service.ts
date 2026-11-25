@@ -86,7 +86,7 @@ export const createVenue = Effect.fn('Core.createVenue')(function* (
     const known = yield* findVenueByName(communityId, name);
 
     if (isDefined(known) || !isNotEmptyString(tidyVenueName(name))) {
-        return yield* ActionFailedError.make({ reason: 'this venue already exists or has no name' });
+        return yield* ActionFailedError.make({ failure: { code: 'venue_exists' } });
     }
 
     return yield* db.transaction(() =>
@@ -125,7 +125,7 @@ export const requireVenue = Effect.fn('Core.requireVenue')(function* (communityI
         .from(venue)
         .where(and(eq(venue.id, venueId), eq(venue.communityId, communityId)));
 
-    return isDefined(row) ? row : yield* ActionFailedError.make({ reason: 'venue not found in this community' });
+    return isDefined(row) ? row : yield* ActionFailedError.make({ failure: { code: 'venue_not_found' } });
 });
 
 export const updateVenue = Effect.fn('Core.updateVenue')(function* (input: {
@@ -142,14 +142,14 @@ export const updateVenue = Effect.fn('Core.updateVenue')(function* (input: {
         .where(and(eq(venue.id, input.venueId), eq(venue.communityId, input.communityId)));
 
     if (!isDefined(before)) {
-        return yield* ActionFailedError.make({ reason: 'venue not found in this community' });
+        return yield* ActionFailedError.make({ failure: { code: 'venue_not_found' } });
     }
 
     for (const name of [columns.name, alias].filter(entry => isNotEmptyString(entry))) {
         const taken = yield* findVenueByName(input.communityId, name);
 
         if (isDefined(taken) && taken.id !== before.id) {
-            return yield* ActionFailedError.make({ reason: 'another venue already has this name' });
+            return yield* ActionFailedError.make({ failure: { code: 'venue_exists' } });
         }
     }
 
@@ -160,7 +160,7 @@ export const updateVenue = Effect.fn('Core.updateVenue')(function* (input: {
     const name = tidyVenueName(columns.name ?? before.name);
 
     if (!isNotEmptyString(name)) {
-        return yield* ActionFailedError.make({ reason: 'the venue has no name' });
+        return yield* ActionFailedError.make({ failure: { code: 'name_empty' } });
     }
 
     return yield* db.transaction(() =>

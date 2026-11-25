@@ -27,7 +27,7 @@ const lockedGame = Effect.fn('Core.lockedGame')(function* (change: RosterChange)
     yield* requireSession(change.communityId, change.sessionId);
     const locked = yield* lockSession(change.sessionId);
 
-    return Option.isSome(locked) ? locked.value : yield* ActionFailedError.make({ reason: 'the game is already over or cancelled' });
+    return Option.isSome(locked) ? locked.value : yield* ActionFailedError.make({ failure: { code: 'game_over' } });
 });
 
 const setStatus = Effect.fn('Core.setRosterStatus')(function* (
@@ -84,7 +84,7 @@ export const addGuests = Effect.fn('Core.addGuests')(function* (
             const squadHost = squad.find(member => member.personId === guest.hostPersonId);
 
             if (isDefined(guest.hostPersonId) && !isDefined(host) && !isDefined(squadHost)) {
-                return yield* ActionFailedError.make({ reason: 'the host does not play in this game' });
+                return yield* ActionFailedError.make({ failure: { code: 'host_not_playing' } });
             }
 
             const existing = yield* db
@@ -250,7 +250,7 @@ export const joinGame = Effect.fn('Core.joinGame')(function* (change: RosterChan
             const coming = personIds.filter(personId => known.find(row => row.personId === personId)?.status !== 'in');
 
             if (!(yield* arePeopleOf(change.communityId, coming))) {
-                return yield* ActionFailedError.make({ reason: 'player not found in this community' });
+                return yield* ActionFailedError.make({ failure: { code: 'person_not_found' } });
             }
             const free = isDefined(game.capacityMax) ? game.capacityMax - (yield* seatsTaken(change.sessionId)) : coming.length;
             const joined = isOverLimit ? coming : coming.slice(0, Math.max(0, free));

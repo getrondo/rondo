@@ -104,7 +104,7 @@ export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInp
         input.loaded?.row ??
         (yield* loadDraft(input.sessionId).pipe(
             Effect.flatMap(found => Effect.fromOption(found)),
-            Effect.mapError(() => ActionFailedError.make({ reason: 'there are no teams to post' }))
+            Effect.mapError(() => ActionFailedError.make({ failure: { code: 'no_teams' } }))
         ));
     const inputs = input.loaded?.inputs ?? (yield* loadTeamInputs(input.communityId, input.sessionId));
     const teams = postTeamsOf(input.state ?? row.state, inputs.members);

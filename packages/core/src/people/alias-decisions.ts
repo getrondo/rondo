@@ -60,7 +60,7 @@ export const requireNoOtherPeriod = Effect.fn('Core.requireNoOtherPeriod')(funct
         .where(and(eq(aliasLink.aliasId, alias.id), eq(aliasLink.status, 'approved'), ne(aliasLink.personId, personId)));
 
     if (isNotEmptyArray(approved) || (isNotEmptyArray(persons) && !isWhole)) {
-        return yield* ActionFailedError.make({ reason: 'another player has a period under this nickname, undo that first' });
+        return yield* ActionFailedError.make({ failure: { code: 'other_period' } });
     }
 
     return personId;

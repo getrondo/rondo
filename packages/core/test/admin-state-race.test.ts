@@ -176,9 +176,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
 
             expect(games).toHaveLength(1);
             expect(outcomes.filter(outcome => outcome._tag === 'done')).toHaveLength(1);
-            expect(
-                outcomes.filter(outcome => outcome._tag === 'failed' && outcome.reason.startsWith('the game already exists'))
-            ).toHaveLength(5);
+            expect(outcomes.filter(outcome => outcome._tag === 'failed' && outcome.failure.code === 'game_exists')).toHaveLength(5);
         })
     );
 

@@ -85,7 +85,7 @@ export const withSummary = Effect.fn('Bot.withSummary')(function* (user: MenuUse
             Effect.succeed({
                 ...draft,
                 summary: null,
-                notice: failureText(user.locale, error.reason, { where: '', isPrivate: false }).text
+                notice: failureText(user.locale, error.failure).text
             })
         )
     );

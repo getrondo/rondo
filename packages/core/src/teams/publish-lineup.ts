@@ -10,7 +10,7 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { recordAudit } from '../audit/record-audit';
-import { ActionFailedError } from '../error/action-failed.error';
+import { ActionFailedError, failureOf, type ActionFailure } from '../error/action-failed.error';
 import { addMillis } from '../utils/add-millis.util';
 import { topicOptions } from '../utils/topic-options.util';
 
@@ -19,12 +19,10 @@ import { syncRoster } from './draft-state';
 import { planLineup, type PlanInput } from './lineup-plan';
 import { loadDraft } from './team-draft.service';
 import { loadTeamInputs } from './team-inputs';
-import { clearResult, isRevertible, resultRecorded } from './team-result';
+import { clearResult, isRevertible } from './team-result';
 
 import type { PostTeam } from './interface/lineup-post.interface';
 import type { DeliveryOutcome, LineupPlan, PlannedDelivery, PublishOutcome } from './interface/publish.interface';
-
-export const lineupChanged = 'the teams post changed after the preview';
 
 const notModified = /message is not modified/iu;
 const notFound = /message to edit not found/iu;
@@ -80,7 +78,6 @@ const storeSquad = Effect.fn('Core.storeSquad')(function* (communityId: string, 
 });
 
 const busyMs = 60_000;
-const gameOver = 'the game is already over or cancelled';
 const closedStatuses = new Set(['cancelled', 'played', 'moved']);
 
 interface Claim {
@@ -163,11 +160,11 @@ const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: strin
         eq(lineupDelivery.chatId, delivery.chatId),
         eq(lineupDelivery.token, claim.token)
     );
-    const outcome = (status: DeliveryOutcome['status'], reason: string | null): DeliveryOutcome => ({
+    const outcome = (status: DeliveryOutcome['status'], failure: ActionFailure | null): DeliveryOutcome => ({
         chatId: delivery.chatId,
         title: delivery.title,
         status,
-        reason,
+        failure,
         isEdit: isDefined(delivery.messageId)
     });
     const send = sendOne(delivery).pipe(
@@ -191,12 +188,14 @@ const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: strin
             const isGone = notFound.test(error.description);
             const isKept = status === 'refused' && isDefined(delivery.messageId) && !isGone;
 
+            const failure = isGone ? ({ code: 'message_gone' } as const) : failureOf(error);
+
             // A refused send as a new message keeps the id of the message that is still in the group
             return db
                 .update(lineupDelivery)
                 .set({ status: isKept ? 'sent' : status, ...(isGone ? { messageId: null } : {}) })
                 .where(where)
-                .pipe(Effect.as(outcome(status, error.description)));
+                .pipe(Effect.as(outcome(status, failure)));
         })
     );
     const checked = Effect.gen(function* () {
@@ -213,7 +212,7 @@ const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: strin
                 .set({ status: isDefined(delivery.messageId) ? 'sent' : 'refused' })
                 .where(where);
 
-            return outcome('refused', gameOver);
+            return outcome('refused', { code: 'game_over' });
         }
 
         return yield* send;
@@ -255,15 +254,15 @@ const startPublish = Effect.fn('Core.startPublish')(function* (
         plan.fingerprint !== input.fingerprint ||
         (yield* isRosterMoved(input.communityId, input.sessionId))
     ) {
-        return yield* ActionFailedError.make({ reason: lineupChanged });
+        return yield* ActionFailedError.make({ failure: { code: 'lineup_changed' } });
     }
 
     if (!(yield* isGameOpen(input.sessionId))) {
-        return yield* ActionFailedError.make({ reason: gameOver });
+        return yield* ActionFailedError.make({ failure: { code: 'game_over' } });
     }
 
     if (plan.clearsResult && !(yield* isRevertible(input.sessionId)).isRevertible) {
-        return yield* ActionFailedError.make({ reason: resultRecorded });
+        return yield* ActionFailedError.make({ failure: { code: 'result_recorded' } });
     }
 
     const token = yield* claimPublish(input.sessionId, now);
@@ -287,7 +286,7 @@ const waitingOutcome = (delivery: PlannedDelivery): DeliveryOutcome => {
         chatId: delivery.chatId,
         title: delivery.title,
         status: delivery.isDue || delivery.stored === 'busy' ? 'busy' : quiet,
-        reason: null,
+        failure: null,
         isEdit: false
     };
 };
@@ -339,7 +338,7 @@ export const publishLineup = Effect.fn('Core.publishLineup')(function* (
         yield* withCommunityLock({ id: input.communityId }, finishPublish(input, { plan, token, delivered })).pipe(
             Effect.catchCause(cause =>
                 Effect.logError('[teams] sent but not saved', cause).pipe(
-                    Effect.andThen(ActionFailedError.make({ reason: 'the teams were sent but may not be saved, check the chat' }))
+                    Effect.andThen(ActionFailedError.make({ failure: { code: 'teams_unsaved' } }))
                 )
             )
         );

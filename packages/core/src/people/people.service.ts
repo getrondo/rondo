@@ -156,14 +156,14 @@ export const mergePeople = Effect.fn('Core.mergePeople')((input: MergeInput) =>
                 );
 
             if (isNotEmptyArray(rejected)) {
-                return yield* ActionFailedError.make({ reason: 'one of these nicknames was rejected for this player' });
+                return yield* ActionFailedError.make({ failure: { code: 'nickname_rejected' } });
             }
 
             yield* db.execute(sql`select identity.merge_person(${input.fromPersonId}::uuid, ${input.intoPersonId}::uuid)`).pipe(
                 Effect.tapError(error => Effect.logWarning('[merge] refused', error)),
                 Effect.mapError(() =>
                     ActionFailedError.make({
-                        reason: 'records conflict: both are in one game or signed up for it, both have a rating, or one is already merged'
+                        failure: { code: 'records_conflict' }
                     })
                 )
             );
@@ -195,7 +195,7 @@ export const createPerson = Effect.fn('Core.createPerson')(function* (input: {
     const displayName = input.displayName.trim();
 
     if (!isNotEmptyString(displayName)) {
-        return yield* ActionFailedError.make({ reason: 'the name is empty' });
+        return yield* ActionFailedError.make({ failure: { code: 'name_empty' } });
     }
 
     return yield* db.transaction(() =>

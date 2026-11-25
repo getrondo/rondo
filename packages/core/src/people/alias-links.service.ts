@@ -41,12 +41,12 @@ export const requireAlias = Effect.fn('Core.requireAlias')(function* (communityI
         .from(personAlias)
         .where(and(eq(personAlias.communityId, communityId), sql`${personAlias.id}::text = ${aliasId}`));
 
-    return isDefined(alias) ? alias : yield* ActionFailedError.make({ reason: 'nickname not found in this community' });
+    return isDefined(alias) ? alias : yield* ActionFailedError.make({ failure: { code: 'nickname_not_found' } });
 });
 
 const requirePerson = Effect.fn('Core.requirePerson')(function* (communityId: string, personId: string) {
     if (!(yield* arePeopleOf(communityId, [personId]))) {
-        return yield* ActionFailedError.make({ reason: 'player not found in this community' });
+        return yield* ActionFailedError.make({ failure: { code: 'person_not_found' } });
     }
 
     return personId;
@@ -60,7 +60,7 @@ export const linkAlias = Effect.fn('Core.linkAlias')((input: AliasTarget & { rea
             const alias = yield* requireAlias(input.communityId, input.aliasId);
 
             if (alias.kind === 'placeholder') {
-                return yield* ActionFailedError.make({ reason: 'several players share this nickname, link it per game' });
+                return yield* ActionFailedError.make({ failure: { code: 'nickname_shared' } });
             }
 
             yield* requirePerson(input.communityId, input.personId);
@@ -77,7 +77,7 @@ export const linkAlias = Effect.fn('Core.linkAlias')((input: AliasTarget & { rea
                 .limit(1);
 
             if (isDefined(conflict)) {
-                return yield* ActionFailedError.make({ reason: 'this player and this nickname are in the same line-up' });
+                return yield* ActionFailedError.make({ failure: { code: 'same_lineup' } });
             }
 
             yield* requireNoOtherPeriod(alias, input.personId);
@@ -106,7 +106,7 @@ export const unlinkAlias = Effect.fn('Core.unlinkAlias')((input: AliasTarget) =>
             const [only, ...others] = linked;
 
             if (isNotEmptyArray(others)) {
-                return yield* ActionFailedError.make({ reason: 'several players have periods under this nickname, undo them per game' });
+                return yield* ActionFailedError.make({ failure: { code: 'nickname_periods' } });
             }
 
             if (isDefined(only)) {
@@ -137,7 +137,7 @@ const requireEntry = Effect.fn('Core.requireEntry')(function* ({ communityId, en
         .leftJoin(personAlias, eq(personAlias.id, lineupEntry.aliasId))
         .where(and(sql`${lineupEntry.id}::text = ${entryId}`, eq(session.communityId, communityId), eq(lineupEntry.isGuest, false)));
 
-    return isDefined(found) ? found : yield* ActionFailedError.make({ reason: 'line-up entry not found' });
+    return isDefined(found) ? found : yield* ActionFailedError.make({ failure: { code: 'entry_not_found' } });
 });
 
 const isInLineup = Effect.fn('Core.isInLineup')(function* (entry: LineupEntry, personId: string) {
@@ -185,7 +185,7 @@ export const linkEntry = Effect.fn('Core.linkEntry')((input: EntryTarget & { rea
             yield* requirePerson(input.communityId, input.personId);
 
             if (yield* isInLineup(entry, input.personId)) {
-                return yield* ActionFailedError.make({ reason: 'this player is already in the same line-up' });
+                return yield* ActionFailedError.make({ failure: { code: 'same_lineup' } });
             }
 
             return yield* assignEntry(input, entry, { personId: input.personId, resolvedBy: 'manual', action: 'entry.link' });
@@ -202,7 +202,7 @@ export const unlinkEntry = Effect.fn('Core.unlinkEntry')((input: EntryTarget) =>
             const isAutomatic = entry.resolvedBy === 'vote' || entry.resolvedBy === 'alias';
 
             if (entry.resolvedBy !== 'manual' && !isAutomatic) {
-                return yield* ActionFailedError.make({ reason: 'this line-up entry is not linked' });
+                return yield* ActionFailedError.make({ failure: { code: 'entry_not_linked' } });
             }
 
             const automatic = isAutomatic ? alias?.guestPersonId : alias?.personId;

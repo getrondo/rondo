@@ -62,7 +62,7 @@ export const requireSession = (communityId: string, sessionId: string) =>
     getSession(sessionId).pipe(
         Effect.map(found => found.pipe(Option.filter(target => target.communityId === communityId))),
         Effect.flatMap(found => Effect.fromOption(found)),
-        Effect.mapError(() => ActionFailedError.make({ reason: `session ${sessionId} not found` }))
+        Effect.mapError(() => ActionFailedError.make({ failure: { code: 'session_not_found' } }))
     );
 
 export const listSessions = Effect.fn('Core.listSessions')(function* (
@@ -209,7 +209,7 @@ export const cancelSession = Effect.fn('Core.cancelSession')(function* (
                 .returning({ id: session.id });
 
             if (!isNotEmptyArray(cancelled)) {
-                return yield* ActionFailedError.make({ reason: 'the game is already over or cancelled' });
+                return yield* ActionFailedError.make({ failure: { code: 'game_over' } });
             }
 
             yield* db.delete(attendance).where(eq(attendance.sessionId, target.id));

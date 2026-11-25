@@ -14,8 +14,6 @@ import { audienceOf } from './audience';
 
 import type { GroupTarget } from '../interface/group-target.interface';
 
-const uncertainForward = 'the forward result is uncertain, check the chat';
-
 const claimForward = Effect.fn('Core.claimForward')(function* (pollId: string, target: GroupTarget, resend: string | null) {
     const db = yield* Db;
     const claimedAt = yield* DateTime.nowAsDate;
@@ -34,7 +32,7 @@ const claimForward = Effect.fn('Core.claimForward')(function* (pollId: string, t
             )
             .returning({ pollId: pollForward.pollId });
 
-        return isNotEmptyArray(retaken) ? pollId : yield* ActionFailedError.make({ reason: uncertainForward });
+        return isNotEmptyArray(retaken) ? pollId : yield* ActionFailedError.make({ failure: { code: 'forward_uncertain' } });
     }
 
     const claimed = yield* db
@@ -53,7 +51,7 @@ const claimForward = Effect.fn('Core.claimForward')(function* (pollId: string, t
         .where(and(eq(pollForward.pollId, pollId), eq(pollForward.chatId, target.chatId)));
 
     return yield* ActionFailedError.make({
-        reason: isDefined(existing?.messageId) ? 'the poll is already in this chat' : uncertainForward
+        failure: { code: isDefined(existing?.messageId) ? 'poll_already_in_chat' : 'forward_uncertain' }
     });
 });
 
@@ -88,13 +86,13 @@ export const forwardPoll = Effect.fn('Core.forwardPoll')(function* (sessionId: s
         .where(and(eq(telegramPoll.sessionId, sessionId), isNull(telegramPoll.closedAt)));
 
     if (!isDefined(poll)) {
-        return yield* ActionFailedError.make({ reason: 'the game has no open poll' });
+        return yield* ActionFailedError.make({ failure: { code: 'no_open_poll' } });
     }
 
     const audience = yield* audienceOf(sessionId);
 
     if (target.chatId < 0n && audience.some(chat => chat.chatId === target.chatId)) {
-        return yield* ActionFailedError.make({ reason: 'the poll is already in this chat' });
+        return yield* ActionFailedError.make({ failure: { code: 'poll_already_in_chat' } });
     }
 
     const claim = and(eq(pollForward.pollId, poll.pollId), eq(pollForward.chatId, target.chatId));
@@ -109,7 +107,7 @@ export const forwardPoll = Effect.fn('Core.forwardPoll')(function* (sessionId: s
             Effect.catch(error =>
                 Effect.gen(function* () {
                     if (error.isUncertain) {
-                        return yield* ActionFailedError.make({ reason: uncertainForward });
+                        return yield* ActionFailedError.make({ failure: { code: 'forward_uncertain' } });
                     }
 
                     yield* db.delete(pollForward).where(claim);

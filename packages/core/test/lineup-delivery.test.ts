@@ -19,7 +19,7 @@ import { describeAction } from '../src/actions/describe-action';
 import { syncMember } from '../src/identity/telegram-user';
 import { setColour, swapPlayers } from '../src/teams/draft-state';
 import { planLineup } from '../src/teams/lineup-plan';
-import { lineupChanged, publishLineup } from '../src/teams/publish-lineup';
+import { publishLineup } from '../src/teams/publish-lineup';
 import { changeDraft, openDraft } from '../src/teams/team-draft.service';
 import { recordResult } from '../src/teams/team-result';
 import { confirmAsOwner, teamsActionAsOwner } from '../src/testing/confirm-action';
@@ -172,8 +172,8 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             const current = yield* planLineup(input);
             const sent = yield* publishLineup({ ...input, version: current.version, fingerprint: current.fingerprint });
 
-            expect(moved).toMatchObject({ reason: lineupChanged });
-            expect(renamed).toMatchObject({ reason: lineupChanged });
+            expect(moved).toMatchObject({ failure: { code: 'lineup_changed' } });
+            expect(renamed).toMatchObject({ failure: { code: 'lineup_changed' } });
             expect(sent.deliveries.map(delivery => delivery.status)).toEqual(['sent', 'sent']);
             expect(recorder.calls.filter(call => call.payload.chat_id === -7302).map(call => call.payload.message_thread_id)).toEqual([9]);
         })
@@ -305,7 +305,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             });
             const refused = yield* publishPlanned(game).pipe(Effect.flip);
 
-            expect(refused).toMatchObject({ reason: 'the result is already recorded' });
+            expect(refused).toMatchObject({ failure: { code: 'result_recorded' } });
             expect(sendsTo(-7991)).toEqual(['sendMessage']);
         })
     );
@@ -426,7 +426,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             yield* Effect.promise(() => Promise.all(writes));
 
             expect(published.deliveries.map(delivery => delivery.status)).toEqual(['sent', 'refused']);
-            expect(published.deliveries[1]?.reason).toBe('the game is already over or cancelled');
+            expect(published.deliveries[1]?.failure).toEqual({ code: 'game_over' });
             expect(sendsTo(-7912)).toEqual([]);
         })
     );
@@ -530,7 +530,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             expect(busy.deliveries.map(delivery => delivery.status)).toEqual(['unchanged', 'busy']);
             expect(retried.deliveries.map(delivery => delivery.status)).toEqual(['unchanged', 'sent']);
             expect(sendsTo(-7701)).toEqual(['sendMessage']);
-            expect(cancelled).toMatchObject({ reason: 'the game is already over or cancelled' });
+            expect(cancelled).toMatchObject({ failure: { code: 'game_over' } });
         })
     );
 

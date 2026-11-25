@@ -17,9 +17,6 @@ import { ratingsOf } from './team-inputs';
 
 const correctionMs = 12 * 60 * 60_000;
 
-export const squadChanged = 'the teams changed after the card was shown';
-export const resultRecorded = 'the result is already recorded';
-
 // Who played: the squad without sign-ups that are out and without no-shows an admin marked
 const playedSquad = Effect.fn('Core.playedSquad')(function* (sessionId: string) {
     const members = yield* squadOf(sessionId);
@@ -60,7 +57,7 @@ const revertResult = Effect.fn('Core.revertResult')(function* (sessionId: string
     const { events, isRevertible: canRevert } = yield* isRevertible(sessionId);
 
     if (!isSameEvening || !canRevert) {
-        return yield* ActionFailedError.make({ reason: resultRecorded });
+        return yield* ActionFailedError.make({ failure: { code: 'result_recorded' } });
     }
 
     for (const event of events) {
@@ -101,23 +98,23 @@ export const recordResult = Effect.fn('Core.recordResult')(
                 );
 
                 if (target.status === 'cancelled' || target.status === 'moved') {
-                    return yield* ActionFailedError.make({ reason: 'the game is already over or cancelled' });
+                    return yield* ActionFailedError.make({ failure: { code: 'game_over' } });
                 }
 
                 if (isDefined(input.squad) && input.squad !== (yield* squadFingerprint(input.sessionId))) {
-                    return yield* ActionFailedError.make({ reason: squadChanged });
+                    return yield* ActionFailedError.make({ failure: { code: 'squad_changed' } });
                 }
 
                 if (input.now.getTime() < target.startsAt.getTime()) {
-                    return yield* ActionFailedError.make({ reason: 'the game has not started yet' });
+                    return yield* ActionFailedError.make({ failure: { code: 'game_not_started' } });
                 }
 
                 if (!isNotEmptyArray(teams)) {
-                    return yield* ActionFailedError.make({ reason: 'the game has no teams' });
+                    return yield* ActionFailedError.make({ failure: { code: 'no_teams' } });
                 }
 
                 if (isDefined(input.winner) && !teams.some(entry => entry.ordinal === input.winner)) {
-                    return yield* ActionFailedError.make({ reason: 'the game has no such team' });
+                    return yield* ActionFailedError.make({ failure: { code: 'team_not_found' } });
                 }
 
                 const ranks = teams.map(entry => (!isDefined(input.winner) || entry.ordinal === input.winner ? 1 : 2));

@@ -91,7 +91,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('players and venues learned 
 
             expect(same).toBe(pinned);
             expect(stored).toMatchObject({ name: 'Donau Platz', address: 'Uferweg 1', lat: 48.2 });
-            expect(duplicate).toMatchObject({ reason: 'this venue already exists or has no name' });
+            expect(duplicate).toMatchObject({ failure: { code: 'venue_exists' } });
             expect(games.map(game => game.venueId)).toEqual([pinned, parkId, parkId, null]);
             expect(unknown.unknownPlace?.text).toContain('Stadlau');
         })

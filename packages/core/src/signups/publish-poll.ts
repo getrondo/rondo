@@ -46,7 +46,7 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
         const open = yield* lockSession(sessionId);
 
         if (Option.isNone(open)) {
-            return yield* ActionFailedError.make({ reason: 'the game is already over or cancelled' });
+            return yield* ActionFailedError.make({ failure: { code: 'game_over' } });
         }
 
         const openPolls = yield* db
@@ -55,19 +55,19 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
             .where(and(eq(telegramPoll.sessionId, sessionId), isNull(telegramPoll.closedAt)));
 
         if (isNotEmptyArray(openPolls)) {
-            return yield* ActionFailedError.make({ reason: 'the game already has an open poll' });
+            return yield* ActionFailedError.make({ failure: { code: 'poll_open' } });
         }
 
         const target = yield* requireSession(input.communityId, sessionId);
 
         if (target.startsAt.getTime() <= (yield* DateTime.nowAsDate).getTime()) {
-            return yield* ActionFailedError.make({ reason: 'the game time has already passed' });
+            return yield* ActionFailedError.make({ failure: { code: 'time_passed' } });
         }
 
         const poll = yield* pollFor(input.communityId, target, input.note);
 
         if (isDefined(input.approvedSummary) && input.approvedSummary.split('\n\n').slice(1).join('\n\n') !== previewOf(poll)) {
-            return yield* ActionFailedError.make({ reason: 'the poll changed after the preview, ask for a new one' });
+            return yield* ActionFailedError.make({ failure: { code: 'preview_changed' } });
         }
 
         const options = poll.answers.map(answer => ({ text: answer }));
@@ -107,7 +107,7 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
                     }
 
                     yield* Effect.logError('[poll] sent but not saved', cause);
-                    const uncertain = ActionFailedError.make({ reason: 'the poll was sent but the result is uncertain, check the group' });
+                    const uncertain = ActionFailedError.make({ failure: { code: 'result_uncertain' } });
                     const saved = yield* db
                         .select({ sessionId: telegramPoll.sessionId })
                         .from(telegramPoll)
@@ -124,9 +124,10 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
                     }
 
                     const stopped = yield* Effect.exit(telegram.call('stopPoll', api => api.stopPoll(Number(chatId), sent)));
-                    const state = Exit.isSuccess(stopped) ? 'so it was closed' : 'and it could not be closed: check the group';
 
-                    return yield* ActionFailedError.make({ reason: `the poll was sent but could not be saved, ${state}` });
+                    return yield* ActionFailedError.make({
+                        failure: { code: Exit.isSuccess(stopped) ? 'poll_unsaved_closed' : 'poll_unsaved_open' }
+                    });
                 })
             )
         );

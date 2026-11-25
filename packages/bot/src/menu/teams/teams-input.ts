@@ -235,7 +235,7 @@ export const handleTeamsInput = (user: MenuUser, row: AdminStateRow, text: strin
         Effect.catchTag('ActionFailedError', error =>
             Effect.gen(function* () {
                 const sessionId = Option.getOrNull(decodeDraft(row.draft))?.sessionId ?? '';
-                yield* showEditor(user, sessionId, null, [failureText(user.locale, error.reason, { where: '', isPrivate: false }).text]);
+                yield* showEditor(user, sessionId, null, [failureText(user.locale, error.failure).text]);
 
                 return true;
             })

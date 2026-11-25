@@ -209,7 +209,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
             expect(once).toHaveLength(3);
             expect(twice).toHaveLength(2);
             expect(Object.keys(ranked).toSorted()).toEqual(['Org', 'Олег']);
-            expect(refused).toMatchObject({ _tag: 'ActionFailedError', reason: 'several players share this nickname, link it per game' });
+            expect(refused).toMatchObject({ _tag: 'ActionFailedError', failure: { code: 'nickname_shared' } });
             expect(review.filter(entry => entry.shared)).toHaveLength(4);
             expect(offered?.candidatePersonIds).toEqual([account]);
             expect(sameGame._tag).toBe('ActionFailedError');
@@ -496,7 +496,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
             ]);
             expect(relinked._tag).toBe('ActionFailedError');
             expect(rejected.map(({ status, personId }) => [status, personId])).toEqual([['rejected', account]]);
-            expect(overwritten).toMatchObject({ reason: 'another player has a period under this nickname, undo that first' });
+            expect(overwritten).toMatchObject({ failure: { code: 'other_period' } });
         })
     );
 
@@ -606,7 +606,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
             });
             const refused = yield* Effect.flip(linkAlias({ communityId, aliasId: id, personId: second, actorPersonId: null }));
 
-            expect(refused).toMatchObject({ reason: 'another player has a period under this nickname, undo that first' });
+            expect(refused).toMatchObject({ failure: { code: 'other_period' } });
         })
     );
 
@@ -639,7 +639,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
                 .where(eq(aliasLink.aliasId, aliasId('гонзо')));
 
             expect(links.map(({ status, personId, during }) => [status, personId, during])).toEqual([['approved', account, '(,)']]);
-            expect(refused).toMatchObject({ reason: 'one of these nicknames was rejected for this player' });
+            expect(refused).toMatchObject({ failure: { code: 'nickname_rejected' } });
         })
     );
 

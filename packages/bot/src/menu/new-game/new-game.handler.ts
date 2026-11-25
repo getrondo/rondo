@@ -185,7 +185,7 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
     const target = { where: `«${first?.title ?? ''}»`, isPrivate: self };
     const outcome = yield* runConfirmed(user, actionOf(draft, withPoll, data), { summary: withPoll ? draft.summary : null, target });
 
-    const existing = outcome._tag === 'failed' ? /the game already exists: ([\w-]+)/u.exec(outcome.reason)?.[1] : null;
+    const existing = outcome._tag === 'failed' && outcome.failure.code === 'game_exists' ? outcome.failure.sessionId : null;
     const at = { messageId, expected: consumed.value.revision };
 
     if (isDefined(existing)) {

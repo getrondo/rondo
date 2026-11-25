@@ -86,7 +86,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('one game, one poll, several
                     .map(call => call.method)
             ).toEqual(['forwardMessage', 'pinChatMessage']);
             expect(callsTo(main, start)[0]?.payload).toMatchObject({ from_chat_id: second });
-            expect(again).toMatchObject({ _tag: 'failed', reason: 'the poll is already in this chat' });
+            expect(again).toMatchObject({ _tag: 'failed', failure: { code: 'poll_already_in_chat' } });
             expect(audience.map(target => target.chatId)).toEqual([BigInt(second), BigInt(main)]);
             expect(callsTo(main, beforeNotice).map(call => call.method)).toEqual(['sendMessage', 'sendMessage']);
             expect(callsTo(second, beforeNotice).map(call => call.method)).toEqual(['sendMessage', 'sendMessage']);
@@ -117,13 +117,16 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('one game, one poll, several
             const stranger = yield* confirmAsOwner(communityId, { _tag: 'forward_poll', sessionId, chatId: '-999' });
             const audience = yield* audienceOf(sessionId);
 
-            expect(noPoll).toMatchObject({ _tag: 'failed', reason: 'the game has no open poll' });
+            expect(noPoll).toMatchObject({ _tag: 'failed', failure: { code: 'no_open_poll' } });
             expect(refused).toMatchObject({
                 _tag: 'failed',
-                reason: "Telegram refused: Call to 'forwardMessage' failed! (400: Bad Request: chat not found)"
+                failure: {
+                    code: 'telegram_refused',
+                    description: "Call to 'forwardMessage' failed! (400: Bad Request: chat not found)"
+                }
             });
             expect(recorder.calls.slice(start).filter(call => call.method === 'sendPoll')).toHaveLength(0);
-            expect(stranger).toMatchObject({ _tag: 'failed', reason: 'this chat is not linked to the community' });
+            expect(stranger).toMatchObject({ _tag: 'failed', failure: { code: 'chat_not_linked' } });
             expect(audience.map(target => target.chatId)).toEqual([BigInt(main)]);
         })
     );

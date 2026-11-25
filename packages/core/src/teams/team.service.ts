@@ -12,7 +12,7 @@ import { plainText } from '../utils/plain-text.util';
 import { paddedColours } from './badges';
 import { initialState, syncRoster, withChange, type DraftState } from './draft-state';
 import { planLineup } from './lineup-plan';
-import { lineupChanged, publishLineup } from './publish-lineup';
+import { publishLineup } from './publish-lineup';
 import { solveTeams } from './solve-teams';
 import { changeDraft, openDraft, solverInputFor, usualTeamCount } from './team-draft.service';
 import { loadTeamInputs, tierLevel } from './team-inputs';
@@ -96,7 +96,7 @@ export const executePublishTeams = Effect.fn('Core.executePublishTeams')(functio
     );
 
     if (change._tag !== 'changed') {
-        return yield* ActionFailedError.make({ reason: lineupChanged });
+        return yield* ActionFailedError.make({ failure: { code: 'lineup_changed' } });
     }
 
     const published = yield* publishLineup({
@@ -107,9 +107,7 @@ export const executePublishTeams = Effect.fn('Core.executePublishTeams')(functio
     });
     const missed = published.deliveries.find(delivery => !['sent', 'edited', 'unchanged'].includes(delivery.status));
 
-    return isDefined(missed)
-        ? yield* ActionFailedError.make({ reason: missed.reason ?? 'the teams result is uncertain, check the chat' })
-        : published;
+    return isDefined(missed) ? yield* ActionFailedError.make({ failure: missed.failure ?? { code: 'result_uncertain' } }) : published;
 });
 
 export const setSeedRating = Effect.fn('Core.setSeedRating')(function* (input: {

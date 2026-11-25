@@ -133,13 +133,13 @@ const runGameAction = Effect.fn('Bot.runGameAction')(function* (
 
     const previewed = isNoticeAction(action) || action._tag === 'announce_session' || action._tag === 'forward_poll';
 
-    if (/changed after the preview|link changed/u.test(outcome.reason) && previewed) {
+    if (outcome.failure.code === 'preview_changed' && previewed) {
         yield* showConfirm(user, withoutTopic(action), { messageId: tap.messageId, expected: tap.expected }, outcome.text);
 
         return Option.none<string>();
     }
 
-    const unknownForward = action._tag === 'forward_poll' && /forward result is uncertain/u.test(outcome.reason);
+    const unknownForward = action._tag === 'forward_poll' && outcome.failure.code === 'forward_uncertain';
     const retry = action._tag === 'announce_session' && outcome.uncertain ? { retry: retryOf(user, action) } : {};
     const card = yield* gameCardScreen(user, sessionOf(action), unknownForward ? null : { text: outcome.text, saysPoll: false, ...retry });
     yield* showScreen(user.chatId, tap.messageId, card);

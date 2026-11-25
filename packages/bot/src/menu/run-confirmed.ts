@@ -14,10 +14,11 @@ import { failureText, type FailureTarget } from './failure-text';
 
 import type { MenuUser } from './screen.interface';
 import type { Action } from '@rondo/core/actions/action.model';
+import type { ActionFailure } from '@rondo/core/error/action-failed.error';
 
 type ConfirmedOutcome =
     | { readonly _tag: 'done'; readonly sessionId: string | null }
-    | { readonly _tag: 'failed'; readonly text: string; readonly uncertain: boolean; readonly reason: string };
+    | { readonly _tag: 'failed'; readonly text: string; readonly uncertain: boolean; readonly failure: ActionFailure };
 
 export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (
     user: MenuUser,
@@ -46,8 +47,8 @@ export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (
         } satisfies ConfirmedOutcome;
     }
 
-    const reason = outcome._tag === 'failed' ? outcome.reason : outcome._tag;
-    const failure = failureText(user.locale, reason, { ...context.target, where: escapeHtml(context.target.where) });
+    const failure: ActionFailure = outcome._tag === 'failed' ? outcome.failure : { code: 'unexpected' };
+    const shown = failureText(user.locale, failure, { ...context.target, where: escapeHtml(context.target.where) });
 
-    return { _tag: 'failed', ...failure, reason } satisfies ConfirmedOutcome;
+    return { _tag: 'failed', ...shown, failure } satisfies ConfirmedOutcome;
 });

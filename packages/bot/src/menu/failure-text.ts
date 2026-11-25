@@ -1,7 +1,8 @@
 import { isDefined } from '@rnw-community/shared';
 
-import { menuText } from './menu-text';
+import { menuText, type MenuKey } from './menu-text';
 
+import type { ActionFailure } from '@rondo/core/error/action-failed.error';
 import type { Locale } from '@rondo/core/i18n/locale';
 
 export interface FailureTarget {
@@ -14,45 +15,74 @@ export interface FailureText {
     readonly uncertain: boolean;
 }
 
-const refused = /^Telegram refused: /u;
+const keys: Readonly<Record<ActionFailure['code'], MenuKey>> = {
+    answer_too_long: 'reasonAnswerLong',
+    chat_not_linked: 'reasonChatNotLinked',
+    entry_not_found: 'reasonEntryNotFound',
+    entry_not_linked: 'reasonEntryNotLinked',
+    forward_uncertain: 'uncertainForward',
+    game_exists: 'gameExists',
+    game_not_started: 'reasonGameNotStarted',
+    game_over: 'reasonOver',
+    host_not_playing: 'reasonHostNotPlaying',
+    lineup_changed: 'reasonChanged',
+    message_gone: 'reasonMessageGone',
+    name_empty: 'reasonNameEmpty',
+    nickname_not_found: 'reasonNicknameNotFound',
+    nickname_periods: 'reasonNicknamePeriods',
+    nickname_rejected: 'reasonNicknameRejected',
+    nickname_shared: 'reasonNicknameShared',
+    no_group: 'reasonNoGroup',
+    no_open_poll: 'reasonNoOpenPoll',
+    no_such_time: 'reasonNoSuchTime',
+    no_teams: 'reasonNoTeams',
+    not_admin: 'reasonNotAdmin',
+    not_deletable: 'reasonNotDeletable',
+    other_period: 'reasonOtherPeriod',
+    person_not_found: 'reasonPersonNotFound',
+    place_gone: 'placeGone',
+    poll_already_in_chat: 'reasonPollAlreadyInChat',
+    poll_empty: 'reasonEmptyQuestion',
+    poll_not_closed: 'reasonPollOpen',
+    poll_open: 'reasonOpenPoll',
+    poll_template_invalid: 'reasonTemplate',
+    poll_too_long: 'reasonTooLong',
+    poll_unsaved_closed: 'reasonPollUnsavedClosed',
+    poll_unsaved_open: 'reasonPollUnsavedOpen',
+    preview_changed: 'reasonChanged',
+    records_conflict: 'reasonRecordsConflict',
+    result_recorded: 'reasonResultRecorded',
+    result_uncertain: 'uncertain',
+    same_lineup: 'reasonSameLineup',
+    session_not_found: 'reasonSessionNotFound',
+    squad_changed: 'reasonChanged',
+    team_not_found: 'reasonTeamNotFound',
+    teams_unsaved: 'reasonTeamsUnsaved',
+    telegram_refused: 'reasonRefused',
+    time_passed: 'reasonPast',
+    unexpected: 'reasonOther',
+    venue_exists: 'reasonVenueExists',
+    venue_not_found: 'placeGone',
+    venue_unused: 'placeGone',
+    votes_uncounted: 'reasonUncounted',
+    votes_unseen: 'reasonUnseenVotes'
+};
 
-export const failureText = (locale: Locale, reason: string, target: FailureTarget): FailureText => {
-    if (/forward result is uncertain/u.test(reason)) {
-        return { text: menuText(locale, 'uncertainForward', { where: target.where }), uncertain: true };
-    }
+const privateKeys: Partial<typeof keys> = { result_uncertain: 'uncertainMe', telegram_refused: 'reasonRefusedPrivate' };
 
-    if (/uncertain/u.test(reason)) {
-        const text = target.isPrivate ? menuText(locale, 'uncertainMe') : menuText(locale, 'uncertain', { where: target.where });
+const plainKeys: Partial<typeof keys> = {
+    forward_uncertain: 'uncertainPlain',
+    lineup_changed: 'reasonChangedPlain',
+    preview_changed: 'reasonChangedPlain',
+    result_uncertain: 'uncertainPlain',
+    telegram_refused: 'reasonRefusedPlain'
+};
 
-        return { text, uncertain: true };
-    }
+export const failureText = (locale: Locale, failure: ActionFailure, target?: FailureTarget): FailureText => {
+    const targetKeys = target?.isPrivate === true ? privateKeys : keys;
+    const special = isDefined(target) ? targetKeys : plainKeys;
+    const text = menuText(locale, special[failure.code] ?? keys[failure.code], { ...failure, where: target?.where ?? '' });
+    const uncertain = failure.code === 'result_uncertain' || failure.code === 'forward_uncertain';
 
-    const known: [RegExp, (found: readonly string[]) => string][] = [
-        [
-            /the poll question has (\d+) characters, 1 to (\d+)/u,
-            ([, count = '', limit = '']) => menuText(locale, 'reasonTooLong', { count, limit })
-        ],
-        [/a poll answer is longer than (\d+)/u, ([, limit = '']) => menuText(locale, 'reasonAnswerLong', { limit })],
-        [/poll template in the community settings is not valid/u, () => menuText(locale, 'reasonTemplate')],
-        [/the poll question is empty/u, () => menuText(locale, 'reasonEmptyQuestion')],
-        [/no group is linked/u, () => menuText(locale, 'reasonNoGroup')],
-        [/already has an open poll/u, () => menuText(locale, 'reasonOpenPoll')],
-        [refused, () => menuText(locale, target.isPrivate ? 'reasonRefusedPrivate' : 'reasonRefused')],
-        [/changed after the preview/u, () => menuText(locale, 'reasonChanged')],
-        [/already over or cancelled/u, () => menuText(locale, 'reasonOver')],
-        [/no longer available/u, () => menuText(locale, 'placeGone')],
-        [/could not be closed, so the game is kept/u, () => menuText(locale, 'reasonPollOpen')],
-        [/votes the bot has not seen/u, () => menuText(locale, 'reasonUnseenVotes')],
-        [/voters cannot be counted/u, () => menuText(locale, 'reasonUncounted')],
-        [/the game time has already passed/u, () => menuText(locale, 'reasonPast')],
-        [/does not exist on that day/u, () => menuText(locale, 'reasonNoSuchTime')],
-        [/the game already exists/u, () => menuText(locale, 'gameExists')],
-        [/only a future game made by the bot/u, () => menuText(locale, 'reasonNotDeletable')]
-    ];
-    const text = known.map(([pattern, render]) => ({ found: pattern.exec(reason), render })).find(entry => isDefined(entry.found));
-
-    return {
-        text: menuText(locale, 'failed', { reason: isDefined(text?.found) ? text.render(text.found) : menuText(locale, 'reasonOther') }),
-        uncertain: false
-    };
+    return { text: uncertain ? text : menuText(locale, 'failed', { reason: text }), uncertain };
 };

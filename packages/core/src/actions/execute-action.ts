@@ -37,7 +37,7 @@ export interface ActionContext {
 const requireGroup = (context: ActionContext) =>
     Option.isSome(context.group)
         ? Effect.succeed(context.group.value)
-        : Effect.fail(ActionFailedError.make({ reason: 'no group is linked to this community yet' }));
+        : Effect.fail(ActionFailedError.make({ failure: { code: 'no_group' } }));
 
 const toAudience = Effect.fn('Core.toAudience')(function* <Value, Failure, Requirements>(
     context: ActionContext,
@@ -72,11 +72,11 @@ const linkedTarget = Effect.fn('Core.linkedTarget')(function* (context: ActionCo
     const found = chats.find(chat => String(chat.chatId) === chatId);
 
     if (!isDefined(found)) {
-        return yield* ActionFailedError.make({ reason: 'this chat is not linked to the community' });
+        return yield* ActionFailedError.make({ failure: { code: 'chat_not_linked' } });
     }
 
     if (!Predicate.isUndefined(topicId) && found.topicId !== topicId) {
-        return yield* ActionFailedError.make({ reason: 'the group link changed after the preview, ask for a new one' });
+        return yield* ActionFailedError.make({ failure: { code: 'preview_changed' } });
     }
 
     return { chatId: found.chatId, topicId: found.topicId };
@@ -93,7 +93,7 @@ const createFrom = (action: Extract<Action, { _tag: 'create_session' }>, { commu
             const existing = yield* findSameGame({ ...action, communityId, timezone });
 
             if (Option.isSome(existing)) {
-                return yield* ActionFailedError.make({ reason: `the game already exists: ${existing.value}` });
+                return yield* ActionFailedError.make({ failure: { code: 'game_exists', sessionId: existing.value } });
             }
 
             return yield* createSession({ ...action, communityId, timezone, actorPersonId });
@@ -244,7 +244,7 @@ const peopleIn = (action: Action): readonly string[] => {
 
 export const requireActionScope = Effect.fn('Core.requireActionScope')(function* (action: Action, communityId: string) {
     if (!(yield* arePeopleOf(communityId, peopleIn(action)))) {
-        return yield* ActionFailedError.make({ reason: 'player not found in this community' });
+        return yield* ActionFailedError.make({ failure: { code: 'person_not_found' } });
     }
 
     if ('sessionId' in action && isDefined(action.sessionId)) {
@@ -259,7 +259,7 @@ export const requireActionScope = Effect.fn('Core.requireActionScope')(function*
         const found = yield* requireVenue(communityId, action.venueId);
 
         if (action._tag !== 'update_venue' && found.status !== 'active') {
-            return yield* ActionFailedError.make({ reason: 'this venue is no longer used' });
+            return yield* ActionFailedError.make({ failure: { code: 'venue_unused' } });
         }
     }
 
@@ -297,11 +297,11 @@ const requireKickoff = Effect.fn('Core.requireKickoff')(function* (action: Actio
     const startsAt = instantOf(localDate, localTime, context.timezone);
 
     if (localTimeOf(startsAt, context.timezone) !== localTime || todayIn(context.timezone, startsAt) !== localDate) {
-        return yield* ActionFailedError.make({ reason: 'this local time does not exist on that day' });
+        return yield* ActionFailedError.make({ failure: { code: 'no_such_time' } });
     }
 
     if (startsAt.getTime() <= (yield* DateTime.nowAsDate).getTime()) {
-        return yield* ActionFailedError.make({ reason: 'the game time has already passed' });
+        return yield* ActionFailedError.make({ failure: { code: 'time_passed' } });
     }
 
     return action;
@@ -314,7 +314,7 @@ export const runAdminAction = Effect.fn('Core.runAdminAction')(function* <Failur
     { summary, settle }: { readonly summary: string; readonly settle: (result: ActionResult) => Effect.Effect<void, Failure, Requirements> }
 ) {
     if (!(yield* isAdminOf(tgUserId, context.communityId))) {
-        return yield* ActionFailedError.make({ reason: 'not an admin any more' });
+        return yield* ActionFailedError.make({ failure: { code: 'not_admin' } });
     }
 
     yield* requireActionScope(action, context.communityId);
