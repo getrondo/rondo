@@ -195,6 +195,24 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
         })
     );
 
+    it.effect('checks the kickoff under the game lock right before the poll is sent', () =>
+        Effect.gen(function* () {
+            const { communityId } = yield* seedCommunity(seedConfig('publish-kickoff-fc'));
+            const before = countOfCalls('sendPoll');
+            const late = yield* publishPoll({
+                communityId,
+                group,
+                note: null,
+                approvedSummary: null,
+                prepare: createSession({ ...gameOf(communityId), localDate: '1969-12-30' }),
+                settle: () => Effect.void
+            }).pipe(Effect.flip);
+
+            expect(reasonIn(late)).toBe('the game time has already passed');
+            expect(countOfCalls('sendPoll')).toBe(before);
+        })
+    );
+
     it.effect('posts one poll per game and only the poll the admin saw', () =>
         Effect.gen(function* () {
             const db = yield* Db;

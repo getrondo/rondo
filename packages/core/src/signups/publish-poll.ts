@@ -1,9 +1,10 @@
-// Only this poll and the line-up of publishTeams are sent inside a transaction. The Telegram client limits each call to 10 seconds
+// Only this poll, the line-up of publishTeams and the stopPoll of deleteSession run inside a transaction. The Telegram client limits each call to 10 seconds
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, eq, isNull } from 'drizzle-orm';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 import * as Option from 'effect/Option';
@@ -58,6 +59,11 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
         }
 
         const target = yield* requireSession(input.communityId, sessionId);
+
+        if (target.startsAt.getTime() <= (yield* DateTime.nowAsDate).getTime()) {
+            return yield* ActionFailedError.make({ reason: 'the game time has already passed' });
+        }
+
         const poll = yield* pollFor(input.communityId, target, input.note);
 
         if (isDefined(input.approvedSummary) && input.approvedSummary.split('\n\n').slice(1).join('\n\n') !== previewOf(poll)) {

@@ -174,8 +174,9 @@ without the bot still arrive as poll answers with public voters.
 | 161 | AUDIENCE | Unknown forward that did arrive | Forward times out, then the copy shows up in the group | — | No warning and no resend button on the card | Copy recorded | update | `drops the unknown-forward warning once the copy is known to be in the group` |
 | 162 | CREATE | Poll too long | 📝 Рядок / 📝 Строка with 280 characters | — | «⚠️ Опитування задовге: N символів із 300. Скороти рядок.» and the ru twin; no ✅ | Draft | update | `says how long the poll is when a poll line makes it too long, in Ukrainian and Russian` |
 | 163 | ADMIN AFTER | Delete when the poll is already closed | 🗑 → ✅ while Telegram says the poll is closed | — | «Опитування вже закрите, голоси не перевірити…», ✖️ offered, no 🗑 | Game kept, poll marked closed | update | `keeps the game and offers cancel when the poll was already closed and its voters cannot be counted` |
-| 164 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 165 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 166 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 167 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 168 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 164 | SEND SAFETY | Kickoff under the publish lock | publishPoll for a game whose kickoff has passed | Nothing | — | Refused before sendPoll | service | `checks the kickoff under the game lock right before the poll is sent` |
+| 165 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 166 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 167 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 168 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 169 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
