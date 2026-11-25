@@ -110,5 +110,7 @@ export const teamsTextRu = {
     queued: '⏳ Игра полная — в очереди: {names}. Сверх лимита: ➕ Кто-то пришёл.',
     guestsAdded: '➕ Добавил: {names}.',
     alreadyIn: '«{name}» уже в игре.',
+    pasteStale: '🔄 Пока ты отвечал, составы изменились — вставь список ещё раз.',
+    comeAfterAll: '↩️ Всё же пришёл',
     squadChanged: '🔄 Составы изменились, результат не записан. Посмотри ещё раз.'
 } as const;

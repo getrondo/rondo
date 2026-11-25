@@ -131,6 +131,37 @@ export const addGuests = Effect.fn('Core.addGuests')(function* (
     );
 });
 
+const markNoShow = (change: RosterChange, personId: string) =>
+    Db.use(db =>
+        db
+            .insert(attendance)
+            .values({ sessionId: change.sessionId, personId, outcome: 'no_show', source: 'manual', recordedBy: change.actorPersonId })
+            .onConflictDoUpdate({ target: [attendance.sessionId, attendance.personId], set: { outcome: 'no_show', source: 'manual' } })
+    );
+
+export const markedNoShows = Effect.fn('Core.markedNoShows')(function* (sessionId: string) {
+    const db = yield* Db;
+    const rows = yield* db
+        .select({ personId: attendance.personId })
+        .from(attendance)
+        .where(and(eq(attendance.sessionId, sessionId), eq(attendance.outcome, 'no_show'), eq(attendance.source, 'manual')));
+
+    return new Set(rows.map(row => row.personId));
+});
+
+// After the game a no-show is attendance only: the sign-up stays and nobody moves up
+export const toggleNoShow = Effect.fn('Core.toggleNoShow')(function* (change: RosterChange, personId: string) {
+    const db = yield* Db;
+
+    if ((yield* markedNoShows(change.sessionId)).has(personId)) {
+        yield* db
+            .delete(attendance)
+            .where(and(eq(attendance.sessionId, change.sessionId), eq(attendance.personId, personId), eq(attendance.source, 'manual')));
+    } else {
+        yield* markNoShow(change, personId);
+    }
+});
+
 export const guestsOf = Effect.fn('Core.guestsOf')(function* (sessionId: string, hostPersonId: string) {
     const db = yield* Db;
 
@@ -177,19 +208,7 @@ export const removeFromGame = Effect.fn('Core.removeFromGame')(function* (
             }
 
             if (removal.isNoShow) {
-                yield* db
-                    .insert(attendance)
-                    .values({
-                        sessionId: change.sessionId,
-                        personId: removal.personId,
-                        outcome: 'no_show',
-                        source: 'manual',
-                        recordedBy: change.actorPersonId
-                    })
-                    .onConflictDoUpdate({
-                        target: [attendance.sessionId, attendance.personId],
-                        set: { outcome: 'no_show', source: 'manual' }
-                    });
+                yield* markNoShow(change, removal.personId);
             }
 
             const promoted = yield* fillFreeSeats(change.sessionId, game.capacityMax);

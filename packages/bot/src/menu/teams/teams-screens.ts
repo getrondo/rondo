@@ -66,7 +66,14 @@ export const fullAsk = (
 export const removeScreen = (
     user: MenuUser,
     view: EditorView,
-    ask: { readonly personId: string; readonly guests: number; readonly waiting: string | null; readonly hasStarted: boolean }
+    ask: {
+        readonly personId: string;
+        readonly guests: number;
+        readonly waiting: string | null;
+        readonly hasStarted: boolean;
+        // A played game only marks or unmarks a no-show
+        readonly noShow: boolean | null;
+    }
 ): Screen => {
     const index = playersOf(view.row.state).indexOf(ask.personId);
     const name = nameOf(view, ask.personId);
@@ -84,8 +91,17 @@ export const removeScreen = (
             ...(isDefined(ask.waiting) ? [teamsText(user.locale, 'waiting', { name: escapeHtml(ask.waiting) })] : [])
         ].join('\n'),
         keyboard: [
-            ...(ask.hasStarted ? [[{ text: teamsText(user.locale, 'noShow'), callback_data: teamsData(baseOf(view), 'o', [index]) }]] : []),
-            ...options.map(option => [option]),
+            ...(ask.hasStarted
+                ? [
+                      [
+                          {
+                              text: teamsText(user.locale, ask.noShow === true ? 'comeAfterAll' : 'noShow'),
+                              callback_data: teamsData(baseOf(view), 'o', [index])
+                          }
+                      ]
+                  ]
+                : []),
+            ...(isDefined(ask.noShow) ? [] : options.map(option => [option])),
             backRow(user, view)
         ]
     };

@@ -13,7 +13,7 @@ import {
     resolvePaste,
     type Paste
 } from '@rondo/core/teams/paste-lineup';
-import { changeDraft, loadDraft } from '@rondo/core/teams/team-draft.service';
+import { changeDraft, loadDraft, lockedVersion } from '@rondo/core/teams/team-draft.service';
 import { Db } from '@rondo/db/service/db.service';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
@@ -272,23 +272,32 @@ export const handlePasteTap = Effect.fn('Bot.handlePasteTap')(function* (user: M
     const withPaste = (next: Paste | null) => ({ ...state.value, draft: { ...draft.value, paste: next }, now: user.now });
     const outcome = yield* Db.use(db =>
         db.transaction(() =>
-            replaceAdminState(withPaste(null), state.value.revision).pipe(
-                Effect.flatMap(claimed =>
-                    Option.isSome(claimed)
-                        ? placePaste(user, tap.sessionId, answered, tap.op === 'U' ? first === '1' : null).pipe(
-                              Effect.tap(placed =>
-                                  placed._tag === 'question'
-                                      ? replaceAdminState(withPaste(placed.paste), claimed.value.revision)
-                                      : Effect.void
-                              )
-                          )
-                        : Effect.succeed(null)
-                )
-            )
+            Effect.gen(function* () {
+                const claimed = yield* replaceAdminState(withPaste(null), state.value.revision);
+
+                if (Option.isNone(claimed)) {
+                    return null;
+                }
+
+                // A paste answered over teams changed meanwhile applies nothing: the list is pasted again
+                if ((yield* lockedVersion(tap.sessionId)) !== tap.version) {
+                    return { _tag: 'stale' as const };
+                }
+
+                const placed = yield* placePaste(user, tap.sessionId, answered, tap.op === 'U' ? first === '1' : null);
+
+                if (placed._tag === 'question') {
+                    yield* replaceAdminState(withPaste(placed.paste), claimed.value.revision);
+                }
+
+                return placed;
+            })
         )
     );
 
-    if (isDefined(outcome)) {
+    if (outcome?._tag === 'stale') {
+        yield* showEditor(user, tap.sessionId, messageId, [teamsText(user.locale, 'pasteStale')]);
+    } else if (isDefined(outcome)) {
         yield* showPasted(user, tap.sessionId, messageId, outcome);
     }
 });

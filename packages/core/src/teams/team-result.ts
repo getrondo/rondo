@@ -1,6 +1,6 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { rating, ratingEvent, team } from '@rondo/db/schema/play.schema';
-import { attendance, session } from '@rondo/db/schema/scheduling.schema';
+import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import { and, asc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
@@ -9,6 +9,7 @@ import * as Effect from 'effect/Effect';
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 import { requireSession } from '../sessions/session.service';
+import { markedNoShows } from '../signups/roster.service';
 
 import { outAfterSquad, squadFingerprint, squadOf } from './lineup-of-draft';
 import { rateResult } from './rate-result';
@@ -21,14 +22,8 @@ export const resultRecorded = 'the result is already recorded';
 
 // Who played: the squad without sign-ups that are out and without no-shows an admin marked
 const playedSquad = Effect.fn('Core.playedSquad')(function* (sessionId: string) {
-    const db = yield* Db;
     const members = yield* squadOf(sessionId);
-    const out = yield* outAfterSquad(sessionId);
-    const missed = yield* db
-        .select({ personId: attendance.personId })
-        .from(attendance)
-        .where(and(eq(attendance.sessionId, sessionId), eq(attendance.outcome, 'no_show'), eq(attendance.source, 'manual')));
-    const gone = new Set([...out, ...missed.map(row => row.personId)]);
+    const gone = new Set([...(yield* outAfterSquad(sessionId)), ...(yield* markedNoShows(sessionId))]);
 
     return members.filter(member => !gone.has(member.personId));
 });

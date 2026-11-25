@@ -1,6 +1,6 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { requireSession } from '@rondo/core/sessions/session.service';
-import { joinCandidates, waitingOf } from '@rondo/core/signups/roster.service';
+import { guestsOf, joinCandidates, markedNoShows, waitingOf } from '@rondo/core/signups/roster.service';
 import { playersOf } from '@rondo/core/teams/draft-state';
 import { personNames } from '@rondo/core/teams/team-inputs';
 import { recordResult, squadChanged } from '@rondo/core/teams/team-result';
@@ -73,9 +73,10 @@ const viewScreen = Effect.fn('Bot.teamsViewScreen')(function* (user: MenuUser, v
 
             return removeScreen(user, view, {
                 personId: selected ?? '',
-                guests: view.inputs.members.filter(member => member.isGuest && member.hostId === selected).length,
+                guests: (yield* guestsOf(view.row.sessionId, selected ?? '')).length,
                 waiting: isFreed ? (view.waiting[0] ?? null) : null,
-                hasStarted: user.now.getTime() >= view.inputs.game.startsAt.getTime()
+                hasStarted: user.now.getTime() >= view.inputs.game.startsAt.getTime(),
+                noShow: view.inputs.game.status === 'played' ? (yield* markedNoShows(view.row.sessionId)).has(selected ?? '') : null
             });
         }
         case 'O': {

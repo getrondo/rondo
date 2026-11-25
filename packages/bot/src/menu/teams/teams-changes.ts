@@ -1,5 +1,5 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
-import { addGuests, joinGame, removeFromGame } from '@rondo/core/signups/roster.service';
+import { addGuests, joinGame, removeFromGame, toggleNoShow } from '@rondo/core/signups/roster.service';
 import { badges } from '@rondo/core/teams/badges';
 import {
     movePlayers,
@@ -100,6 +100,12 @@ const rosterTransform = Effect.fn('Bot.teamsRosterChange')(function* (context: C
         }
         case 'R':
         case 'o': {
+            if (tap.op === 'o' && context.inputs.game.status === 'played') {
+                yield* toggleNoShow(rosterChange(context), first);
+
+                return state;
+            }
+
             const team = teamIndexOf(state, first);
             const removed = yield* removeFromGame(rosterChange(context), {
                 personId: first,

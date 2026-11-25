@@ -236,12 +236,19 @@ export const openDraft = Effect.fn('Core.openDraft')(function* (communityId: str
     return { row: current, inputs };
 });
 
+// The draft row is held until the transaction ends: its version cannot move under the caller
+export const lockedVersion = Effect.fn('Core.lockedVersion')(function* (sessionId: string) {
+    const db = yield* Db;
+    const [row] = yield* db.select({ version: teamDraft.version }).from(teamDraft).where(eq(teamDraft.sessionId, sessionId)).for('update');
+
+    return row?.version ?? null;
+});
+
 const lockedChange = Effect.fn('Core.changeDraft')(function* <Failure, Requirements>(
     tap: { readonly sessionId: string; readonly version: number; readonly key: string; readonly actorPersonId: string | null },
     transform: (state: DraftState) => Effect.Effect<DraftState, Failure, Requirements>
 ) {
-    const db = yield* Db;
-    yield* db.select({ version: teamDraft.version }).from(teamDraft).where(eq(teamDraft.sessionId, tap.sessionId)).for('update');
+    yield* lockedVersion(tap.sessionId);
     const row = yield* requireDraft(tap.sessionId);
 
     if (row.version !== tap.version) {

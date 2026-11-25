@@ -223,7 +223,12 @@ const pageRow = (user: MenuUser, view: EditorView): MenuButton[][] => {
         [
             {
                 text: teamsText(user.locale, others.length > 1 ? 'otherTeams' : 'otherTeam', { badges }),
-                callback_data: teamsData({ sessionId: view.row.sessionId, version: view.row.version, page: next }, 'e')
+                // A selected player rides along to the other page and can be moved to a team there
+                callback_data: isDefined(view.selected)
+                    ? teamsData({ sessionId: view.row.sessionId, version: view.row.version, page: next }, 's', [
+                          playersOf(view.row.state).indexOf(view.selected)
+                      ])
+                    : teamsData({ sessionId: view.row.sessionId, version: view.row.version, page: next }, 'e')
             }
         ]
     ];
@@ -297,7 +302,7 @@ export const editorScreen = (user: MenuUser, view: EditorView): Screen => {
     });
     const pending = state.pending.map(personId => playerButton(view, base, labels, personId));
     const actions = isDefined(view.selected)
-        ? selectedRows(user, view, base)
+        ? [...selectedRows(user, view, base), ...pageRow(user, view)]
         : [
               ...(isNotEmptyArray(state.pending) ? [[button('place', 'b')]] : []),
               ...(isDefined(back)

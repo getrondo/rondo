@@ -110,5 +110,7 @@ export const teamsTextUk = {
     queued: '⏳ Гра повна — у черзі: {names}. Понад ліміт: ➕ Хтось прийшов.',
     guestsAdded: '➕ Додав: {names}.',
     alreadyIn: '«{name}» вже в грі.',
+    pasteStale: '🔄 Поки ти відповідав, склади змінилися — встав список ще раз.',
+    comeAfterAll: '↩️ Все ж прийшов',
     squadChanged: '🔄 Склади змінилися, результат не записано. Глянь ще раз.'
 } as const;
