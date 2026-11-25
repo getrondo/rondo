@@ -156,15 +156,15 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             recorder.failures.delete('sendPoll');
             const uncertain = admin.screen();
             recorder.failures.set('pinChatMessage', refusal('pinChatMessage', 'Bad Request: not enough rights to pin a message'));
-            yield* admin.tap('✅ Опитування там немає, надіслати');
+            yield* admin.tap('✅ Немає, надіслати в «Games»');
             recorder.failures.delete('pinChatMessage');
             const games = yield* gamesOn(communityId, '2026-11-27');
 
             expect(uncertain.text.split('\n').at(-1)).toBe(
-                '⚠️ Telegram не підтвердив надсилання в «Games». Зазирни туди. Якщо опитування немає, надішли ще раз. Якщо воно там є, видали його: голоси в ньому не порахуються.'
+                '⚠️ Не знаю, чи дійшло опитування в «Games». Зазирни туди. Немає — натисни ✅ нижче. Є — спершу видали його там: я його не бачу й голоси не порахую.'
             );
             expect(uncertain.text).not.toContain('нічого не надіслано');
-            expect(uncertain.buttons[0]?.map(button => button.text)).toEqual(['✅ Опитування там немає, надіслати']);
+            expect(uncertain.buttons[0]?.map(button => button.text)).toEqual(['✅ Немає, надіслати в «Games»']);
             expect(games).toHaveLength(1);
             expect(admin.screen().text).toContain('✅ Гру створено');
         })

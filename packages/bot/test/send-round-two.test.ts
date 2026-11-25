@@ -11,7 +11,7 @@ import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
 const pollsIn = (chatId: number) => recorder.calls.filter(call => call.method === 'sendPoll' && call.payload.chat_id === chatId);
-const sendingData = /^n:\d+:ok$|^c:ok:\d+:1$|^c:pr:/u;
+const sendingData = /^n:\d+:ok$|^c:ok:\d+:1$|^c:pr:|^c:fr:|^c:pa:/u;
 const sendingWord = /Надіслати|Отправить/u;
 
 layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('sending after the second design round', it => {
@@ -103,19 +103,19 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('20:00');
             const edited = admin.screen();
             recorder.failures.set('forwardMessage', new Error('socket hang up'));
-            yield* admin.tap('✅ Опитування там немає, надіслати');
+            yield* admin.tap('✅ Немає, надіслати в «Games»');
             recorder.failures.delete('forwardMessage');
             const result = admin.screen().text.split('\n');
             const warning =
-                '⚠️ Telegram не підтвердив надсилання в «Games». Зазирни туди. Якщо опитування немає, надішли ще раз. Якщо воно там є, видали його: голоси в ньому не порахуються.';
+                '⚠️ Не знаю, чи дійшло опитування в «Games». Зазирни туди. Немає — натисни ✅ нижче. Є — спершу видали його там: я його не бачу й голоси не порахую.';
 
             expect(warned.text.split('\n').at(-1)).toBe(warning);
             expect(edited.text.split('\n').at(-1)).toBe(warning);
-            expect(labelsOf(edited)[0]).toBe('✅ Опитування там немає, надіслати');
+            expect(labelsOf(edited)[0]).toBe('✅ Немає, надіслати в «Games»');
             expect(edited.text).toContain('20.00');
             expect(result.slice(0, 2)).toEqual([
                 '✅ Гру створено, опитування в «Games».',
-                '⚠️ Telegram не підтвердив надсилання в «Second». Зазирни туди. Якщо опитування немає, надішли ще раз. Якщо воно там є, видали його: голоси в ньому не порахуються.'
+                '⚠️ Не знаю, чи дійшло опитування в «Second». Зазирни туди. Немає — натисни ✅ нижче. Є — нічого не роби: голоси з нього рахуються.'
             ]);
         })
     );

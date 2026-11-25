@@ -15,6 +15,10 @@ export interface FailureText {
 const refused = /^Telegram refused: /u;
 
 export const failureText = (locale: Locale, reason: string, target: FailureTarget): FailureText => {
+    if (/forward result is uncertain/u.test(reason)) {
+        return { text: menuText(locale, 'uncertainForward', { where: target.where }), uncertain: true };
+    }
+
     if (/uncertain/u.test(reason)) {
         const text = target.isPrivate ? menuText(locale, 'uncertainMe') : menuText(locale, 'uncertain', { where: target.where });
 

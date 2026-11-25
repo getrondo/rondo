@@ -42,7 +42,9 @@ const addressLabel = (locale: Locale, name: string): string =>
 
 const postLabel = (draft: Draft, data: NewGameData, locale: Locale): string => {
     if (draft.uncertain) {
-        return menuText(locale, 'retrySend');
+        return isSelfAudience(draft, data)
+            ? menuText(locale, 'retrySendMe')
+            : fitted(locale, 'resendTo', destinationTitles(draft, data).slice(0, 1));
     }
 
     const announce = isDefined(draft.sessionId);

@@ -140,4 +140,26 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(late.split('\n').at(-1)).toBe('Сьогодні для звичних годин уже пізно.');
         })
     );
+
+    it.effect('offers one text and one ✅ button after an unknown poll send on the card', () =>
+        Effect.gen(function* () {
+            yield* seedSeason('r3-unknown-card', { groupChatId: -29_006, adminId: 2906 });
+            const admin = conversation(recorder, adminNumbered(2906));
+            yield* admin.type('/newgame');
+            yield* walkManual(admin, ['🛠 З нуля', 'Сб 28.11', 'Park Field', '18:30', '👥 18', '💾 Зберегти без опитування']);
+            yield* admin.tap('📣 Надіслати в «Games»');
+            recorder.failures.set('sendPoll', new Error('socket hang up'));
+            yield* admin.tap('✅ Надіслати в «Games»');
+            recorder.failures.delete('sendPoll');
+            const unknown = admin.screen();
+            yield* admin.tap('✅ Немає, надіслати в «Games»');
+            const sent = admin.screen();
+
+            expect(unknown.text.split('\n')[0]).toBe(
+                '⚠️ Не знаю, чи дійшло опитування в «Games». Зазирни туди. Немає — натисни ✅ нижче. Є — спершу видали його там: я його не бачу й голоси не порахую.'
+            );
+            expect(labelsOf(unknown).filter(label => label.includes('Games'))).toEqual(['✅ Немає, надіслати в «Games»']);
+            expect(sent.text.split('\n')[0]).toBe('✅ Опитування в «Games».');
+        })
+    );
 });

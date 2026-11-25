@@ -91,33 +91,47 @@ interface CardState {
     readonly chats: readonly { readonly chatId: bigint; readonly title: string }[];
     readonly closedTo: readonly { readonly chatId: bigint; readonly title: string }[];
     readonly unknownTo: readonly { readonly chatId: bigint; readonly title: string }[];
+    readonly retry: 'group' | 'me' | null;
     readonly page: number;
 }
+
+const retryRoom = (user: MenuUser): number => full - labelWidth(menuText(user.locale, 'resendTo', { where: '«»' }));
 
 const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuButton[][] => {
     const id = toShortId(game.id);
     const button = (key: MenuKey, op: string): MenuButton => ({ text: menuText(user.locale, key), callback_data: `c:${op}:${id}` });
     const [firstChat] = state.chats;
-    const postRows = state.hasPoll
-        ? []
-        : [
-              ...(isDefined(firstChat)
-                  ? [
-                        [
-                            {
-                                text: fitLabel(menuText(user.locale, 'postCard', { where: `«${firstChat.title}»` }), full),
-                                callback_data: `c:p:${id}`
-                            }
-                        ]
-                    ]
-                  : []),
-              [button('sendPollMe', 'pm')]
-          ];
+    const retryRows =
+        state.retry === 'me'
+            ? [[button('retrySendMe', 'pam')]]
+            : [
+                  [
+                      {
+                          text: menuText(user.locale, 'resendTo', { where: `«${fitLabel(firstChat?.title ?? '', retryRoom(user))}»` }),
+                          callback_data: `c:pa:${id}`
+                      }
+                  ]
+              ];
+    const offerRows = [
+        ...(isDefined(firstChat)
+            ? [
+                  [
+                      {
+                          text: fitLabel(menuText(user.locale, 'postCard', { where: `«${firstChat.title}»` }), full),
+                          callback_data: `c:p:${id}`
+                      }
+                  ]
+              ]
+            : []),
+        [button('sendPollMe', 'pm')]
+    ];
+    const unposted = isDefined(state.retry) ? retryRows : offerRows;
+    const postRows = state.hasPoll ? [] : unposted;
     const resend = state.privateOnly ? [[button('resendMe', 'pr')]] : [];
     const unknownRows = state.unknownTo.map(chat => [
         {
             text: menuText(user.locale, 'resendTo', {
-                where: `«${fitLabel(chat.title, full - labelWidth(menuText(user.locale, 'resendTo', { where: '«»' })))}»`
+                where: `«${fitLabel(chat.title, retryRoom(user))}»`
             }),
             callback_data: `c:fr:${id}:${chat.chatId}`
         }
@@ -162,6 +176,7 @@ const pollLine = (user: MenuUser, state: CardState, audience: readonly bigint[])
 export interface CardHeader {
     readonly text: string;
     readonly saysPoll: boolean;
+    readonly retry?: 'group' | 'me';
 }
 
 const countLine = (user: MenuUser, game: SessionView, signedLine: string, signed: number): string => {
@@ -203,6 +218,7 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
         chats,
         closedTo: isOpen ? chats.filter(chat => !audience.includes(chat.chatId) && !unknown.includes(chat.chatId)) : [],
         unknownTo: isOpen ? chats.filter(chat => unknown.includes(chat.chatId)) : [],
+        retry: header?.retry ?? null,
         page
     };
     const waiting = roster.filter(entry => entry.status === 'waitlisted');
@@ -213,7 +229,9 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
     const lines = [
         ...(isDefined(header) ? [header.text, ''] : []),
         ...(isUpcoming
-            ? state.unknownTo.map(chat => menuText(user.locale, 'uncertainForward', { where: escapeHtml(`«${chat.title}»`) }))
+            ? state.unknownTo
+                  .map(chat => menuText(user.locale, 'uncertainForward', { where: escapeHtml(`«${chat.title}»`) }))
+                  .filter(line => header?.text.includes(line) !== true)
             : []),
         `⚽ <b>${escapeHtml(formatSessionLabel(user.locale, game))}</b>`,
         ...(isDefined(closed) ? [closed] : []),

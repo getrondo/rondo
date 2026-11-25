@@ -140,7 +140,11 @@ const runGameAction = Effect.fn('Bot.runGameAction')(function* (
     }
 
     const unknownForward = action._tag === 'forward_poll' && /forward result is uncertain/u.test(outcome.reason);
-    const card = yield* gameCardScreen(user, sessionOf(action), unknownForward ? null : { text: outcome.text, saysPoll: false });
+    const retry =
+        action._tag === 'announce_session' && outcome.uncertain
+            ? { retry: isToMe(user, action) ? ('me' as const) : ('group' as const) }
+            : {};
+    const card = yield* gameCardScreen(user, sessionOf(action), unknownForward ? null : { text: outcome.text, saysPoll: false, ...retry });
     yield* showScreen(user.chatId, tap.messageId, card);
 
     return Option.none<string>();
@@ -221,6 +225,15 @@ export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: Men
             { _tag: 'forward_poll', sessionId: game.value.id, chatId: arg, resend: true },
             { messageId, revision: '', expected: null }
         );
+    }
+
+    if (op === 'pa' || op === 'pam') {
+        const chosen: Action =
+            op === 'pam'
+                ? { _tag: 'announce_session', sessionId: game.value.id, chatId: String(user.tgUserId) }
+                : { _tag: 'announce_session', sessionId: game.value.id };
+
+        return yield* runGameAction(user, chosen, { messageId, revision: '', expected: null });
     }
 
     if (op === 'pr') {
