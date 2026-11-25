@@ -12,6 +12,8 @@ const recentGames = 50;
 const smoothing = 1;
 const strongSquads = 8;
 const strongShare = 0.8;
+// One player fixed by an admin decides who wears which before the shares of a whole team do
+const fixedShare = 20;
 
 const countsOf = <Value>(values: readonly Value[]): (readonly [Value, number])[] => {
     const counts = new Map<Value, number>();
@@ -28,7 +30,7 @@ const newestFirst = (rows: readonly ColouredRow[]): ColouredRow[] =>
 
 const affinityOf = (colours: readonly BadgeColour[], fixed: BadgeColour | null): Affinity => {
     if (isDefined(fixed)) {
-        return { shares: new Map([[fixed, 1]]), home: fixed, fixed };
+        return { shares: new Map([[fixed, fixedShare]]), home: fixed, fixed };
     }
 
     const counts = countsOf(colours);

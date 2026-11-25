@@ -72,7 +72,7 @@ describe('home colours', () => {
     it('lets the colour an admin fixed win', () => {
         const fixed = regulars([['fixed', times('red', 10)]], new Map([['fixed', 'green']]));
 
-        expect(fixed.get('fixed')).toEqual({ home: 'green', fixed: 'green', shares: new Map([['green', 1]]) });
+        expect(fixed.get('fixed')).toEqual({ home: 'green', fixed: 'green', shares: new Map([['green', 20]]) });
     });
 
     it('takes the most frequent set of colours for the team count, then the most played colours', () => {

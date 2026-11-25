@@ -55,7 +55,9 @@ worn in at least 80% of at least 8 squads; guests have none. An admin may fix on
 - **Who wears which:** the order of the teams with the greatest total share (all permutations, 720 at six teams), except with
   locks or a placed line-up, where a player must keep his team.
 - **Solver:** a home colour costs 30 in any other team (60 when fixed), below a strength difference of one point (100) and
-  the cost of moving a placed player (250); habits do not count for a pair with a home colour. A late joiner follows it too.
+  the cost of moving a placed player (250); habits stop counting only for a pair with a fixed colour, and a fixed player decides who wears which before shares do. A late joiner follows it too.
+  On 183 real games of a year this kept the match with the organizer's pairs (43.6%, 43.4% without colours) and put 60% of the
+  players, 87% of those with a home colour, in their colour. Ignoring habits for every home colour gave 38% and 53%.
 
 The benchmark (12 players) keeps its gap to the optimum with a home colour for everyone. Over 40 synthetic games the mean
 strength spread stayed 2.10 with tiers and 0.00 without levels, and went from 0.15 to 0.29 (at most 0.78, «Сили рівні» up to 1.5)

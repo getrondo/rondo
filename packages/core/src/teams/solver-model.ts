@@ -80,8 +80,9 @@ export const buildModel = (input: SolverInput, weights: Weights, previous: reado
     for (let first = 0; first < size; first += 1) {
         for (let second = first + 1; second < size; second += 1) {
             const key = pairKey(ids[first] ?? '', ids[second] ?? '');
-            // A home colour already says whom a player usually plays with, and one an admin fixed must outweigh that
-            const habit = [first, second].some(index => input.homes?.has(ids[index] ?? '')) ? 0 : (input.habits.get(key) ?? 0);
+            // A colour an admin fixed must outweigh the habit of playing together
+            const isFixed = [first, second].some(index => input.homes?.get(ids[index] ?? '')?.isFixed === true);
+            const habit = isFixed ? 0 : (input.habits.get(key) ?? 0);
             add(first, second, -weights.habit * habit + weights.variety * (input.recent.get(key) ?? 0));
         }
     }
