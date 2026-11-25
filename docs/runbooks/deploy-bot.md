@@ -78,6 +78,25 @@ from a private chat:
 - A place without an address gets a "📍 Address" hint on the preview: an admin sends a location pin, a Google Maps
   link or the address, and the poll shows it with a route button.
 
+## Back up and restore
+
+Before a migration reaches production, take a dump with the unpooled URL and keep it until the release is stable:
+
+```bash
+isec run getrondo prod -- sh -c 'pg_dump --format=custom --file=rondo-$(date +%F).dump "$DATABASE_URL_UNPOOLED"'
+```
+
+Restore all or nothing: `--single-transaction` rolls back on the first error, `--clean --if-exists` drops what the dump recreates.
+
+```bash
+isec run getrondo prod -- sh -c 'pg_restore --clean --if-exists --single-transaction --no-owner --dbname="$DATABASE_URL_UNPOOLED" rondo-<date>.dump'
+```
+
+Ask the owner first; a restore overwrites everything written since the dump. Try it on a Neon branch before production.
+
+Production deploys the new migration before the new code is live, so every migration must work with the previous deployment:
+add nullable columns or tables, never rename or drop in the same release. A drop ships one release after the code stopped using it.
+
 ## Operate
 
 - **Logs:** `vercel logs rondo` or the Vercel dashboard; every update and tool call is traced

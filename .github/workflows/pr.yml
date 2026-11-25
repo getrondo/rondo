@@ -129,6 +129,58 @@ jobs:
                     fi
                   done
 
+    integration:
+        name: Postgres races and web build
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        services:
+            postgres:
+                image: postgres:18-alpine@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
+                env:
+                    POSTGRES_USER: rondo
+                    POSTGRES_PASSWORD: rondo
+                    POSTGRES_DB: rondo
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd "pg_isready -U rondo -d rondo"
+                    --health-interval 5s
+                    --health-timeout 3s
+                    --health-retries 10
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+                  filter: blob:none
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+            - name: Setup Node
+              uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+              with:
+                  node-version-file: .nvmrc
+                  cache: pnpm
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Cache Next.js build
+              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              with:
+                  path: apps/web/.next/cache
+                  key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**', 'apps/web/public/**', 'apps/web/next.config.ts', 'packages/*/src/**') }}
+                  restore-keys: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+
+            - name: Web build
+              run: pnpm turbo run build --filter=@rondo/web
+
+            - name: Postgres race tests
+              env:
+                  RONDO_TEST_DATABASE_URL: postgres://rondo:rondo@localhost:5432/rondo
+              run: pnpm --filter @rondo/core --filter @rondo/bot exec vitest run community-lock admin-state-race team-draft-race teams-race
+
     lint-workflows:
         name: Lint workflows
         runs-on: ubuntu-latest
