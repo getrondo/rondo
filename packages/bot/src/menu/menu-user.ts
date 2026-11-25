@@ -8,7 +8,7 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import type { MenuUser } from './screen.interface';
-import type { User } from 'grammy/types';
+import type { User } from '@rondo/telegram/webhook/telegram-update.model';
 
 export const menuUserOf = Effect.fn('Bot.menuUserOf')(function* (from: User) {
     const tgUserId = BigInt(from.id);

@@ -15,7 +15,7 @@ import { menuText } from '../menu/menu-text';
 import { menuUserOf } from '../menu/menu-user';
 import { showScreen } from '../menu/show-screen';
 
-import type { CallbackQuery } from 'grammy/types';
+import type { CallbackQuery } from '@rondo/telegram/webhook/telegram-update.model';
 
 const actionData = /^act:([\da-f-]{36}):([yn])$/u;
 

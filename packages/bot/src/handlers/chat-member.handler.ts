@@ -5,14 +5,14 @@ import * as Option from 'effect/Option';
 
 import { toTelegramUser } from '../context/telegram-user.mapper';
 
-import type { ChatMember, ChatMemberUpdated, User } from 'grammy/types';
+import type { ChatMember, ChatMemberUpdated, User } from '@rondo/telegram/webhook/telegram-update.model';
 
 const presenceOf = (member: ChatMember): 'active' | 'left' | 'removed' => {
     if (member.status === 'kicked') {
         return 'removed';
     }
 
-    return member.status === 'left' || (member.status === 'restricted' && !member.is_member) ? 'left' : 'active';
+    return member.status === 'left' || (member.status === 'restricted' && member.is_member !== true) ? 'left' : 'active';
 };
 
 export const syncGroupUsers = Effect.fn('Bot.syncGroupUsers')(function* (

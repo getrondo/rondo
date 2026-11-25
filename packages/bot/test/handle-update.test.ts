@@ -208,8 +208,10 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
     it.effect('retries a failed update up to three times and ignores confirmations outside a private chat', () =>
         Effect.gen(function* () {
             const db = yield* Db;
-            const failing = message({ ...owner, id: Number.NaN }, groupChat, 'boom');
+            const failing = message(player, { id: player.id, type: 'private', first_name: player.first_name }, 'boom');
+            recorder.failures.set('sendMessage', new Error('socket hang up'));
             const exits = yield* Effect.all(Array.from({ length: 4 }, () => Effect.exit(handleUpdate(failing))));
+            recorder.failures.delete('sendMessage');
             const [stored] = yield* db.select().from(processedUpdate).where(eq(processedUpdate.updateId, failing.update_id));
             const edits = recorder.calls.filter(call => call.method === 'editMessageText').length;
             yield* handleUpdate(
