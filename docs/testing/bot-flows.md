@@ -131,8 +131,14 @@ without the bot still arrive as poll answers with public voters.
 | 118 | CREATE | Repeated ✅ on an existing game | Existing game without a poll, ✅ twice | One poll | «Уже зроблено», not «створено» | One poll ref | update | `answers a repeated ✅ for an existing game without claiming it was created` |
 | 119 | CREATE | Typing hint | /newgame four times | Polls | «💡 Можна написати: пн 19:30 18» for the first three games only | Games | update | `shows the typing hint until the admin has created three games` |
 | 120 | ASSISTANT | AI down or not understood | Free text while the AI fails | — | «Не вдалося розібрати текст…» with ➕ Нова гра · 📅 Ігри; open draft shown again | Draft kept | update | `hands text that is not a value to the assistant while a list is open` |
-| 121 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 122 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 123 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 124 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 125 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 121 | SEND SAFETY | Previewed topic moved | Preview, then /link moves the topic, then ✅ | Nothing | «Дані змінилися, нічого не надіслано»; fresh preview | No game | update | `sends nothing when the previewed group moved to another topic and shows a fresh preview` |
+| 122 | SEND SAFETY | Draft identity | Clear, complete, late assistant follow-up | — | — | Revision never reused; writes only over the loaded row | service | `never reuses a revision and writes only over the exact row it loaded` |
+| 123 | SEND SAFETY | Tap on an older message | Menu button on an old message while a draft lives on a newer one | — | The live draft stays | Draft kept | update | `keeps a live draft when a menu button on an older message is tapped` |
+| 124 | SEND SAFETY | Notices only to linked chats | Change or cancel after a chat is unlinked | Only chats still linked, or the admin chat | — | — | service | `sends notices only to chats still linked to the game community or the admin chat, and never to a stand-in` |
+| 125 | SECURITY | Map links | Google Maps link on a new place | — | ⚠️ for other schemes, look-alike hosts, other paths, broken escapes | Coordinates only from allowed hosts | unit | `refuses other schemes, look-alike hosts, paths outside /maps and broken escapes without throwing` |
+| 126 | SECURITY | Sign-up history is append-only | Delete a sign-up event | — | — | Allowed only together with its sign-up | service | `lets a sign-up event go only together with its sign-up, whatever the session settings say` |
+| 127 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 128 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 129 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 130 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 131 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
