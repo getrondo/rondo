@@ -20,6 +20,7 @@ import { loadDraft } from './team-draft.service';
 import { loadTeamInputs } from './team-inputs';
 import { clearResult, isRevertible, resultMark } from './team-result';
 
+import type { Approval } from '../telegram/write-to-chat';
 import type { PostTeam } from './interface/lineup-post.interface';
 import type { DeliveryOutcome, LineupPlan, PlannedDelivery, PublishOutcome } from './interface/publish.interface';
 
@@ -166,33 +167,33 @@ const waitingOutcome = (delivery: PlannedDelivery): DeliveryOutcome => {
     };
 };
 
-interface Approval {
+interface Squad {
     readonly plan: LineupPlan;
     readonly token: string;
     readonly before: string;
 }
 
-type ApprovalOutcome = 'stored' | 'taken' | 'closed' | 'changed';
+type SquadOutcome = 'stored' | 'taken' | 'closed' | 'changed';
 
 // Runs in the transaction of the first receipt, so a posted line-up and its squad are never one without the other
 const storeApproved = Effect.fn('Core.storeApprovedSquad')(function* (
     input: { readonly communityId: string; readonly sessionId: string; readonly actorPersonId: string | null },
-    { plan, token, before }: Approval
+    { plan, token, before }: Squad
 ) {
     const db = yield* Db;
     const now = yield* DateTime.nowAsDate;
     const [own] = yield* db.select({ sessionId: teamDraft.sessionId }).from(teamDraft).where(ownPublish(input.sessionId, token));
 
     if (!isDefined(own)) {
-        return 'taken' satisfies ApprovalOutcome;
+        return 'taken' satisfies SquadOutcome;
     }
 
     if (!(yield* isGameOpen(input.sessionId))) {
-        return 'closed' satisfies ApprovalOutcome;
+        return 'closed' satisfies SquadOutcome;
     }
 
     if ((yield* resultMark(input.sessionId)) !== before || (plan.clearsResult && !(yield* isRevertible(input.sessionId)).isRevertible)) {
-        return 'changed' satisfies ApprovalOutcome;
+        return 'changed' satisfies SquadOutcome;
     }
 
     if (plan.clearsResult) {
@@ -210,7 +211,7 @@ const storeApproved = Effect.fn('Core.storeApprovedSquad')(function* (
         diff: { due: plan.deliveries.filter(entry => entry.isDue).length }
     });
 
-    return 'stored' satisfies ApprovalOutcome;
+    return 'stored' satisfies SquadOutcome;
 });
 
 const releasePublish = Effect.fn('Core.releasePublish')(function* (sessionId: string, token: string) {
@@ -221,25 +222,25 @@ const releasePublish = Effect.fn('Core.releasePublish')(function* (sessionId: st
 const isPosted = (outcome: DeliveryOutcome): boolean => outcome.status === 'sent' || outcome.status === 'edited';
 
 const deliverAll = Effect.fn('Core.deliverLineups')(function* (
-    input: { readonly communityId: string; readonly sessionId: string; readonly actorPersonId: string | null },
-    approval: Approval,
+    input: Parameters<typeof storeApproved>[0] & { readonly approval: Approval | null },
+    squad: Squad,
     claims: readonly Claim[]
 ) {
-    const approved = yield* Ref.make<ApprovalOutcome | null>(null);
-    const approve = storeApproved(input, approval).pipe(Effect.flatMap(outcome => Ref.set(approved, outcome)));
+    const approved = yield* Ref.make<SquadOutcome | null>(null);
+    const approve = storeApproved(input, squad).pipe(Effect.flatMap(outcome => Ref.set(approved, outcome)));
     const delivered: DeliveryOutcome[] = [];
 
     for (const claim of claims) {
         const outcome = yield* deliverOne({
             ...input,
             claim,
-            publishToken: approval.token,
+            publishToken: squad.token,
             onPosted: delivered.some(entry => isPosted(entry)) ? Effect.void : approve
         });
         delivered.push(outcome);
     }
 
-    yield* releasePublish(input.sessionId, approval.token).pipe(
+    yield* releasePublish(input.sessionId, squad.token).pipe(
         Effect.catchCause(cause => Effect.logError('[teams] claim not released', cause))
     );
 
@@ -249,7 +250,12 @@ const deliverAll = Effect.fn('Core.deliverLineups')(function* (
 });
 
 export const publishLineup = Effect.fn('Core.publishLineup')(function* (
-    input: PlanInput & { readonly version: number; readonly fingerprint: string; readonly actorPersonId: string | null }
+    input: PlanInput & {
+        readonly version: number;
+        readonly fingerprint: string;
+        readonly actorPersonId: string | null;
+        readonly approval: Approval | null;
+    }
 ) {
     const { plan, claims, token, before } = yield* withCommunityLock({ id: input.communityId }, startPublish(input));
     const delivered = isDefined(token) ? yield* deliverAll(input, { plan, token, before }, claims) : [];

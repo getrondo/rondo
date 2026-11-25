@@ -12,7 +12,7 @@ const pollRefsOf = Effect.fn('Core.pollRefsOf')(function* (sessionId: string) {
     const db = yield* Db;
 
     return yield* db
-        .select({ chatId: messageRef.chatId, linked: telegramChat.chatId, topicId: telegramChat.topicId })
+        .select({ chatId: messageRef.chatId, isPosting: telegramChat.isPosting, topicId: telegramChat.topicId })
         .from(messageRef)
         .innerJoin(session, eq(session.id, messageRef.entityId))
         .leftJoin(telegramChat, and(eq(telegramChat.chatId, messageRef.chatId), eq(telegramChat.communityId, session.communityId)))
@@ -20,19 +20,29 @@ const pollRefsOf = Effect.fn('Core.pollRefsOf')(function* (sessionId: string) {
         .orderBy(asc(messageRef.createdAt), asc(messageRef.messageId));
 });
 
-// Only chats still linked to the game's community, or a private chat the poll was sent to
-export const audienceOf = Effect.fn('Core.audienceOf')(function* (sessionId: string) {
+type PollRef = Effect.Success<ReturnType<typeof pollRefsOf>>[number];
+
+const unique = (targets: readonly GroupTarget[]) => [
+    ...new Map(targets.map(({ chatId, topicId }): [bigint, GroupTarget] => [chatId, { chatId, topicId }])).values()
+];
+
+// Only groups still linked to the game's community and switched on, or a private chat the poll was sent to
+const writable = (rows: readonly PollRef[]) => unique(rows.filter(row => row.chatId > 0n || row.isPosting === true));
+
+export const audienceOf = (sessionId: string) => pollRefsOf(sessionId).pipe(Effect.map(rows => writable(rows)));
+
+// A game that was never posted falls back, a posted game whose chats are all gone stays silent,
+// and the admin gets what a switched off group would have got
+export const noticeTargets = Effect.fn('Core.noticeTargets')(function* (
+    sessionId: string,
+    fallback: readonly GroupTarget[],
+    admin: readonly GroupTarget[]
+) {
     const rows = yield* pollRefsOf(sessionId);
-    const current = rows.filter(row => row.chatId > 0n || row.linked === row.chatId);
 
-    return [
-        ...new Map(current.map((row): [bigint, GroupTarget] => [row.chatId, { chatId: row.chatId, topicId: row.topicId ?? null }])).values()
-    ];
-});
+    if (!isNotEmptyArray(rows)) {
+        return fallback;
+    }
 
-// A game that was never posted falls back, a posted game whose chats are all gone stays silent
-export const noticeTargets = Effect.fn('Core.noticeTargets')(function* (sessionId: string, fallback: readonly GroupTarget[]) {
-    const rows = yield* pollRefsOf(sessionId);
-
-    return isNotEmptyArray(rows) ? yield* audienceOf(sessionId) : fallback;
+    return rows.some(row => row.isPosting === false) ? unique([...writable(rows), ...admin]) : writable(rows);
 });

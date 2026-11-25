@@ -20,6 +20,7 @@ import { loadTeamInputs, tierLevel } from './team-inputs';
 import type { Action } from '../actions/action.model';
 import type { Locale } from '../i18n/locale';
 import type { GroupTarget } from '../interface/group-target.interface';
+import type { Approval } from '../telegram/write-to-chat';
 import type { BadgeColour } from './interface/badge.interface';
 import type { TeamInputs, Tier } from './interface/team-inputs.interface';
 import type * as Option from 'effect/Option';
@@ -91,6 +92,7 @@ export const executePublishTeams = Effect.fn('Core.executePublishTeams')(functio
         readonly actorPersonId: string | null;
         readonly privateChatId: number | null;
         readonly fallback: Option.Option<GroupTarget>;
+        readonly approval: Approval;
     }
 ) {
     const inputs = yield* loadTeamInputs(context.communityId, action.sessionId);

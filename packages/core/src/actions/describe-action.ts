@@ -12,6 +12,7 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { cancelReasonText, countOf, formatSessionLabel } from '../i18n/messages';
 import { getSession, requireSession } from '../sessions/session.service';
 import { pollFor, previewOf } from '../signups/poll-for';
+import { plainText } from '../utils/plain-text.util';
 
 import type { Locale } from '../i18n/locale';
 import type { Action } from './action.model';
@@ -188,6 +189,12 @@ const describeCreate = Effect.fn('Core.describeCreate')(function* (
     return `${summary} ${word.announce}${where}:\n\n${previewOf(poll)}`;
 });
 
+const noticeText = (action: Extract<Action, { _tag: 'update_session' | 'cancel_session' }>, word: string): string => {
+    const shown = isDefined(action.preview) ? `:\n\n${plainText(action.preview.html)}` : '';
+
+    return action.notify ? ` (${word})${shown}` : '';
+};
+
 export const describeAction = Effect.fn('Core.describeAction')(function* (action: Action, locale: Locale, communityId: string) {
     const word = words[locale];
 
@@ -214,10 +221,10 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
             );
             const changes = [Option.getOrElse(after, () => '?'), ...sizeOf(locale, action)].join(', ');
 
-            return `${word.update}: ${yield* sessionLabel(locale, action.sessionId)} → ${changes}${action.notify ? ` (${word.notify})` : ''}`;
+            return `${word.update}: ${yield* sessionLabel(locale, action.sessionId)} → ${changes}${noticeText(action, word.notify)}`;
         }
         case 'cancel_session': {
-            return `${word.cancel}: ${yield* sessionLabel(locale, action.sessionId)} — ${cancelReasonText(locale, action.reason)}${action.notify ? ` (${word.notify})` : ''}`;
+            return `${word.cancel}: ${yield* sessionLabel(locale, action.sessionId)} — ${cancelReasonText(locale, action.reason)}${noticeText(action, word.notify)}`;
         }
         case 'announce_session': {
             const target = yield* requireSession(communityId, action.sessionId);

@@ -3,7 +3,6 @@ import { person } from '@rondo/db/schema/identity.schema';
 import { pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, asc, count, eq, inArray, isNull, ne } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -13,6 +12,7 @@ import { primaryAccount } from '../identity/primary-account';
 import { syncMember, type TelegramUser } from '../identity/telegram-user';
 import { closedStatuses, isClosed } from '../sessions/session.model';
 import { unsignedSquad } from '../teams/team-inputs';
+import { writeToChat, type Approval } from '../telegram/write-to-chat';
 import { isSettledPoll } from '../utils/is-settled-poll.util';
 
 type PollChoice = 'in' | 'gk' | 'out';
@@ -250,21 +250,26 @@ export const rosterOf = Effect.fn('Core.rosterOf')(function* (sessionId: string)
         .orderBy(asc(signup.createdAt));
 });
 
-export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId: string) {
+export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId: string, approval: Approval) {
     const db = yield* Db;
-    const telegram = yield* Telegram;
     const open = yield* db
         .select()
         .from(telegramPoll)
         .where(and(eq(telegramPoll.sessionId, sessionId), isNull(telegramPoll.closedAt)));
 
     for (const poll of open) {
-        const isSettled = yield* telegram
-            .call('stopPoll', api => api.stopPoll(Number(poll.chatId), poll.messageId))
-            .pipe(
-                Effect.as(true),
-                Effect.catch(error => Effect.logWarning('[poll] not closed', error).pipe(Effect.as(isSettledPoll(error.description))))
-            );
+        const isSettled = yield* writeToChat({
+            target: { chatId: poll.chatId, topicId: null },
+            approval,
+            content: { _tag: 'stop_poll', messageId: poll.messageId }
+        }).pipe(
+            Effect.as(true),
+            Effect.catch(error =>
+                Effect.logWarning('[poll] not closed', error).pipe(
+                    Effect.as(error._tag === 'TelegramApiError' && isSettledPoll(error.description))
+                )
+            )
+        );
 
         if (isSettled) {
             const closedAt = yield* DateTime.nowAsDate;
@@ -282,6 +287,6 @@ export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function*
         .where(and(isNull(telegramPoll.closedAt), inArray(session.status, closedStatuses)));
 
     for (const { sessionId } of games) {
-        yield* closePollsOf(sessionId);
+        yield* closePollsOf(sessionId, { _tag: 'upkeep' });
     }
 });

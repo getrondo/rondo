@@ -4,21 +4,14 @@ import { Db } from '@rondo/db/service/db.service';
 import { and, eq, inArray } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { linkedChatsOf } from '../community/community.repository';
-
-import type { CommunityConfig } from '../config/community-config';
 import type { GroupMessage } from './live-ingest';
 
-interface PostingChat {
-    readonly communityId: string;
-    readonly config: CommunityConfig;
-    readonly chatId: GroupMessage['chatId'];
-}
+type PostingChat = Pick<GroupMessage, 'chatId' | 'isMain'>;
 
-// Games posted in this chat. Games without any post belong to the chats that have no match rules
+// Games posted in this chat. A post without a chat id and a game without any post belong to the main chat
 export const gamesOfChat = Effect.fn('Core.gamesOfChat')(function* <Game extends { readonly id: string }>(
     games: readonly Game[],
-    { communityId, config, chatId }: PostingChat
+    { chatId, isMain }: PostingChat
 ) {
     const db = yield* Db;
     const ids = games.map(({ id }) => id);
@@ -31,10 +24,6 @@ export const gamesOfChat = Effect.fn('Core.gamesOfChat')(function* <Game extends
         .from(extraction)
         .innerJoin(sourceRef, eq(sourceRef.id, extraction.sourceRefId))
         .where(and(inArray(extraction.entityId, ids), inArray(sourceRef.kind, ['poll', 'lineup'])));
-    const otherIds = new Set((config.otherChats ?? []).map(other => BigInt(other.chatId)));
-    const main = (yield* linkedChatsOf(communityId)).find(chat => !otherIds.has(chat.chatId));
-    const isOther = otherIds.has(chatId);
-    const isMain = !isOther && (!isDefined(main) || main.chatId === chatId);
     const isOwn = (post: { readonly chatId: bigint | number | null }): boolean =>
         isDefined(post.chatId) ? BigInt(post.chatId) === chatId : isMain;
 
@@ -42,6 +31,6 @@ export const gamesOfChat = Effect.fn('Core.gamesOfChat')(function* <Game extends
         const posts = [...live, ...imported].filter(({ sessionId }) => sessionId === id);
         const isPolled = posts.some(({ kind }) => kind === 'poll');
 
-        return posts.some(post => isOwn(post) && (post.kind === 'poll' || !isOther || !isPolled)) || (!isOther && isEmptyArray(posts));
+        return posts.some(post => isOwn(post) && (post.kind === 'poll' || isMain || !isPolled)) || (isMain && isEmptyArray(posts));
     });
 });

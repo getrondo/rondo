@@ -24,7 +24,7 @@ import { changeDraft, openDraft } from '../src/teams/team-draft.service';
 import { recordResult } from '../src/teams/team-result';
 import { confirmAsOwner, teamsActionAsOwner } from '../src/testing/confirm-action';
 
-import { publishPlanned, publishWhile, twoGroupGame } from './support/two-group-game';
+import { ownerApproval, publishPlanned, publishWhile, twoGroupGame } from './support/two-group-game';
 
 const blocked = new Map<number, Error>();
 let messageId = 50_000;
@@ -130,7 +130,14 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
         Effect.gen(function* () {
             const db = yield* Db;
             const game = yield* twoGroupGame('delivery-bound', [-7301, -7302], 73_000);
-            const input = { ...game, locale: 'uk' as const, actorPersonId: null, privateChatId: null, fallback: Option.none() };
+            const input = {
+                ...game,
+                locale: 'uk' as const,
+                actorPersonId: null,
+                approval: ownerApproval,
+                privateChatId: null,
+                fallback: Option.none()
+            };
             const plan = yield* planLineup(input);
             yield* db.update(telegramChat).set({ topicId: 9 }).where(eq(telegramChat.chatId, -7302n));
             const moved = yield* publishLineup({ ...input, version: plan.version, fingerprint: plan.fingerprint }).pipe(Effect.flip);
@@ -324,6 +331,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
                 ...game,
                 locale: 'uk' as const,
                 actorPersonId: null,
+                approval: ownerApproval,
                 privateChatId: null,
                 fallback: Option.none(),
                 asNewMessage: true

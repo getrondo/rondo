@@ -42,6 +42,7 @@ const seeded = Effect.fn('test.seeded')(function* (slug: string, orgId: bigint, 
     const organizer = yield* upsertTelegramUser({ id: orgId, firstName: 'Org' });
     yield* ingestGroupMessage(communityId, config, {
         chatId: -orgId,
+        isMain: true,
         messageId: 1,
         sentAt: new Date('2026-05-04T15:00:00Z'),
         senderPersonId: organizer,
@@ -183,6 +184,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
             const once = yield* db.select().from(attendance).where(eq(attendance.sessionId, sessionId));
             yield* ingestGroupMessage(communityId, seedConfig('shared-fc'), {
                 chatId: -120n,
+                isMain: true,
                 messageId: 2,
                 sentAt: new Date('2026-05-11T15:00:00Z'),
                 senderPersonId: organizer,
@@ -447,6 +449,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
                         fingerprint: '',
                         locale: 'uk',
                         actorPersonId: null,
+                        approval: null,
                         privateChatId: null,
                         fallback: Option.none()
                     }).pipe(Effect.ignore)
@@ -568,6 +571,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
             });
             yield* ingestGroupMessage(communityId, seedConfig(slug), {
                 chatId: -300n,
+                isMain: true,
                 messageId: 2,
                 sentAt: new Date('2026-05-11T15:00:00Z'),
                 senderPersonId: organizer,

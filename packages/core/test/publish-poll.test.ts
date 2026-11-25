@@ -16,6 +16,7 @@ import { noticeOf } from '../src/notify/notice-preview';
 import { createSession } from '../src/sessions/session.service';
 import { publishPoll } from '../src/signups/publish-poll';
 import { publishTeamsAction } from '../src/teams/team.service';
+import { linkGroup, ownerApproval } from '../src/testing/link-group';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -88,6 +89,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
     it.effect('leaves no game when Telegram refuses the poll', () =>
         Effect.gen(function* () {
             const { communityId } = yield* seedCommunity(seedConfig('publish-refused-fc'));
+            yield* linkGroup(communityId, { chatId: Number(group.chatId) });
             const refused = refusal('sendPoll', 'Bad Request: not enough rights to send polls');
             const { outcome, status } = yield* failing('sendPoll', refused, confirm(communityId, createAction));
 
@@ -101,6 +103,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
     it.effect('reports an unknown result and never sends again', () =>
         Effect.gen(function* () {
             const { communityId } = yield* seedCommunity(seedConfig('publish-timeout-fc'));
+            yield* linkGroup(communityId, { chatId: Number(group.chatId) });
             const before = countOfCalls('sendPoll');
             const timeout = new Error("Request to 'sendPoll' timed out after 10 seconds");
             const { actionId, outcome, status, result } = yield* failing('sendPoll', timeout, confirm(communityId, createAction));
@@ -120,10 +123,12 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('publish-write-fc'));
+            yield* linkGroup(communityId, { chatId: Number(group.chatId) });
             const publish = Effect.flip(
                 publishPoll({
                     communityId,
                     group,
+                    approval: ownerApproval,
                     note: null,
                     approvedSummary: null,
                     prepare: createSession(gameOf(communityId)),
@@ -148,6 +153,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('publish-early-fc'));
+            yield* linkGroup(communityId, { chatId: Number(group.chatId) });
             const sessionId = yield* createSession(gameOf(communityId));
             yield* db.update(session).set({ status: 'cancelled' }).where(eq(session.id, sessionId));
             const before = countOfCalls('sendPoll');
@@ -165,6 +171,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
     it.effect('sends a card notice only to the previewed audience with the previewed text', () =>
         Effect.gen(function* () {
             const { communityId } = yield* seedCommunity(seedConfig('publish-notice-fc'));
+            yield* linkGroup(communityId, { chatId: Number(group.chatId) });
             const sessionId = yield* createSession(gameOf(communityId));
             const context = {
                 communityId,
@@ -200,10 +207,12 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
     it.effect('checks the kickoff under the game lock right before the poll is sent', () =>
         Effect.gen(function* () {
             const { communityId } = yield* seedCommunity(seedConfig('publish-kickoff-fc'));
+            yield* linkGroup(communityId, { chatId: Number(group.chatId) });
             const before = countOfCalls('sendPoll');
             const late = yield* publishPoll({
                 communityId,
                 group,
+                approval: ownerApproval,
                 note: null,
                 approvedSummary: null,
                 prepare: createSession({ ...gameOf(communityId), localDate: '1969-12-30' }),
@@ -219,6 +228,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('publish-once-fc'));
+            yield* linkGroup(communityId, { chatId: Number(group.chatId) });
             const sessionId = yield* createSession(gameOf(communityId));
             const announce: Action = { _tag: 'announce_session', sessionId };
             const summary = yield* describeAction(announce, 'uk', communityId);
@@ -250,6 +260,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('publish-commit-fc'));
+            yield* linkGroup(communityId, { chatId: Number(group.chatId) });
             const sessionId = yield* createSession(gameOf(communityId));
             const before = countOfCalls('stopPoll');
             const last = yield* confirm(communityId, { ...createAction, localTime: '11:00' });
@@ -265,6 +276,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             const result = yield* publishPoll({
                 communityId,
                 group,
+                approval: ownerApproval,
                 note: null,
                 approvedSummary: null,
                 prepare: Effect.succeed(sessionId),
@@ -280,6 +292,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('publish-teams-fc'));
+            yield* linkGroup(communityId, { chatId: Number(group.chatId) });
             const sessionId = yield* createSession(gameOf(communityId));
             const players = yield* Effect.all(
                 [1, 2, 3, 4].map(index => syncMember(communityId, { id: BigInt(7100 + index), firstName: `Team${index}` }, 'active'))
@@ -328,6 +341,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('publish-pin-fc'));
+            yield* linkGroup(communityId, { chatId: Number(group.chatId) });
             const refused = refusal('pinChatMessage', 'Bad Request: not enough rights to manage pinned messages in the chat');
             const { outcome, status, result } = yield* failing('pinChatMessage', refused, confirm(communityId, createAction));
             const [game] = yield* gamesOf(communityId);
@@ -347,6 +361,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('publish-cut-fc'));
+            yield* linkGroup(communityId, { chatId: Number(group.chatId) });
             const actionId = yield* proposeAction({ communityId, tgUserId: admin, action: createAction, summary: 'create' });
             yield* db
                 .update(pendingAction)

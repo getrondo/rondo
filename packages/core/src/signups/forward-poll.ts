@@ -1,14 +1,13 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { messageRef, pollForward, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { ActionFailedError } from '../error/action-failed.error';
-import { topicOptions } from '../utils/topic-options.util';
+import { writeToChat, type Approval } from '../telegram/write-to-chat';
 
 import { audienceOf } from './audience';
 
@@ -77,9 +76,12 @@ export const unknownForwardsOf = Effect.fn('Core.unknownForwardsOf')(function* (
     return rows;
 });
 
-export const forwardPoll = Effect.fn('Core.forwardPoll')(function* (sessionId: string, target: GroupTarget, resend: string | null) {
+export const forwardPoll = Effect.fn('Core.forwardPoll')(function* (
+    sessionId: string,
+    target: GroupTarget,
+    { resend, approval }: { readonly resend: string | null; readonly approval: Approval }
+) {
     const db = yield* Db;
-    const telegram = yield* Telegram;
     const [poll] = yield* db
         .select()
         .from(telegramPoll)
@@ -101,29 +103,28 @@ export const forwardPoll = Effect.fn('Core.forwardPoll')(function* (sessionId: s
         yield* claimForward(poll.pollId, target, resend);
     }
 
-    const sent = yield* telegram
-        .call('forwardMessage', api => api.forwardMessage(Number(target.chatId), Number(poll.chatId), poll.messageId, topicOptions(target)))
-        .pipe(
-            Effect.catch(error =>
-                Effect.gen(function* () {
-                    if (error.isUncertain) {
-                        return yield* ActionFailedError.make({ failure: { code: 'forward_uncertain' } });
-                    }
+    const content = { _tag: 'forward', fromChatId: poll.chatId, messageId: poll.messageId } as const;
+    const { messageId } = yield* writeToChat({ target, approval, content }).pipe(
+        Effect.catch(error =>
+            Effect.gen(function* () {
+                if (error._tag === 'TelegramApiError' && error.isUncertain) {
+                    return yield* ActionFailedError.make({ failure: { code: 'forward_uncertain' } });
+                }
 
-                    yield* db.delete(pollForward).where(claim);
+                yield* db.delete(pollForward).where(claim);
 
-                    return yield* error;
-                })
-            )
-        );
-    yield* db.update(pollForward).set({ messageId: sent.message_id }).where(claim);
+                return yield* error;
+            })
+        )
+    );
+    yield* db.update(pollForward).set({ messageId }).where(claim);
     yield* db
         .insert(messageRef)
-        .values({ chatId: target.chatId, messageId: sent.message_id, purpose: 'poll', entityType: 'session', entityId: sessionId })
+        .values({ chatId: target.chatId, messageId, purpose: 'poll', entityType: 'session', entityId: sessionId })
         .onConflictDoNothing();
-    yield* telegram
-        .call('pinChatMessage', api => api.pinChatMessage(Number(target.chatId), sent.message_id, { disable_notification: true }))
-        .pipe(Effect.catch(error => Effect.logInfo('[poll] forward not pinned', error)));
+    yield* writeToChat({ target, approval, content: { _tag: 'pin', messageId } }).pipe(
+        Effect.catch(error => Effect.logInfo('[poll] forward not pinned', error))
+    );
 
-    return { sessionId, messageId: sent.message_id };
+    return { sessionId, messageId };
 });

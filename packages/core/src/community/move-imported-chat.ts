@@ -18,13 +18,16 @@ export const moveImportedChat = Effect.fn('Core.moveImportedChat')(function* (fr
     yield* db.update(sourceRef).set({ chatId: to }).where(eq(sourceRef.chatId, from));
     yield* db.update(importedPoll).set({ chatId: to }).where(eq(importedPoll.chatId, from));
     yield* db.update(lineupEntry).set({ chatId: to }).where(eq(lineupEntry.chatId, from));
-    yield* db
-        .update(community)
-        .set({
-            settings: sql`jsonb_set(${community.settings}, '{ingest,otherChats}', (
-                select jsonb_agg(case when (chat ->> 'chatId')::bigint = ${from}::bigint then chat || jsonb_build_object('chatId', ${to}::bigint) else chat end)
-                from jsonb_array_elements(${community.settings} #> '{ingest,otherChats}') chat
-            ))`
-        })
-        .where(sql`${community.settings} #> '{ingest,otherChats}' @> jsonb_build_array(jsonb_build_object('chatId', ${from}::bigint))`);
+
+    for (const path of ['{ingest,otherChats}', '{groups,chats}']) {
+        yield* db
+            .update(community)
+            .set({
+                settings: sql`jsonb_set(${community.settings}, ${path}::text[], (
+                    select jsonb_agg(case when (chat ->> 'chatId')::bigint = ${from}::bigint then chat || jsonb_build_object('chatId', ${to}::bigint) else chat end)
+                    from jsonb_array_elements(${community.settings} #> ${path}::text[]) chat
+                ))`
+            })
+            .where(sql`${community.settings} #> ${path}::text[] @> jsonb_build_array(jsonb_build_object('chatId', ${from}::bigint))`);
+    }
 });
