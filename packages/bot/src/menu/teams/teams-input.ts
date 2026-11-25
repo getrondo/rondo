@@ -129,12 +129,15 @@ const placePaste = Effect.fn('Bot.placePaste')(function* (user: MenuUser, sessio
         const playing = new Set([...state.teams.flat(), ...state.pending, ...placed.teams.flat()]);
         const teams = placed.teams.map(members => members.filter(personId => playing.has(personId)));
         const mentioned = new Set(teams.flat());
-        const next = withChange(state, {
-            teams,
-            pending: [...playing].filter(personId => !mentioned.has(personId)),
-            keepers: [...new Set([...state.keepers, ...placed.keepers])],
-            locks: []
-        });
+        const next: DraftState = {
+            ...withChange(state, {
+                teams,
+                pending: [...playing].filter(personId => !mentioned.has(personId)),
+                keepers: [...new Set([...state.keepers, ...placed.keepers])],
+                locks: []
+            }),
+            keeperEdits: [...new Set([...(state.keeperEdits ?? []), ...placed.keepers])]
+        };
 
         return placed.colours.reduce(
             (current, colour, team) => (isDefined(colour) && team < teams.length ? setColour(current, team, colour) : current),

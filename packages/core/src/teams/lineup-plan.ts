@@ -2,9 +2,10 @@ import { createHash } from 'node:crypto';
 
 import { isDefined, isEmptyArray, isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
 import { telegramChat } from '@rondo/db/schema/org.schema';
+import { importedPoll } from '@rondo/db/schema/platform.schema';
 import { lineupDelivery, ratingEvent } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -41,7 +42,18 @@ const audienceForTeams = Effect.fn('Core.audienceForTeams')(function* (
     fallback: Option.Option<GroupTarget>
 ) {
     const db = yield* Db;
-    const audience = yield* noticeTargets(sessionId, Option.toArray(fallback));
+    // An imported poll's own chat decides: that group when the bot has it, else the admin, never the main group
+    const [imported] = yield* db.select({ chatId: importedPoll.chatId }).from(importedPoll).where(eq(importedPoll.sessionId, sessionId));
+    const [own] = isDefined(imported?.chatId)
+        ? yield* db
+              .select({ chatId: telegramChat.chatId, topicId: telegramChat.topicId })
+              .from(telegramChat)
+              .where(and(eq(telegramChat.chatId, BigInt(imported.chatId)), eq(telegramChat.communityId, communityId)))
+        : [];
+    const audience = yield* noticeTargets(
+        sessionId,
+        isDefined(imported) ? Option.toArray(Option.fromNullishOr(own)) : Option.toArray(fallback)
+    );
     const isPrivate = audience.some(target => target.chatId > 0n);
     const targets = audience.filter(target => target.chatId < 0n);
     const titles = isNotEmptyArray(targets)

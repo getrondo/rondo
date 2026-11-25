@@ -19,7 +19,7 @@ import { syncRoster } from './draft-state';
 import { planLineup, type PlanInput } from './lineup-plan';
 import { loadDraft } from './team-draft.service';
 import { loadTeamInputs } from './team-inputs';
-import { clearResult } from './team-result';
+import { clearResult, isRevertible, resultRecorded } from './team-result';
 
 import type { PostTeam } from './interface/lineup-post.interface';
 import type { DeliveryOutcome, LineupPlan, PlannedDelivery, PublishOutcome } from './interface/publish.interface';
@@ -191,9 +191,10 @@ const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: strin
             const isGone = notFound.test(error.description);
             const isKept = status === 'refused' && isDefined(delivery.messageId) && !isGone;
 
+            // A refused send as a new message keeps the id of the message that is still in the group
             return db
                 .update(lineupDelivery)
-                .set({ status: isKept ? 'sent' : status, messageId: isGone ? null : delivery.messageId })
+                .set({ status: isKept ? 'sent' : status, ...(isGone ? { messageId: null } : {}) })
                 .where(where)
                 .pipe(Effect.as(outcome(status, error.description)));
         })
@@ -259,6 +260,10 @@ const startPublish = Effect.fn('Core.startPublish')(function* (
 
     if (!(yield* isGameOpen(input.sessionId))) {
         return yield* ActionFailedError.make({ reason: gameOver });
+    }
+
+    if (plan.clearsResult && !(yield* isRevertible(input.sessionId)).isRevertible) {
+        return yield* ActionFailedError.make({ reason: resultRecorded });
     }
 
     const token = yield* claimPublish(input.sessionId, now);

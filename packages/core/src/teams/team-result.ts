@@ -1,6 +1,6 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { rating, ratingEvent, team } from '@rondo/db/schema/play.schema';
-import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
+import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import { and, asc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
@@ -10,32 +10,31 @@ import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 import { requireSession } from '../sessions/session.service';
 
-import { squadFingerprint, squadOf } from './lineup-of-draft';
+import { outAfterSquad, squadFingerprint, squadOf } from './lineup-of-draft';
 import { rateResult } from './rate-result';
 import { ratingsOf } from './team-inputs';
 
 const correctionMs = 12 * 60 * 60_000;
 
 export const squadChanged = 'the teams changed after the card was shown';
+export const resultRecorded = 'the result is already recorded';
 
 // Who played: the squad without sign-ups that are out and without no-shows an admin marked
 const playedSquad = Effect.fn('Core.playedSquad')(function* (sessionId: string) {
     const db = yield* Db;
     const members = yield* squadOf(sessionId);
-    const out = yield* db
-        .select({ personId: signup.personId })
-        .from(signup)
-        .where(and(eq(signup.sessionId, sessionId), eq(signup.status, 'out')));
+    const out = yield* outAfterSquad(sessionId);
     const missed = yield* db
         .select({ personId: attendance.personId })
         .from(attendance)
         .where(and(eq(attendance.sessionId, sessionId), eq(attendance.outcome, 'no_show'), eq(attendance.source, 'manual')));
-    const gone = new Set([...out, ...missed].map(row => row.personId));
+    const gone = new Set([...out, ...missed.map(row => row.personId)]);
 
     return members.filter(member => !gone.has(member.personId));
 });
 
-const revertResult = Effect.fn('Core.revertResult')(function* (sessionId: string, isSameEvening: boolean) {
+// A result can be taken back only while none of its players has a later rated game
+export const isRevertible = Effect.fn('Core.isRevertible')(function* (sessionId: string) {
     const db = yield* Db;
     const events = yield* db.select().from(ratingEvent).where(eq(ratingEvent.sessionId, sessionId));
     const later = isNotEmptyArray(events)
@@ -58,8 +57,15 @@ const revertResult = Effect.fn('Core.revertResult')(function* (sessionId: string
               .limit(1)
         : [];
 
-    if (!isSameEvening || isNotEmptyArray(later)) {
-        return yield* ActionFailedError.make({ reason: 'the result is already recorded' });
+    return { events, isRevertible: !isNotEmptyArray(later) };
+});
+
+const revertResult = Effect.fn('Core.revertResult')(function* (sessionId: string, isSameEvening: boolean) {
+    const db = yield* Db;
+    const { events, isRevertible: canRevert } = yield* isRevertible(sessionId);
+
+    if (!isSameEvening || !canRevert) {
+        return yield* ActionFailedError.make({ reason: resultRecorded });
     }
 
     for (const event of events) {
@@ -121,13 +127,16 @@ export const recordResult = Effect.fn('Core.recordResult')(
 
                 const ranks = teams.map(entry => (!isDefined(input.winner) || entry.ordinal === input.winner ? 1 : 2));
                 const recorded = yield* db
-                    .select({ id: ratingEvent.id })
+                    .select({ personId: ratingEvent.personId })
                     .from(ratingEvent)
-                    .where(eq(ratingEvent.sessionId, input.sessionId))
-                    .limit(1);
+                    .where(eq(ratingEvent.sessionId, input.sessionId));
                 const isCorrection = teams.some(entry => isDefined(entry.rank)) || isNotEmptyArray(recorded);
+                // The same winner is recounted when who played changed since it was rated
+                const players = members.filter(member => !member.isGuest);
+                const isSameRoster =
+                    players.length === recorded.length && players.every(member => recorded.some(row => row.personId === member.personId));
 
-                if (isCorrection && teams.every((entry, index) => entry.rank === ranks[index])) {
+                if (isCorrection && isSameRoster && teams.every((entry, index) => entry.rank === ranks[index])) {
                     return { ranks, isCorrection: false };
                 }
 

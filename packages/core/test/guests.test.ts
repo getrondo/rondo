@@ -21,6 +21,39 @@ const attendedAfterFinishing = Effect.fn('test.attendedAfterFinishing')(function
 });
 
 layer(recordedTelegramDbLayer, { timeout: 60_000 })('guests of one game', it => {
+    it.effect('counts a typed squad member whose «no» is older than the squad and keeps the attendance of the undecided', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* seedGame('guests-older-no');
+            const [stayed = '', early = '', late = '', undecided = ''] = yield* Effect.all(
+                [1, 2, 3, 4].map(index => syncMember(communityId, { id: BigInt(88_300 + index), firstName: `Typed${index}` }, 'active'))
+            );
+            yield* db.insert(signup).values([
+                { sessionId, personId: stayed, status: 'in' },
+                { sessionId, personId: early, status: 'out', updatedAt: new Date('2026-12-04T16:00:00Z') },
+                { sessionId, personId: late, status: 'out', updatedAt: new Date('2026-12-04T18:00:00Z') }
+            ]);
+            yield* db.insert(team).values({ sessionId, ordinal: 1, publishedAt: new Date('2026-12-04T17:00:00Z') });
+            yield* db.insert(lineupEntry).values(
+                [stayed, early, late].map((personId, index) => ({
+                    sessionId,
+                    messageId: 1,
+                    teamOrdinal: 1,
+                    position: index + 1,
+                    personId,
+                    resolvedBy: 'manual' as const
+                }))
+            );
+            yield* db.insert(attendance).values([
+                { sessionId, personId: late, outcome: 'attended', source: 'bot' },
+                { sessionId, personId: undecided, outcome: 'attended', source: 'bot' }
+            ]);
+            const attended = yield* attendedAfterFinishing(sessionId);
+
+            expect(attended.map(row => row.personId).toSorted()).toEqual([stayed, early, undecided].toSorted());
+        })
+    );
+
     it.effect('reconciles the automatic attendance with the final roster and keeps what an admin marked', () =>
         Effect.gen(function* () {
             const db = yield* Db;
@@ -97,7 +130,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('guests of one game', it => 
             const [stayed = '', left = '', imported = '', guest = ''] = people;
             yield* db.insert(signup).values([
                 { sessionId, personId: stayed, status: 'in' },
-                { sessionId, personId: left, status: 'out' },
+                { sessionId, personId: left, status: 'out', updatedAt: new Date('2026-12-04T18:00:00Z') },
                 { sessionId, personId: guest, status: 'waitlisted', isGuest: true }
             ]);
             const [squad] = yield* db

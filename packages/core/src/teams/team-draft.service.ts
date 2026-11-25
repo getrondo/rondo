@@ -169,7 +169,10 @@ const seededState = (inputs: TeamInputs, rows: readonly StoredRow[]): DraftState
         count
     );
     const keepers = rows.flatMap(row => (row.isGk === true ? playedIn(row, null) : []));
-    const seeded = syncRoster({ ...initialState({ variants: [], reasons: [], colours, keepers }), teams }, roster);
+    const seeded = syncRoster(
+        { ...initialState({ variants: [], reasons: [], colours, keepers }), teams, keeperEdits: teams.flat() },
+        roster
+    );
     const placed = isNotEmptyArray(seeded.pending) ? rebalanced(inputs, seeded) : seeded;
 
     return { ...placed, history: [], joined: [], left: [], variant: -1 };

@@ -3,8 +3,9 @@ import { createHash } from 'node:crypto';
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
 import { lineupEntry, team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
+import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, max, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { formatSessionLabel } from '../i18n/messages';
@@ -105,6 +106,21 @@ export const squadOf = Effect.fn('Core.squadOf')(function* (sessionId: string) {
 
     // A guest entry never has a person (lineup_entry_player_ck), so only players are left
     return imported.flatMap(row => (isDefined(row.personId) ? [{ ...row, personId: row.personId, isGuest: false }] : []));
+});
+
+// A «no» counts only when it is newer than the posted squad: a squad typed later overrules an older one
+export const outAfterSquad = Effect.fn('Core.outAfterSquad')(function* (sessionId: string) {
+    const db = yield* Db;
+    const [posted] = yield* db
+        .select({ at: max(team.publishedAt) })
+        .from(team)
+        .where(eq(team.sessionId, sessionId));
+    const outs = yield* db
+        .select({ personId: signup.personId, at: signup.updatedAt })
+        .from(signup)
+        .where(and(eq(signup.sessionId, sessionId), eq(signup.status, 'out')));
+
+    return new Set(outs.flatMap(row => (!isDefined(posted?.at) || row.at > posted.at ? [row.personId] : [])));
 });
 
 export const storedTeams = Effect.fn('Core.storedTeams')(function* (sessionId: string) {

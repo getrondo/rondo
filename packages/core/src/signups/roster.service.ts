@@ -56,6 +56,13 @@ const setStatus = Effect.fn('Core.setRosterStatus')(function* (
     }
 });
 
+// Seats: field players who said yes, and squad members who play without a «yes»
+const seatsTaken = Effect.fn('Core.seatsTaken')(function* (sessionId: string) {
+    const unsigned = yield* unsignedSquad(sessionId);
+
+    return (yield* fieldPlayersIn(sessionId, null)) + unsigned.filter(member => member.role === 'field').length;
+});
+
 export const addGuests = Effect.fn('Core.addGuests')(function* (
     change: RosterChange,
     guest: { readonly hostPersonId: string | null; readonly count: number; readonly name: string | null; readonly isOverLimit?: boolean }
@@ -99,7 +106,7 @@ export const addGuests = Effect.fn('Core.addGuests')(function* (
                 const displayName = isNotEmptyString(typed) && guest.count === 1 ? typed : numbered;
                 const [created] = yield* db.insert(person).values({ displayName, source: 'manual' }).returning({ id: person.id });
                 const personId = created?.id ?? '';
-                const taken = yield* fieldPlayersIn(change.sessionId, null);
+                const taken = yield* seatsTaken(change.sessionId);
                 const status = guest.isOverLimit === true || !isDefined(game.capacityMax) || taken < game.capacityMax ? 'in' : 'waitlisted';
                 const [stored] = yield* db
                     .insert(signup)
@@ -148,7 +155,7 @@ export const waitingOf = Effect.fn('Core.waitingOf')(function* (sessionId: strin
         .innerJoin(person, eq(person.id, signup.personId))
         .where(and(eq(signup.sessionId, sessionId), eq(signup.status, 'waitlisted')))
         .orderBy(asc(signup.updatedAt));
-    const taken = yield* fieldPlayersIn(sessionId, null);
+    const taken = yield* seatsTaken(sessionId);
 
     return { waiting: rows, taken };
 });
@@ -219,7 +226,7 @@ export const joinGame = Effect.fn('Core.joinGame')(function* (change: RosterChan
             if (!(yield* arePeopleOf(change.communityId, coming))) {
                 return yield* ActionFailedError.make({ reason: 'player not found in this community' });
             }
-            const free = isDefined(game.capacityMax) ? game.capacityMax - (yield* fieldPlayersIn(change.sessionId, null)) : coming.length;
+            const free = isDefined(game.capacityMax) ? game.capacityMax - (yield* seatsTaken(change.sessionId)) : coming.length;
             const joined = isOverLimit ? coming : coming.slice(0, Math.max(0, free));
             const waiting = coming.filter(personId => !joined.includes(personId));
 

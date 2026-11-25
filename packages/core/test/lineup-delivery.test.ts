@@ -2,7 +2,7 @@ import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
 import { telegramChat } from '@rondo/db/schema/org.schema';
-import { messageRef } from '@rondo/db/schema/platform.schema';
+import { importedPoll, messageRef } from '@rondo/db/schema/platform.schema';
 import { lineupDelivery, ratingEvent, team, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -73,14 +73,18 @@ const publishPlanned = Effect.fn('test.publishPlanned')(function* (
     return yield* publishLineup({ ...input, version: plan.version, fingerprint: plan.fingerprint });
 });
 
-// A recorded result, then the first players of the two teams swapped
-const resultThenSwap = Effect.fn('test.resultThenSwap')(function* (game: { readonly communityId: string; readonly sessionId: string }) {
-    yield* recordResult({ ...game, winner: 1, actorPersonId: null, now: new Date('2026-12-04T20:30:00Z') });
+const swapFirsts = Effect.fn('test.swapFirsts')(function* (game: { readonly communityId: string; readonly sessionId: string }) {
     const { row } = yield* openDraft(game.communityId, game.sessionId, null);
     const [first = '', second = ''] = row.state.teams.map(members => members[0] ?? '');
     yield* changeDraft({ sessionId: game.sessionId, version: row.version, key: 'w', actorPersonId: null }, state =>
         Effect.succeed(swapPlayers(state, first, second))
     );
+});
+
+// A recorded result, then the first players of the two teams swapped
+const resultThenSwap = Effect.fn('test.resultThenSwap')(function* (game: { readonly communityId: string; readonly sessionId: string }) {
+    yield* recordResult({ ...game, winner: 1, actorPersonId: null, now: new Date('2026-12-04T20:30:00Z') });
+    yield* swapFirsts(game);
 });
 
 const statusesOf = (game: { readonly sessionId: string }) =>
@@ -252,6 +256,103 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             const plan = yield* planLineup({ ...game, locale: 'uk', privateChatId: 4242, fallback: Option.none() });
 
             expect(plan.deliveries.map(delivery => delivery.chatId)).toEqual([4242n]);
+        })
+    );
+
+    it.effect('plans an imported poll for its own chat, and for the admin when that chat is not linked', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-imported', [-7981, -7982], 79_800);
+            yield* db.delete(messageRef).where(eq(messageRef.entityId, game.sessionId));
+            yield* db.insert(importedPoll).values({
+                pollId: 'imported-elsewhere',
+                communityId: game.communityId,
+                sessionId: game.sessionId,
+                chatId: -7989,
+                messageId: 1,
+                postedAt: new Date('2026-12-01T10:00:00Z'),
+                kind: 'participation',
+                answers: 2
+            });
+            const fallback = Option.some({ chatId: -7981n, topicId: null });
+            const unlinked = yield* planLineup({ ...game, locale: 'uk', privateChatId: 4244, fallback });
+            yield* db.update(importedPoll).set({ chatId: -7982 }).where(eq(importedPoll.pollId, 'imported-elsewhere'));
+            const linked = yield* planLineup({ ...game, locale: 'uk', privateChatId: 4244, fallback });
+
+            expect(unlinked.deliveries.map(delivery => delivery.chatId)).toEqual([4244n]);
+            expect(linked.deliveries.map(delivery => delivery.chatId)).toEqual([-7982n]);
+        })
+    );
+
+    it.effect('refuses before any send a changed squad whose result can no longer be reverted', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-not-revertible', [-7991, -7992], 79_900);
+            const later = yield* seedGame('delivery-not-revertible-later');
+            yield* publishPlanned(game);
+            yield* resultThenSwap(game);
+            const [event] = yield* db.select().from(ratingEvent).where(eq(ratingEvent.sessionId, game.sessionId));
+            yield* db.insert(ratingEvent).values({
+                personId: event?.personId ?? '',
+                activityId: event?.activityId ?? '',
+                model: 'openskill_pl',
+                sessionId: later.sessionId,
+                muBefore: 25,
+                muAfter: 26,
+                sigmaBefore: 8,
+                sigmaAfter: 7,
+                at: new Date('2027-01-01T00:00:00Z')
+            });
+            const refused = yield* publishPlanned(game).pipe(Effect.flip);
+
+            expect(refused).toMatchObject({ reason: 'the result is already recorded' });
+            expect(sendsTo(-7991)).toEqual(['sendMessage']);
+        })
+    );
+
+    it.effect('recounts the same winner after an attendance correction', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-recount', [-8001, -8002], 80_000);
+            yield* publishPlanned(game);
+            const evening = new Date('2026-12-04T20:30:00Z');
+            yield* recordResult({ ...game, winner: 1, actorPersonId: null, now: evening });
+            const [missing] = yield* db
+                .select({ personId: teamMember.personId })
+                .from(teamMember)
+                .where(eq(teamMember.sessionId, game.sessionId));
+            yield* db
+                .insert(attendance)
+                .values({ sessionId: game.sessionId, personId: missing?.personId ?? '', outcome: 'no_show', source: 'manual' });
+            yield* recordResult({ ...game, winner: 1, actorPersonId: null, now: evening });
+            const rated = yield* db.select().from(ratingEvent).where(eq(ratingEvent.sessionId, game.sessionId));
+
+            expect(rated).toHaveLength(7);
+        })
+    );
+
+    it.effect('keeps the old message id when a new message instead of the refused edit is refused too', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-new-refused', [-8011, -8012], 80_100);
+            yield* publishPlanned(game);
+            const [before] = yield* db.select().from(lineupDelivery).where(eq(lineupDelivery.chatId, -8011n));
+            yield* swapFirsts(game);
+            blocked.set(-8011, refusal('sendMessage', 'Bad Request: not enough rights'));
+            const input = {
+                ...game,
+                locale: 'uk' as const,
+                actorPersonId: null,
+                privateChatId: null,
+                fallback: Option.none(),
+                asNewMessage: true
+            };
+            const plan = yield* planLineup(input);
+            yield* publishLineup({ ...input, version: plan.version, fingerprint: plan.fingerprint });
+            blocked.delete(-8011);
+            const [after] = yield* db.select().from(lineupDelivery).where(eq(lineupDelivery.chatId, -8011n));
+
+            expect(after?.messageId).toBe(before?.messageId);
         })
     );
 

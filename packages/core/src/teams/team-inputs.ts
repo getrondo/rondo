@@ -15,7 +15,7 @@ import { requireSession } from '../sessions/session.service';
 
 import { badgeOfRow } from './badges';
 import { habitsOf } from './habits';
-import { squadOf } from './lineup-of-draft';
+import { outAfterSquad, squadOf } from './lineup-of-draft';
 import { unknownRating } from './rate-result';
 
 import type { BadgeColour } from './interface/badge.interface';
@@ -75,7 +75,7 @@ export const ratingsOf = Effect.fn('Core.ratingsOf')(function* (activityId: stri
     return { seedOf, strengthOf, hasLevels: seedOf.size + learned.size > 0 };
 });
 
-// A game without a bot poll can have a stored squad of players who never signed up. They play unless a sign-up says out
+// Squad members without a «yes» who still play: no sign-up in a game without a bot poll, or a «no» older than the squad
 export const unsignedSquad = Effect.fn('Core.unsignedSquad')(function* (sessionId: string) {
     const db = yield* Db;
     const polls = yield* db
@@ -83,17 +83,19 @@ export const unsignedSquad = Effect.fn('Core.unsignedSquad')(function* (sessionI
         .from(telegramPoll)
         .where(eq(telegramPoll.sessionId, sessionId))
         .limit(1);
+    const signed = yield* db
+        .select({ personId: signup.personId, status: signup.status })
+        .from(signup)
+        .where(eq(signup.sessionId, sessionId));
+    const later = yield* outAfterSquad(sessionId);
+    const isUnsigned = (personId: string): boolean => {
+        const found = signed.find(row => row.personId === personId);
 
-    if (isNotEmptyArray(polls)) {
-        return [];
-    }
-
-    const signed = yield* db.select({ personId: signup.personId }).from(signup).where(eq(signup.sessionId, sessionId));
+        return isDefined(found) ? found.status === 'out' && !later.has(personId) : !isNotEmptyArray(polls);
+    };
     const squad = (yield* squadOf(sessionId)).filter(
         (member, index, list) =>
-            !member.isGuest &&
-            !signed.some(row => row.personId === member.personId) &&
-            list.findIndex(entry => entry.personId === member.personId) === index
+            !member.isGuest && isUnsigned(member.personId) && list.findIndex(entry => entry.personId === member.personId) === index
     );
     const account = primaryAccount(db, sessionId);
     const rows = isNotEmptyArray(squad)

@@ -10,7 +10,7 @@ import * as Option from 'effect/Option';
 
 import { syncMember } from '../src/identity/telegram-user';
 import { addGuests } from '../src/signups/roster.service';
-import { playersOf, swapPlayers, undo } from '../src/teams/draft-state';
+import { playersOf, swapPlayers, toggleKeeper, undo } from '../src/teams/draft-state';
 import { storedTeams } from '../src/teams/lineup-of-draft';
 import { planLineup } from '../src/teams/lineup-plan';
 import { publishLineup } from '../src/teams/publish-lineup';
@@ -400,6 +400,48 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
             const { row } = yield* openDraft(communityId, sessionId, null);
 
             expect(row.state.keepers).toContain(keeper);
+        })
+    );
+
+    it.effect('counts squad members without a sign-up in the seats', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId, people } = yield* playedGame('draft-unsigned-seats', 8, 90_100);
+            const loose = yield* syncMember(communityId, { id: 90_190n, firstName: 'Loose' }, 'active');
+            yield* db.update(session).set({ capacityMax: 7 }).where(eq(session.id, sessionId));
+            yield* importSquad(sessionId, [...people, loose]);
+            const [guest] = yield* addGuests(
+                { communityId, sessionId, actorPersonId: null },
+                { hostPersonId: null, count: 1, name: 'Friend' }
+            );
+
+            expect(guest?.status).toBe('waitlisted');
+        })
+    );
+
+    it.effect('follows a vote to or from goalkeeper and keeps a keeper the admin set by hand', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId, people } = yield* playedGame('draft-keeper-vote', 8, 90_200);
+            const [former = '', , changed = ''] = people;
+            const opened = yield* openDraft(communityId, sessionId, null);
+            const role = (personId: string, value: 'gk' | 'field') =>
+                db
+                    .update(signup)
+                    .set({ role: value })
+                    .where(and(eq(signup.sessionId, sessionId), eq(signup.personId, personId)));
+            yield* role(former, 'field');
+            yield* role(changed, 'gk');
+            const voted = yield* openDraft(communityId, sessionId, null);
+            yield* changeDraft({ sessionId, version: voted.row.version, key: 'k', actorPersonId: null }, state =>
+                Effect.succeed(toggleKeeper(state, changed))
+            );
+            const kept = yield* openDraft(communityId, sessionId, null);
+
+            expect(opened.row.state.keepers).toContain(former);
+            expect(voted.row.state.keepers).toContain(changed);
+            expect(voted.row.state.keepers).not.toContain(former);
+            expect(kept.row.state.keepers).not.toContain(changed);
         })
     );
 
