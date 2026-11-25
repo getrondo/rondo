@@ -52,9 +52,12 @@ const okLabel = (user: MenuUser, action: Action, target: GameTarget, loud: boole
             return menuText(user.locale, meKey);
         }
 
-        const room = full - labelWidth(menuText(user.locale, toKey, { where: '' }));
+        const listed = toKey === 'notifyTo' || toKey === 'cancelTo' ? target.reached : null;
+        const key = isDefined(listed) && (toKey === 'notifyTo' || toKey === 'cancelTo') ? (`${toKey}List` as const) : toKey;
+        const named = isDefined(listed) ? listed.sees : where;
+        const room = full - labelWidth(menuText(user.locale, key, { where: '' }));
 
-        return menuText(user.locale, toKey, { where: fitLabel(where, room) });
+        return menuText(user.locale, key, { where: fitLabel(named, room) });
     };
 
     if (action._tag === 'update_session') {
@@ -93,8 +96,9 @@ export const confirmScreen = Effect.fn('Bot.confirmScreen')(function* (
         return { text: menuText(user.locale, 'deleteAsk', { label }), keyboard: [[ok(false)], nav] } satisfies Screen;
     }
 
-    const also = target.alsoMe ? menuText(user.locale, 'alsoYouSee') : '';
-    const groupSees = menuText(user.locale, 'groupSees', { where: `${escapeHtml(target.where)}${also}` });
+    const groupSees = isDefined(target.reached)
+        ? menuText(user.locale, 'noticeSees', { where: escapeHtml(target.reached.sees) })
+        : menuText(user.locale, 'groupSees', { where: escapeHtml(target.where) });
     const reached = target.me ? menuText(user.locale, 'meSees') : groupSees;
     const sees = target.silent ? menuText(user.locale, 'noAudience') : reached;
     const notes = action._tag === 'update_session' ? yield* changeNotes(user, game, { action, loud: !target.me }) : [];

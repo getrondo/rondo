@@ -177,8 +177,9 @@ without the bot still arrive as poll answers with public voters.
 | 164 | SEND SAFETY | Kickoff under the publish lock | publishPoll for a game whose kickoff has passed | Nothing | — | Refused before sendPoll | service | `checks the kickoff under the game lock right before the poll is sent` |
 | 165 | SEND SAFETY | Card poll bound to its preview | 💾 game → 📣, the game changes, then ✅ | Nothing | «Дані змінилися…» and a fresh preview with the new values | — | update | `posts the card poll only as it was previewed and shows a fresh preview when the game changed` |
 | 166 | SECURITY | Failure outside a confirmation | Card 📣 with a broken poll template | Nothing | Reason as toast and screen with 📅 Ігри · 🏠 Меню; the update succeeds | — | update | `answers a card post with a broken template with the reason, a toast and navigation, never a failed update` |
-| 167 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 168 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 169 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 170 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 171 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 167 | ADMIN AFTER | Notice to another admin's chat | Game posted to me, another admin resent it to himself; card → 🕖 → ✅ | Notice in both private chats | «Так буде у Admin N і в тебе:», button and receipt name him; «мені» only for my chat | Game moved | update | `names another admin whose private chat gets the notice and keeps «me» for my own chat only` |
+| 168 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 169 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 170 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 171 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 172 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |

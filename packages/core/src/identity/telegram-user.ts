@@ -1,9 +1,9 @@
-import { isDefined, isNotEmptyString } from '@rnw-community/shared';
+import { isDefined, isEmptyArray, isNotEmptyString } from '@rnw-community/shared';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { membership } from '@rondo/db/schema/org.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { releaseUsernames } from '@rondo/ingest-telegram/identity/release-usernames';
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
@@ -118,4 +118,20 @@ export const personIdOfTelegramUser = Effect.fn('Core.personIdOfTelegramUser')(f
         .where(eq(telegramAccount.tgUserId, tgUserId));
 
     return row?.personId ?? null;
+});
+
+export const accountNamesOf = Effect.fn('Core.accountNamesOf')(function* (tgUserIds: readonly bigint[]) {
+    const db = yield* Db;
+
+    if (isEmptyArray(tgUserIds)) {
+        return new Map<string, string>();
+    }
+
+    const rows = yield* db
+        .select({ tgUserId: telegramAccount.tgUserId, name: person.displayName })
+        .from(telegramAccount)
+        .innerJoin(person, eq(person.id, telegramAccount.personId))
+        .where(inArray(telegramAccount.tgUserId, [...tgUserIds]));
+
+    return new Map(rows.map(row => [String(row.tgUserId), row.name]));
 });

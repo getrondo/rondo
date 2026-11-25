@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { conversation, deliver, labelsOf, lastPollId } from './support/conversation';
-import { seedSeason } from './support/season';
+import { grantOrganizer, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
@@ -79,6 +79,33 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(receipt).toBe('✅ Змінено, у «Copies» і тобі написано.');
             expect(noticesTo(-29_102).map(call => call.payload.message_thread_id)).toEqual([4]);
             expect(noticesTo(2912)).toHaveLength(1);
+        })
+    );
+
+    it.effect('names another admin whose private chat gets the notice and keeps «me» for my own chat only', () =>
+        Effect.gen(function* () {
+            const { communityId } = yield* seedSeason('r5-notice-other', { groupChatId: null, adminId: 2913 });
+            yield* grantOrganizer(communityId, 2914);
+            const admin = conversation(recorder, adminNumbered(2913));
+            const other = conversation(recorder, adminNumbered(2914));
+            yield* admin.type('/newgame');
+            yield* admin.tap('✅ Надіслати опитування мені');
+            yield* other.type('/games');
+            yield* other.tap('Пт 27.11 19:00');
+            yield* other.tap('✅ Надіслати опитування ще раз');
+            yield* admin.type('/games');
+            yield* admin.tap('Пт 27.11 19:00');
+            yield* admin.tap('🕖 Час');
+            yield* admin.type('20:15');
+            const confirmation = admin.screen();
+            yield* admin.tap('✅ Змінити й написати');
+            const [receipt] = admin.screen().text.split('\n');
+
+            expect(confirmation.text.split('\n')[0]).toBe('Так буде у Admin 2914 і в тебе:');
+            expect(labelsOf(confirmation)[0]?.startsWith('✅ Змінити й написати у Admin')).toBe(true);
+            expect(receipt).toBe('✅ Змінено, у Admin 2914 і тобі написано.');
+            expect(noticesTo(2914)).toHaveLength(1);
+            expect(noticesTo(2913)).toHaveLength(1);
         })
     );
 });

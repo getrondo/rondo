@@ -88,9 +88,12 @@ const afterDone = Effect.fn('Bot.afterGameDone')(function* (user: MenuUser, acti
         const toMe = loud && target.me;
         const audience = toMe ? 'Me' : 'To';
         const key = `${prefix}${loud ? audience : 'Quiet'}` as const;
-        const also = target.alsoMe ? menuText(user.locale, 'alsoYouTold') : '';
+        const listed = loud && !toMe ? target.reached : null;
+        const text = isDefined(listed)
+            ? menuText(user.locale, `${prefix}ToList`, { where: escapeHtml(listed.told) })
+            : menuText(user.locale, key, { where: escapeHtml(where) });
         const card = yield* gameCardScreen(user, sessionId, {
-            text: menuText(user.locale, key, { where: `${escapeHtml(where)}${also}` }),
+            text,
             saysPoll: false
         });
 
