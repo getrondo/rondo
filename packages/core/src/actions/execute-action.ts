@@ -167,7 +167,7 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
         }
         case 'forward_poll': {
             return yield* Effect.gen(function* () {
-                const target = yield* linkedTarget(context, { chatId: action.chatId }, context.requester);
+                const target = yield* linkedTarget(context, { chatId: action.chatId, topicId: action.topicId }, context.requester);
                 const forwarded = yield* forwardPoll(action.sessionId, target, action.resend === true);
 
                 return { sessionId: action.sessionId, messageId: forwarded.messageId };

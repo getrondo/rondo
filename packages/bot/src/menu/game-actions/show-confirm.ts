@@ -1,4 +1,6 @@
+import { isDefined } from '@rnw-community/shared';
 import { ActionSchema, type Action } from '@rondo/core/actions/action.model';
+import { linkedChatsOf } from '@rondo/core/community/community.repository';
 import { moveAdminMessage } from '@rondo/core/menu/admin-state.repository';
 import { isNoticeAction, noticeOf } from '@rondo/core/notify/notice-preview';
 import * as Effect from 'effect/Effect';
@@ -38,7 +40,27 @@ const placeScreen = Effect.fn('Bot.placeGameScreen')(function* (
     }
 });
 
+const withDestination = Effect.fn('Bot.withDestination')(function* (
+    user: MenuUser,
+    action: Extract<Action, { _tag: 'announce_session' | 'forward_poll' }>
+) {
+    const self = String(user.tgUserId);
+
+    if (action.chatId === self) {
+        return action;
+    }
+
+    const chats = yield* linkedChatsOf(user.communityId);
+    const chat = isDefined(action.chatId) ? chats.find(entry => String(entry.chatId) === action.chatId) : chats[0];
+
+    return isDefined(chat) ? { ...action, chatId: String(chat.chatId), topicId: chat.topicId } : action;
+});
+
 const withPreview = Effect.fn('Bot.withPreview')(function* (user: MenuUser, action: Action) {
+    if (action._tag === 'announce_session' || action._tag === 'forward_poll') {
+        return yield* withDestination(user, action);
+    }
+
     if (!isNoticeAction(action)) {
         return action;
     }

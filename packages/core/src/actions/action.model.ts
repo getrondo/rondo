@@ -53,6 +53,7 @@ const DeleteSessionAction = Schema.TaggedStruct('delete_session', { sessionId: S
 const ForwardPollAction = Schema.TaggedStruct('forward_poll', {
     sessionId: Schema.String,
     chatId: Schema.String,
+    topicId: Schema.optional(Schema.NullOr(Schema.Int)),
     resend: Schema.optional(Schema.Boolean)
 });
 

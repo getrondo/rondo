@@ -11,7 +11,7 @@ import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
 const pollsIn = (chatId: number) => recorder.calls.filter(call => call.method === 'sendPoll' && call.payload.chat_id === chatId);
-const sendingData = /^n:\d+:ok$|^c:ok:\d+:1$|^c:pr:|^c:fr:|^c:pa:/u;
+const sendingData = /^n:\d+:ok$|^c:ok:\d+:1$|^c:pr:|^c:fr:/u;
 const sendingWord = /Надіслати|Отправить/u;
 
 layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('sending after the second design round', it => {

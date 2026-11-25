@@ -132,7 +132,11 @@ const resultLines = Effect.fn('Bot.resultLines')(function* (user: MenuUser, draf
     for (const chat of forwards) {
         const where = `«${chat.title}»`;
         const target = { where, isPrivate: false };
-        const forwarded = yield* runConfirmed(user, { _tag: 'forward_poll', sessionId, chatId: chat.id }, { summary: null, target });
+        const forwarded = yield* runConfirmed(
+            user,
+            { _tag: 'forward_poll', sessionId, chatId: chat.id, topicId: chat.topicId },
+            { summary: null, target }
+        );
         lines.push(forwardLine(user, where, forwarded));
     }
 

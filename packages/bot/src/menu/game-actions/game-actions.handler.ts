@@ -133,7 +133,9 @@ const runGameAction = Effect.fn('Bot.runGameAction')(function* (
         return Option.none<string>();
     }
 
-    if (/changed after the preview/u.test(outcome.reason) && isNoticeAction(action)) {
+    const previewed = isNoticeAction(action) || action._tag === 'announce_session' || action._tag === 'forward_poll';
+
+    if (/changed after the preview|link changed/u.test(outcome.reason) && previewed) {
         yield* showConfirm(user, action, { messageId: tap.messageId, expected: tap.expected }, outcome.text);
 
         return Option.none<string>();
@@ -233,7 +235,9 @@ export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: Men
                 ? { _tag: 'announce_session', sessionId: game.value.id, chatId: String(user.tgUserId) }
                 : { _tag: 'announce_session', sessionId: game.value.id };
 
-        return yield* runGameAction(user, chosen, { messageId, revision: '', expected: null });
+        yield* showConfirm(user, chosen, { messageId, expected: null });
+
+        return Option.none<string>();
     }
 
     if (op === 'pr') {

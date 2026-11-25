@@ -103,11 +103,11 @@ const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuBu
     const [firstChat] = state.chats;
     const retryRows =
         state.retry === 'me'
-            ? [[button('retrySendMe', 'pam')]]
+            ? [[button('retryCardMe', 'pam')]]
             : [
                   [
                       {
-                          text: menuText(user.locale, 'resendTo', { where: `«${fitLabel(firstChat?.title ?? '', retryRoom(user))}»` }),
+                          text: menuText(user.locale, 'retryCard', { where: `«${fitLabel(firstChat?.title ?? '', retryRoom(user))}»` }),
                           callback_data: `c:pa:${id}`
                       }
                   ]

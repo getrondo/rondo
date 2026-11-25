@@ -160,8 +160,11 @@ without the bot still arrive as poll answers with public voters.
 | 147 | SEND SAFETY | Drafts at once | Eight writes over one loaded draft, saves and clears at the same time (Postgres) | — | — | One write lands; no revision handed out twice | service | `lands one of many writes over the same loaded draft and never hands a revision out twice` |
 | 148 | ADMIN AFTER | No delete without menu provenance | A game the menu did not create, then 📣 posts its poll | Poll | No 🗑 | — | update | `offers no delete for a game the menu did not create, even after the bot posted its poll` |
 | 149 | SEND SAFETY | Deletes at once | Four deletes of one game at the same moment (Postgres) | Poll stopped once | — | One delete | service | `stops the poll once when two deletes of one game run at the same time` |
-| 150 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 151 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 152 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 153 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 154 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 150 | SEND SAFETY | Card poll to the previewed topic | 💾 game → 📣 → topic moves → ✅ | Nothing, then the poll in the new topic after the fresh preview | «Дані змінилися…» and a fresh confirmation | Poll ref | update | `posts a card poll only to the previewed chat and topic and shows a fresh preview after a move` |
+| 151 | SEND SAFETY | Forwards to the previewed topic | Both groups with the second topic moved; card 📣 Надіслати ще в with another move | Forward only after a fresh preview | Per-group line, then «Дані змінилися…» | — | update | `forwards from the card and after /newgame only to the previewed topic of the other group` |
+| 152 | SEND SAFETY | Retry after an unknown send opens the confirmation | Card → 📣 → ✅ times out → 📣 Немає, надіслати в | — | «Так буде в «Games»:» with ✅ | — | update | `opens the normal confirmation from the button after an unknown poll send on the card` |
+| 153 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 154 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 155 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 156 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 157 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
