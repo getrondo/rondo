@@ -31,6 +31,10 @@ const defaultReply = (method: string, payload: Readonly<Record<string, unknown>>
         };
     }
 
+    if (method === 'stopPoll') {
+        return { id: `stopped-${nextMessageId}`, total_voter_count: 0, is_closed: true };
+    }
+
     return method.startsWith('send') || method === 'forwardMessage'
         ? { message_id: nextMessageId, date: 0, chat: { id: payload.chat_id, type: 'private' } }
         : true;

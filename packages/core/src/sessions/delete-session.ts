@@ -8,6 +8,7 @@ import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, count, eq, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
+import * as Predicate from 'effect/Predicate';
 
 import { adminPersonIds } from '../access/admin-access';
 import { recordAudit } from '../audit/record-audit';
@@ -81,7 +82,7 @@ const stopForDelete = Effect.fn('Core.stopForDelete')(function* (poll: typeof te
     const stopped = yield* telegram
         .call('stopPoll', api => api.stopPoll(Number(poll.chatId), poll.messageId))
         .pipe(
-            Effect.map(result => result.total_voter_count),
+            Effect.map(result => (Predicate.isNumber(result.total_voter_count) ? result.total_voter_count : null)),
             Effect.catch(error =>
                 isSettledPoll(error.description)
                     ? Effect.succeed(null)
@@ -92,7 +93,11 @@ const stopForDelete = Effect.fn('Core.stopForDelete')(function* (poll: typeof te
     yield* db.update(telegramPoll).set({ closedAt }).where(eq(telegramPoll.pollId, poll.pollId));
     const [stored] = yield* db.select({ count: count() }).from(pollVote).where(eq(pollVote.pollId, poll.pollId));
 
-    return isDefined(stopped) && stopped > (stored?.count ?? 0);
+    if (!isDefined(stopped)) {
+        return 'uncounted' as const;
+    }
+
+    return stopped > (stored?.count ?? 0) ? ('unseen' as const) : ('counted' as const);
 });
 
 export const deleteSession = Effect.fn('Core.deleteSession')(function* (input: {
@@ -115,14 +120,17 @@ export const deleteSession = Effect.fn('Core.deleteSession')(function* (input: {
             }
 
             const polls = yield* db.select().from(telegramPoll).where(eq(telegramPoll.sessionId, input.sessionId));
-            let hasUnseenVotes = false;
+            const checks: ('counted' | 'unseen' | 'uncounted')[] = [];
 
             for (const poll of polls) {
-                hasUnseenVotes = (yield* stopForDelete(poll)) || hasUnseenVotes;
+                const check = yield* stopForDelete(poll);
+                checks.push(check);
             }
 
-            if (hasUnseenVotes) {
-                return 'kept' as const;
+            const kept = checks.find(check => check !== 'counted');
+
+            if (isDefined(kept)) {
+                return kept;
             }
 
             yield* db.delete(pollVote).where(eq(pollVote.sessionId, input.sessionId));
@@ -141,9 +149,15 @@ export const deleteSession = Effect.fn('Core.deleteSession')(function* (input: {
         })
     );
 
-    if (outcome === 'kept') {
+    if (outcome === 'unseen') {
         return yield* ActionFailedError.make({
             reason: 'the poll has votes the bot has not seen, so the game is kept and the poll is closed'
+        });
+    }
+
+    if (outcome === 'uncounted') {
+        return yield* ActionFailedError.make({
+            reason: 'the poll was already closed, so its voters cannot be counted and the game is kept'
         });
     }
 

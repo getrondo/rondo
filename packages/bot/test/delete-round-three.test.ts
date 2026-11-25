@@ -118,4 +118,25 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(labelsOf(card).some(label => label.startsWith('🗑'))).toBe(false);
         })
     );
+
+    it.effect('keeps the game and offers cancel when the poll was already closed and its voters cannot be counted', () =>
+        Effect.gen(function* () {
+            const closed = yield* postedGame('r5-delete-closed', 2206, -22_006);
+            yield* closed.admin.type('/games');
+            yield* closed.admin.tap('Пт 27.11 19:00');
+            yield* closed.admin.tap('🗑 Видалити гру');
+            recorder.failures.set('stopPoll', refusal('stopPoll', 'Bad Request: poll has already been closed'));
+            yield* closed.admin.tap('🗑 Видалити назавжди');
+            recorder.failures.delete('stopPoll');
+            const kept = yield* gamesOn(closed.communityId, '2026-11-27');
+            const screen = closed.admin.screen();
+
+            expect(kept).toHaveLength(1);
+            expect(screen.text.split('\n')[0]).toBe(
+                '⚠️ Опитування вже закрите, голоси не перевірити. Гру не видалено, її можна скасувати.'
+            );
+            expect(labelsOf(screen)).toContain('✖️ Скасувати гру');
+            expect(labelsOf(screen).some(label => label.startsWith('🗑'))).toBe(false);
+        })
+    );
 });
