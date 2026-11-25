@@ -121,7 +121,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         })
     );
 
-    it.effect('covers cancellations, changes, deletions and forwards too', () =>
+    it.effect('covers changes, forwards and quiet cancellations too', () =>
         Effect.gen(function* () {
             const { approver, helper, communityId } = yield* twoAdmins('approve-all', 4241, -42_041);
             yield* approver.type('/newgame');
