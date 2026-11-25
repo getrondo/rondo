@@ -3,7 +3,7 @@ import { rating, ratingEvent, team } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/db/service/with-community-lock';
-import { and, asc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
@@ -51,6 +51,18 @@ export const isRevertible = Effect.fn('Core.isRevertible')(function* (sessionId:
         : [];
 
     return { events, isRevertible: !isNotEmptyArray(later) };
+});
+
+export const hasResult = Effect.fn('Core.hasResult')(function* (sessionId: string) {
+    const db = yield* Db;
+    const ranked = yield* db
+        .select({ id: team.id })
+        .from(team)
+        .where(and(eq(team.sessionId, sessionId), isNotNull(team.rank)))
+        .limit(1);
+    const rated = yield* db.select({ id: ratingEvent.id }).from(ratingEvent).where(eq(ratingEvent.sessionId, sessionId)).limit(1);
+
+    return isNotEmptyArray([...ranked, ...rated]);
 });
 
 // Changes whenever a result is recorded, corrected or cleared

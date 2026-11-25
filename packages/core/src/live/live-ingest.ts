@@ -20,7 +20,7 @@ import { findVenueByName, withKnownVenues } from '../venues/venue.service';
 
 import { gamesOfChat } from './games-of-chat';
 import { hasMainRoster } from './has-main-roster';
-import { storeHandSquad } from './store-hand-squad';
+import { isSquadFixed, storeHandSquad } from './store-hand-squad';
 
 import type { CommunityConfig } from '../config/community-config';
 import type { LineupFact, PollFact } from '../extract/fact.model';
@@ -185,6 +185,11 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
     }
 
     const sessionId = found.value;
+
+    if (yield* isSquadFixed(sessionId)) {
+        return;
+    }
+
     const colors = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId));
 
     yield* db.delete(team).where(eq(team.sessionId, sessionId));
