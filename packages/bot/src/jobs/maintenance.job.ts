@@ -1,4 +1,4 @@
-import { expireStaleActions, removeActionTexts } from '@rondo/core/actions/pending-action.service';
+import { removeActionTexts } from '@rondo/core/actions/pending-action.service';
 import { finishPastSessions } from '@rondo/core/sessions/finish-session';
 import { closeFinishedPolls } from '@rondo/core/signups/signup.service';
 import { addMillis } from '@rondo/core/utils/add-millis.util';
@@ -8,6 +8,7 @@ import { and, count, gt, gte, isNull, lt, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { maxAttempts } from '../handle-update';
+import { tellExpired } from '../menu/groups/approval';
 
 import { notifyOwnersOfFailure } from './notify-owners';
 
@@ -36,7 +37,7 @@ const isDone = <Value, Failure, Requirements>(name: string, step: Effect.Effect<
 export const runMaintenance = Effect.fn('Bot.runMaintenance')(function* (now: Date) {
     const db = yield* Db;
     const before = yield* Effect.all([
-        isDone('expiry of proposals', expireStaleActions(now)),
+        isDone('expiry of proposals', tellExpired(now)),
         isDone('removal of proposal texts', removeActionTexts(addMillis(now, -30 * dayMs)))
     ]);
     const games = yield* finishPastSessions(addMillis(now, -finishAfterMs)).pipe(

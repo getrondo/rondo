@@ -1,10 +1,10 @@
 import { expect, layer } from '@effect/vitest';
 import { person } from '@rondo/db/schema/identity.schema';
 import { community, membership, telegramChat } from '@rondo/db/schema/org.schema';
-import { noticeDelivery, pendingAction, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { pendingAction, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { refusal } from '@rondo/telegram/testing/recording-telegram.layer';
-import { eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -16,7 +16,7 @@ import { approverOf, knownChatsOf, loadGroups } from '../src/community/group-set
 import { syncMember, upsertTelegramUser } from '../src/identity/telegram-user';
 import { createSession } from '../src/sessions/session.service';
 import { writeToChat, type Approval } from '../src/telegram/write-to-chat';
-import { confirmAsOwner, proposeAs } from '../src/testing/confirm-action';
+import { confirmAsOwner, decideAs, proposeAs } from '../src/testing/confirm-action';
 import { linkGroup, ownerApproval } from '../src/testing/link-group';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
@@ -65,7 +65,6 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('every write to a group', it
             const switches = yield* Effect.all(contents.map(content => write(-8801, { _tag: 'mention' }, content)));
             const early = sentTo(-8800).length + sentTo(-8801).length;
             const topic = yield* write(-8801, ownerApproval, text);
-            const upkeep = yield* Effect.all(contents.map(content => write(-8801, { _tag: 'upkeep' }, content)));
             const approved = yield* Effect.all(contents.map(content => write(-8801, ownerApproval, content, 5)));
             yield* linkGroup(foreign.communityId, { chatId: -8802 }, 4242);
             const elsewhere = yield* write(-8802, ownerApproval);
@@ -75,7 +74,6 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('every write to a group', it
             expect(new Set([...nobody, ...stranger, ...switches])).toEqual(new Set(['not_approved']));
             expect(early).toBe(0);
             expect(topic).toBe('preview_changed');
-            expect(upkeep.filter(code => code === 'sent')).toHaveLength(1);
             expect(new Set(approved)).toEqual(new Set(['sent']));
             expect(elsewhere).toBe('not_approved');
             expect(privately).toBe('sent');
@@ -100,7 +98,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('every write to a group', it
         })
     );
 
-    it.effect('sends exactly the approved notice once to each destination and keeps a receipt of each', () =>
+    it.effect('sends exactly the approved notice once to each destination and names the ones it missed', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('gate-notice-fc'));
@@ -131,22 +129,13 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('every write to a group', it
             const afterStale = recorder.calls.length;
             const done = yield* confirmAsOwner(communityId, { _tag: 'update_session', sessionId, localTime: '20:30', notify: true });
             const notices = recorder.calls.slice(before).filter(call => call.method === 'sendMessage');
-            const receipts = yield* db
-                .select({ chatId: noticeDelivery.chatId, status: noticeDelivery.status, payload: pendingAction.payload })
-                .from(noticeDelivery)
-                .innerJoin(pendingAction, eq(pendingAction.id, noticeDelivery.actionId))
-                .where(inArray(noticeDelivery.chatId, [-8821n, -8822n]))
-                .orderBy(pendingAction.createdAt);
-            const html = JSON.stringify(receipts.at(-1)?.payload);
-
             expect(proposed?.summary).toContain('🕐 Час: 19:00 → 20:00');
-            expect(refused).toMatchObject({ _tag: 'failed', failure: { code: 'notice_missed', chats: '«First», «Second»' } });
+            expect(refused).toMatchObject({ _tag: 'failed', failure: { code: 'notice_missed', chats: '«First», «Second»', sent: '—' } });
             expect(stale).toMatchObject({ _tag: 'failed', failure: { code: 'preview_changed' } });
             expect(afterStale).toBe(before);
             expect(done._tag).toBe('done');
             expect(notices.map(call => call.payload.chat_id)).toEqual([-8821, -8822]);
-            expect(notices.every(call => html.includes(JSON.stringify(call.payload.text).slice(1, -1)))).toBe(true);
-            expect(receipts.map(row => row.status)).toEqual(['refused', 'refused', 'sent', 'sent']);
+            expect(new Set(notices.map(call => call.payload.text)).size).toBe(1);
         })
     );
 });
@@ -160,43 +149,24 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('a request to the approver',
             const personId = yield* upsertTelegramUser({ id: 8831n, firstName: 'Helper' });
             yield* grantAdmin({ communityId, personId, grantedBy: null });
             const sessionId = yield* gameOf(communityId, '2026-12-04');
-            const decide = (actionId: string, tgUserId: bigint, now?: Date) =>
-                decideAction({
-                    actionId,
-                    tgUserId,
-                    confirm: true,
-                    ...(now instanceof Date ? { now } : {}),
-                    context: (id, requester) =>
-                        mainGroupOf(id).pipe(
-                            Effect.orDie,
-                            Effect.map(group => ({
-                                communityId: id,
-                                timezone: 'Europe/Vienna',
-                                group,
-                                groupLocale: 'uk' as const,
-                                actorPersonId: null,
-                                requester
-                            }))
-                        )
-                });
             const first = yield* proposeAs(communityId, 8831n, { _tag: 'announce_session', sessionId });
             const second = yield* proposeAs(communityId, 8831n, { _tag: 'announce_session', sessionId });
-            const awaiting = yield* decide(first, 8831n);
-            const again = yield* decide(first, 8831n);
+            const awaiting = yield* decideAs(first, 8831n);
+            const again = yield* decideAs(first, 8831n);
             const [row] = yield* db.select().from(pendingAction).where(eq(pendingAction.id, first));
             const sentEarly = sentTo(-8831).length;
-            yield* decide(second, 8831n);
-            const done = yield* decide(first, 42n);
-            const twice = yield* decide(first, 42n);
-            const other = yield* decide(second, 42n);
+            yield* decideAs(second, 8831n);
+            const done = yield* decideAs(first, 42n);
+            const twice = yield* decideAs(first, 42n);
+            const other = yield* decideAs(second, 42n);
             const late = yield* proposeAction({
                 communityId,
                 tgUserId: 8831n,
                 action: { _tag: 'delete_session', sessionId },
                 summary: 'late'
             });
-            yield* decide(late, 8831n);
-            const expired = yield* decide(late, 42n, new Date('2026-12-04T19:00:00Z'));
+            yield* decideAs(late, 8831n);
+            const expired = yield* decideAs(late, 42n, new Date('2026-12-04T19:00:00Z'));
 
             expect(awaiting).toMatchObject({ _tag: 'awaiting', request: { groups: ['Main'], requestedBy: 8831n } });
             expect(again._tag).toBe('missing');
@@ -219,15 +189,15 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('settings of the groups', it
             const db = yield* Db;
             const slug = 'settings-fc';
             const { communityId } = yield* seedCommunity(seedConfig(slug));
-            const approverPersonId = yield* syncMember(communityId, { id: 8841n, firstName: 'Approver' }, 'active');
-            const stranger = yield* upsertTelegramUser({ id: 8842n, firstName: 'Stranger' });
+            yield* syncMember(communityId, { id: 8841n, firstName: 'Approver' }, 'active');
+            yield* upsertTelegramUser({ id: 8842n, firstName: 'Stranger' });
             const chats = [
                 { chatId: -8841, title: 'Main', purpose: 'main' as const, weekdays: ['mon' as const] },
                 { chatId: -8842, title: 'Second', purpose: 'other' as const, weekdays: ['wed' as const], topicId: 3 }
             ];
-            const foreign = yield* loadGroups({ slug, approverPersonId: stranger, chats }).pipe(Effect.flip);
-            yield* loadGroups({ slug, approverPersonId, chats });
-            const link = (chatId: bigint) => linkChat({ communityId, chatId, actorPersonId: null });
+            const foreign = yield* loadGroups({ slug, approverTgUserId: 8842, chats }).pipe(Effect.flip);
+            yield* loadGroups({ slug, approverTgUserId: 8841, chats });
+            const link = (chatId: bigint) => linkChat({ communityId, chatId, title: `Real ${chatId}`, actorPersonId: null });
             const unknown = yield* link(-8849n).pipe(Effect.flip);
             yield* link(-8842n);
             const [notLive] = yield* db.select({ since: community.liveSince }).from(community).where(eq(community.id, communityId));

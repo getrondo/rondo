@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -36,8 +36,7 @@ export interface ActionContext {
 }
 
 interface Decision {
-    readonly actionId: string;
-    readonly approval: Approval;
+    readonly approval: Extract<Approval, { _tag: 'approver' }>;
     readonly summary: string;
 }
 
@@ -102,12 +101,12 @@ const createFrom = (action: Extract<Action, { _tag: 'create_session' }>, { commu
 const executeAction = Effect.fn('Core.executeAction')(function* (
     action: Exclude<Action, { _tag: 'announce_session' }>,
     context: ActionContext,
-    { actionId, approval }: Pick<Decision, 'actionId' | 'approval'>
+    { approval }: Pick<Decision, 'approval'>
 ) {
     const { actorPersonId, communityId, groupLocale: locale } = context;
     const notify = (notice: Extract<Action, { _tag: 'update_session' | 'cancel_session' }>) =>
         notice.notify && isDefined(notice.preview)
-            ? deliverNotices({ actionId, approval, locale, html: notice.preview.html, targets: previewedTargets(notice) })
+            ? deliverNotices({ approval, locale, html: notice.preview.html, targets: previewedTargets(notice) })
             : Effect.void;
 
     switch (action._tag) {
@@ -131,10 +130,13 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
                 yield* requirePreviewed(action, context);
                 const target = yield* requireSession(communityId, action.sessionId);
                 yield* cancelSession(target, action.reason, actorPersonId);
-                yield* closePollsOf(target.id, approval);
+                const kept = yield* closePollsOf(target.id, approval);
                 yield* notify(action);
 
-                return { sessionId: action.sessionId };
+                return {
+                    sessionId: action.sessionId,
+                    ...(isNotEmptyString(kept) ? { openIn: kept } : {})
+                };
             }).pipe(asResult);
         }
         case 'publish_teams': {
@@ -161,13 +163,17 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
         case 'forward_poll': {
             return yield* Effect.gen(function* () {
                 const target = yield* linkedTarget(context, { chatId: action.chatId, topicId: action.topicId }, context.requester);
-                const forwarded = yield* forwardPoll(action.sessionId, target, { resend: action.resend ?? null, approval });
+                const forwarded = yield* forwardPoll(action.sessionId, target, {
+                    resend: action.resend ?? null,
+                    pollId: action.pollId,
+                    approval
+                });
 
                 return { sessionId: action.sessionId, messageId: forwarded.messageId };
             }).pipe(asResult);
         }
         case 'merge_people': {
-            return yield* mergePeople({ ...action, communityId, actorPersonId }).pipe(
+            return yield* mergePeople({ ...action, communityId, actorPersonId, decidedBy: approval.tgUserId }).pipe(
                 Effect.as({ personId: action.intoPersonId }),
                 asResult
             );
@@ -214,33 +220,11 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
 });
 
 const peopleIn = (action: Action): readonly string[] => {
-    switch (action._tag) {
-        case 'merge_people': {
-            return [action.fromPersonId, action.intoPersonId];
-        }
-        case 'link_alias':
-        case 'rename_person':
-        case 'grant_admin':
-        case 'set_rating': {
-            return [action.personId];
-        }
-        case 'unlink_alias':
-        case 'create_person':
-        case 'create_venue':
-        case 'update_venue':
-        case 'create_session':
-        case 'update_session':
-        case 'cancel_session':
-        case 'announce_session':
-        case 'publish_teams':
-        case 'delete_session':
-        case 'forward_poll': {
-            return [];
-        }
-        default: {
-            return [];
-        }
+    if (action._tag === 'merge_people') {
+        return [action.fromPersonId, action.intoPersonId];
     }
+
+    return 'personId' in action ? [action.personId] : [];
 };
 
 export const requireActionScope = Effect.fn('Core.requireActionScope')(function* (action: Action, communityId: string) {

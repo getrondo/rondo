@@ -17,6 +17,7 @@ export interface FailureText {
 
 const keys: Readonly<Record<ActionFailure['code'], MenuKey>> = {
     answer_too_long: 'reasonAnswerLong',
+    approver_merge: 'reasonApproverMerge',
     approver_unreachable: 'reasonApproverUnreachable',
     chat_not_linked: 'reasonChatNotLinked',
     entry_not_found: 'reasonEntryNotFound',

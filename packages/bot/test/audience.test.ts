@@ -102,9 +102,9 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/games');
             yield* admin.tap('Пт 27.11 19:00');
             const card = admin.screen();
-            recorder.failures.set('forwardMessage', refusal('forwardMessage', 'Bad Request: not enough rights'));
             yield* admin.tap('📣 Надіслати ще в «Second»');
             const confirmation = admin.screen().text;
+            recorder.failures.set('forwardMessage', refusal('forwardMessage', 'Bad Request: not enough rights'));
             yield* admin.tap('✅ Надіслати в «Second»');
             recorder.failures.delete('forwardMessage');
             const refused = admin.screen();

@@ -1,9 +1,10 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
-import { pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { telegramChat } from '@rondo/db/schema/org.schema';
+import { pendingAction, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, count, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -14,6 +15,8 @@ import { closedStatuses, isClosed } from '../sessions/session.model';
 import { unsignedSquad } from '../teams/team-inputs';
 import { writeToChat, type Approval } from '../telegram/write-to-chat';
 import { isSettledPoll } from '../utils/is-settled-poll.util';
+
+import { pollChatsOf } from './poll-chats';
 
 type PollChoice = 'in' | 'gk' | 'out';
 
@@ -250,32 +253,56 @@ export const rosterOf = Effect.fn('Core.rosterOf')(function* (sessionId: string)
         .orderBy(asc(signup.createdAt));
 });
 
-export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId: string, approval: Approval) {
+// The groups whose poll could not be closed because nothing may be written there
+export const closePollsOf = Effect.fn('Core.closePollsOf')(function* (sessionId: string, approval: Approval | null) {
     const db = yield* Db;
     const open = yield* db
         .select()
         .from(telegramPoll)
         .where(and(eq(telegramPoll.sessionId, sessionId), isNull(telegramPoll.closedAt)));
+    const kept: boolean[] = [];
 
     for (const poll of open) {
-        const isSettled = yield* writeToChat({
+        const outcome = yield* writeToChat({
             target: { chatId: poll.chatId, topicId: null },
             approval,
             content: { _tag: 'stop_poll', messageId: poll.messageId }
         }).pipe(
-            Effect.as(true),
-            Effect.catch(error =>
-                Effect.logWarning('[poll] not closed', error).pipe(
-                    Effect.as(error._tag === 'TelegramApiError' && isSettledPoll(error.description))
-                )
-            )
+            Effect.as({ isSettled: true, isKept: false }),
+            Effect.tapError(error => Effect.logWarning('[poll] not closed', error)),
+            Effect.catchTags({
+                ActionFailedError: () => Effect.succeed({ isSettled: false, isKept: true }),
+                TelegramApiError: error => Effect.succeed({ isSettled: isSettledPoll(error.description), isKept: false })
+            })
         );
+        kept.push(outcome.isKept);
 
-        if (isSettled) {
+        if (outcome.isSettled) {
             const closedAt = yield* DateTime.nowAsDate;
             yield* db.update(telegramPoll).set({ closedAt }).where(eq(telegramPoll.pollId, poll.pollId));
         }
     }
+
+    const chatIds = kept.includes(true) ? yield* pollChatsOf(sessionId) : [];
+    const rows = isNotEmptyArray(chatIds)
+        ? yield* db.select({ title: telegramChat.title }).from(telegramChat).where(inArray(telegramChat.chatId, chatIds))
+        : [];
+
+    return rows.map(({ title }) => `«${title}»`).join(', ');
+});
+
+// A cancellation the approver allowed also allows the close that did not go through then
+const closureApproval = Effect.fn('Core.closureApproval')(function* (sessionId: string) {
+    const db = yield* Db;
+    const [row] = yield* db
+        .select({ approver: pendingAction.approverTgUserId, requester: pendingAction.requestedByTgUserId })
+        .from(pendingAction)
+        .innerJoin(session, sql`${session.id}::text = ${pendingAction.payload} ->> 'sessionId' and ${session.status} = 'cancelled'`)
+        .where(and(eq(session.id, sessionId), eq(pendingAction.kind, 'cancel_session'), eq(pendingAction.status, 'confirmed')))
+        .orderBy(desc(pendingAction.decidedAt))
+        .limit(1);
+
+    return isDefined(row) ? ({ _tag: 'approver', tgUserId: row.approver ?? row.requester } as const) : null;
 });
 
 export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function* () {
@@ -287,6 +314,7 @@ export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function*
         .where(and(isNull(telegramPoll.closedAt), inArray(session.status, closedStatuses)));
 
     for (const { sessionId } of games) {
-        yield* closePollsOf(sessionId, { _tag: 'upkeep' });
+        const approval = yield* closureApproval(sessionId);
+        yield* closePollsOf(sessionId, approval);
     }
 });

@@ -1,12 +1,14 @@
-import { isDefined } from '@rnw-community/shared';
+import { isNotEmptyString } from '@rnw-community/shared';
 import { recipientsOf } from '@rondo/core/access/recipients-of';
-import { closeUnheard, type ApprovalRequest, type DecisionOutcome } from '@rondo/core/actions/pending-action.service';
+import {
+    closeUnheard,
+    expireStaleActions,
+    takeExpiredRequests,
+    type ApprovalRequest,
+    type DecisionOutcome
+} from '@rondo/core/actions/pending-action.service';
 import { accountNamesOf } from '@rondo/core/identity/telegram-user';
-import { writeToChat } from '@rondo/core/telegram/write-to-chat';
-import { telegramPoll } from '@rondo/db/schema/platform.schema';
-import { Db } from '@rondo/db/service/db.service';
 import { escapeHtml } from '@rondo/telegram/format/html';
-import { and, eq, isNull } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { sendPrivate } from '../../context/private-chat';
@@ -14,12 +16,16 @@ import { buttonBudget } from '../../utils/button-budget.util';
 import { fitLabel } from '../../utils/fit-label.util';
 import { labelWidth } from '../../utils/label-width.util';
 import { failureText } from '../failure-text';
+import { showPoll } from '../game-actions/show-confirm';
 import { menuText } from '../menu-text';
 import { quotedTitles } from '../new-game/audience';
 
 import { tellNoApprover } from './tell';
 
 import type { Locale } from '@rondo/core/i18n/locale';
+
+// Telegram refuses a message over 4096 characters, and the words around the summary need the rest
+const summaryLimit = 3500;
 
 const headOf = (summary: string): string => summary.split('\n')[0] ?? '';
 
@@ -33,32 +39,12 @@ const yesLabel = ({ action, approver, groups }: ApprovalRequest): string => {
     return isQuiet ? menuText(approver.locale, 'requestYes') : menuText(approver.locale, 'sendTo', { where });
 };
 
-// The poll itself is the preview of a forward
-const showPoll = Effect.fn('Bot.showPoll')(function* ({ action, approver }: ApprovalRequest) {
-    const db = yield* Db;
-    const [poll] =
-        action._tag === 'forward_poll'
-            ? yield* db
-                  .select()
-                  .from(telegramPoll)
-                  .where(and(eq(telegramPoll.sessionId, action.sessionId), isNull(telegramPoll.closedAt)))
-            : [];
-
-    if (isDefined(poll)) {
-        yield* writeToChat({
-            target: { chatId: approver.tgUserId, topicId: null },
-            approval: null,
-            content: { _tag: 'forward', fromChatId: poll.chatId, messageId: poll.messageId }
-        });
-    }
-});
-
 const sendRequest = Effect.fn('Bot.sendRequest')(function* (request: ApprovalRequest) {
     const { actionId, approver, groups, requestedBy, summary } = request;
     const { locale } = approver;
     const names = yield* accountNamesOf([requestedBy]);
     const button = (text: string, answer: 'y' | 'e' | 'n') => ({ text, callback_data: `act:${actionId}:${answer}` });
-    yield* showPoll(request);
+    yield* showPoll(approver.tgUserId, request.action);
     yield* sendPrivate(
         Number(approver.tgUserId),
         [
@@ -67,7 +53,7 @@ const sendRequest = Effect.fn('Bot.sendRequest')(function* (request: ApprovalReq
                 where: escapeHtml(quotedTitles(groups, locale))
             }),
             '',
-            `<blockquote>${escapeHtml(summary)}</blockquote>`,
+            `<blockquote>${escapeHtml(summary.length > summaryLimit ? `${summary.slice(0, summaryLimit)}…` : summary)}</blockquote>`,
             menuText(locale, 'requestNothing')
         ].join('\n'),
         {
@@ -104,10 +90,36 @@ export const askApprover = Effect.fn('Bot.askApprover')(function* (request: Appr
     return failureText(locale, failure).text;
 });
 
+const tellRequester = Effect.fn('Bot.tellRequester')(function* (
+    { requestedBy, summary }: { readonly requestedBy: bigint; readonly summary: string },
+    words: (locale: Locale) => string
+) {
+    for (const { tgUserId, locale } of yield* recipientsOf([requestedBy])) {
+        yield* sendPrivate(Number(tgUserId), `${headOf(summary)}\n\n${words(locale)}`).pipe(
+            Effect.catchTag('TelegramApiError', error => Effect.logWarning('[approval] requester not reached', error))
+        );
+    }
+});
+
+const tellTaken = Effect.gen(function* () {
+    for (const request of yield* takeExpiredRequests()) {
+        yield* tellRequester(request, locale => menuText(locale, 'requestExpired'));
+    }
+});
+
+export const tellExpired = (now: Date) => expireStaleActions(now).pipe(Effect.andThen(tellTaken));
+
+export const staysOpen = (locale: Locale, openIn: string | null): string =>
+    isNotEmptyString(openIn) ? `\n${menuText(locale, 'pollStaysOpen', { where: openIn })}` : '';
+
 export const noteOutcome = Effect.fn('Bot.noteOutcome')(function* (
     outcome: DecisionOutcome,
     { decidedBy, isEdited }: { readonly decidedBy: bigint; readonly isEdited: boolean }
 ) {
+    if (outcome._tag === 'expired') {
+        yield* tellTaken;
+    }
+
     if (outcome._tag === 'failed' && outcome.failure.code === 'no_approver') {
         yield* tellNoApprover;
     }
@@ -116,12 +128,13 @@ export const noteOutcome = Effect.fn('Bot.noteOutcome')(function* (
         return;
     }
 
-    for (const { tgUserId, locale } of yield* recipientsOf([outcome.requestedBy])) {
-        const rejected = menuText(locale, isEdited ? 'requestEdited' : 'requestRejected');
-        const said = { done: () => menuText(locale, 'requestDone'), rejected: () => rejected, failed: () => '' };
-        const words = outcome._tag === 'failed' ? failureText(locale, outcome.failure).text : said[outcome._tag]();
-        yield* sendPrivate(Number(tgUserId), `${headOf(outcome.summary)}\n\n${words}`).pipe(
-            Effect.catchTag('TelegramApiError', error => Effect.logWarning('[approval] requester not reached', error))
-        );
-    }
+    yield* tellRequester(outcome, locale => {
+        if (outcome._tag === 'done') {
+            return `${menuText(locale, 'requestDone')}${staysOpen(locale, outcome.openIn)}`;
+        }
+
+        return outcome._tag === 'failed'
+            ? failureText(locale, outcome.failure).text
+            : menuText(locale, isEdited ? 'requestEdited' : 'requestRejected');
+    });
 });

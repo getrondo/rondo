@@ -1,12 +1,12 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { setChatSwitch } from '@rondo/core/community/chat-links';
 import { findLinkedChat } from '@rondo/core/community/community.repository';
-import { findKnownChat } from '@rondo/core/community/group-settings';
-import { community } from '@rondo/db/schema/org.schema';
-import { auditLog } from '@rondo/db/schema/platform.schema';
+import { findKnownChat, isUpgrading } from '@rondo/core/community/group-settings';
+import { addMillis } from '@rondo/core/utils/add-millis.util';
 import { Db } from '@rondo/db/service/db.service';
 import { escapeHtml } from '@rondo/telegram/format/html';
-import { and, eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -18,6 +18,8 @@ import { presenceOf } from './chat-member.handler';
 
 import type { Locale } from '@rondo/core/i18n/locale';
 import type { ChatMember, ChatMemberUpdated } from '@rondo/telegram/webhook/telegram-update.model';
+
+const dayMs = 24 * 60 * 60_000;
 
 const isPresent = (member: ChatMember | undefined): boolean => isDefined(member) && presenceOf(member) === 'active';
 
@@ -34,33 +36,31 @@ const withRights = (locale: Locale, member: ChatMember, title: string): string[]
     return isNotEmptyArray(rights) ? [menuText(locale, 'groupRights', { title: escapeHtml(title), rights: rights.join(', ') })] : [];
 };
 
-// Once per chat, or a stranger could make the bot write to the owners again and again
-const isFirstNotice = Effect.fn('Bot.isFirstNotice')(function* (chatId: number) {
+const noticesPerDay = 3;
+
+// One notice per chat and a few a day, or a stranger could make the bot write to the owners again and again
+const claimUnknown = Effect.fn('Bot.claimUnknownGroup')(function* (chatId: number) {
     const db = yield* Db;
-    const action = 'chat.unknown';
-    const told = yield* db
-        .select({ id: auditLog.id })
-        .from(auditLog)
-        .where(and(eq(auditLog.action, action), eq(auditLog.entityId, String(chatId))));
+    const at = yield* DateTime.nowAsDate;
 
-    if (!isNotEmptyArray(told)) {
-        yield* db.insert(auditLog).values({ actorKind: 'bot', action, entityType: 'telegram_chat', entityId: String(chatId) });
-    }
+    return yield* db.transaction(() =>
+        Effect.gen(function* () {
+            yield* db.execute(sql`select pg_advisory_xact_lock(hashtext('chat.unknown'))`);
+            const inserted = yield* db.execute(sql`
+                insert into audit.log (id, actor_kind, action, entity_type, entity_id, at)
+                select gen_random_uuid(), 'bot', 'chat.unknown', 'telegram_chat', ${String(chatId)}, ${at}
+                where not exists (select 1 from audit.log where action = 'chat.unknown' and entity_id = ${String(chatId)})
+                  and (select count(*) from audit.log where action = 'chat.unknown' and at > ${addMillis(at, -dayMs)}) < ${noticesPerDay}
+                returning id`);
 
-    return !isNotEmptyArray(told);
+            return isNotEmptyArray(inserted.rows);
+        })
+    );
 });
 
 const tellUnknown = Effect.fn('Bot.tellUnknownGroup')(function* (chatId: number, title: string) {
-    if (!(yield* isFirstNotice(chatId))) {
-        return;
-    }
-
-    const db = yield* Db;
-    const screenIn = (locale: Locale) => leaveScreen(locale, chatId, menuText(locale, 'groupUnknown', { title: escapeHtml(title) }));
-    yield* tellOwners(screenIn);
-
-    for (const { id } of yield* db.select({ id: community.id }).from(community)) {
-        yield* tellApprover(id, screenIn);
+    if (!(yield* isUpgrading(title)) && (yield* claimUnknown(chatId))) {
+        yield* tellOwners(locale => leaveScreen(locale, chatId, menuText(locale, 'groupUnknown', { title: escapeHtml(title) })));
     }
 });
 
@@ -87,6 +87,24 @@ const tellLinked = Effect.fn('Bot.tellLinkedGroup')(function* (
     }));
 });
 
+// A group that became a supergroup keeps its settings, and one that was never linked is asked about again
+export const tellMoved = Effect.fn('Bot.tellMoved')(function* (chatId: number) {
+    const linked = yield* findLinkedChat(BigInt(chatId));
+    const known = yield* findKnownChat(chatId);
+
+    if (Option.isSome(known)) {
+        yield* tellApprover(known.value.communityId, locale =>
+            Option.match(linked, {
+                onNone: () => askScreen(locale, known.value.chat, known.value.chat.title),
+                onSome: ({ title }) => ({
+                    text: menuText(locale, 'groupMoved', { title: escapeHtml(title) }),
+                    keyboard: [[{ text: menuText(locale, 'groupOpen'), callback_data: `g:s:${chatId}` }]]
+                })
+            })
+        );
+    }
+});
+
 export const handleBotMembership = Effect.fn('Bot.handleBotMembership')(function* (update: ChatMemberUpdated) {
     const { chat, new_chat_member: member, old_chat_member: before } = update;
 
@@ -104,9 +122,9 @@ export const handleBotMembership = Effect.fn('Bot.handleBotMembership')(function
             onNone: () => tellUnknown(chat.id, chat.title ?? ''),
             onSome: ({ communityId, chat: settings }) =>
                 tellApprover(communityId, locale => {
-                    const screen = askScreen(locale, settings);
+                    const screen = askScreen(locale, settings, chat.title ?? settings.title);
 
-                    return { ...screen, text: [screen.text, ...withRights(locale, member, settings.title)].join('\n\n') };
+                    return { ...screen, text: [screen.text, ...withRights(locale, member, chat.title ?? settings.title)].join('\n\n') };
                 })
         });
     }

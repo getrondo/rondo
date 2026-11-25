@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { bigint, boolean, index, jsonb, pgSchema, primaryKey, smallint, text, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import { createdAt, id, instant, ref, tstzrange, updatedAt, requiredRef } from './columns';
-import { localeEnum, person } from './identity.schema';
+import { localeEnum, person, telegramAccount } from './identity.schema';
 
 export const org = pgSchema('org');
 
@@ -32,7 +32,9 @@ export const community = org.table('community', {
     currency: text('currency').notNull().default('EUR'),
     defaultLocale: localeEnum('default_locale').notNull().default('uk'),
     settings: jsonb('settings').notNull().default({}),
-    approverPersonId: ref('approver_person_id').references(() => person.id, { onDelete: 'set null' }),
+    approverTgUserId: bigint('approver_tg_user_id', { mode: 'bigint' }).references(() => telegramAccount.tgUserId, {
+        onDelete: 'set null'
+    }),
     liveSince: instant('live_since'),
     createdAt: createdAt(),
     updatedAt: updatedAt()

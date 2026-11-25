@@ -1,6 +1,6 @@
-import { isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
 import { aliasLink, person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
-import { membership } from '@rondo/db/schema/org.schema';
+import { community, membership } from '@rondo/db/schema/org.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/db/service/with-community-lock';
@@ -95,6 +95,7 @@ interface MergeInput {
     readonly fromPersonId: string;
     readonly intoPersonId: string;
     readonly actorPersonId: string | null;
+    readonly decidedBy?: bigint;
 }
 
 const confirmMergedNicknames = Effect.fn('Core.confirmMergedNicknames')(function* (
@@ -159,6 +160,17 @@ export const mergePeople = Effect.fn('Core.mergePeople')((input: MergeInput) =>
 
             if (erased > 0) {
                 return yield* ActionFailedError.make({ failure: { code: 'person_not_found' } });
+            }
+
+            const [home] = yield* db
+                .select({ approver: community.approverTgUserId })
+                .from(community)
+                .where(eq(community.id, input.communityId));
+            const approver = accounts.find(({ tgUserId }) => tgUserId === home?.approver);
+
+            // Nobody else may put their account beside the one that speaks for the groups
+            if (isDefined(approver) && approver.tgUserId !== input.decidedBy) {
+                return yield* ActionFailedError.make({ failure: { code: 'approver_merge' } });
             }
 
             if (isNotEmptyArray(rejected)) {

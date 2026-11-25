@@ -13,7 +13,7 @@ import { actionContextFor } from '../context/action-context';
 import { editPrivate } from '../context/private-chat';
 import { failureText } from '../menu/failure-text';
 import { gameCardScreen } from '../menu/games.screen';
-import { askApprover, noteOutcome } from '../menu/groups/approval';
+import { askApprover, noteOutcome, staysOpen } from '../menu/groups/approval';
 import { handleMenuTap } from '../menu/menu-callback.handler';
 import { menuText } from '../menu/menu-text';
 import { menuUserOf } from '../menu/menu-user';
@@ -28,7 +28,7 @@ const actionData = /^act:([\da-f-]{36}):([eny])$/u;
 const outcomeText = (locale: Locale, outcome: DecisionOutcome): string => {
     switch (outcome._tag) {
         case 'done': {
-            return `${outcome.summary}\n\n${text(locale, 'done')}`;
+            return `${outcome.summary}\n\n${text(locale, 'done')}${staysOpen(locale, outcome.openIn)}`;
         }
         case 'failed': {
             return `${outcome.summary}\n\n${failureText(locale, outcome.failure).text}`;

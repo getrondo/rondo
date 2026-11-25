@@ -7,7 +7,7 @@ import { community, membership, telegramChat } from '@rondo/db/schema/org.schema
 import { processedUpdate } from '@rondo/db/schema/platform.schema';
 import { teamDraft } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { makeRecorder, refusal } from '@rondo/telegram/testing/recording-telegram.layer';
+import { defaultReply, makeRecorder, refusal } from '@rondo/telegram/testing/recording-telegram.layer';
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
@@ -19,8 +19,14 @@ import { grantOrganizer, seedSeason } from './support/season';
 import { teamsGame } from './support/teams-game';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
-const recorder = makeRecorder();
-const sentTo = (chatId: number) => recorder.calls.filter(call => call.payload.chat_id === chatId);
+const titles = new Map<unknown, string>();
+const recorder = makeRecorder((method, payload) =>
+    method === 'getChat' && titles.has(payload.chat_id)
+        ? { id: payload.chat_id, type: 'supergroup', title: titles.get(payload.chat_id) }
+        : defaultReply(method, payload)
+);
+// Reading the title is no write
+const sentTo = (chatId: number) => recorder.calls.filter(call => call.payload.chat_id === chatId && call.method !== 'getChat');
 const full = { can_pin_messages: true };
 
 const write = (chatId: number, from: number, text: string, topic?: number) =>
@@ -32,6 +38,17 @@ const write = (chatId: number, from: number, text: string, topic?: number) =>
             from: { id: from, is_bot: false, first_name: `Admin ${from}` },
             text,
             ...(isDefined(topic) ? { message_thread_id: topic, is_topic_message: true } : {})
+        }
+    });
+
+const migrate = (from: number, to: number, adminId: number) =>
+    deliver({
+        message: {
+            message_id: 5,
+            date: 0,
+            chat: { id: from, type: 'group', title: 'Games' },
+            from: { id: adminId, is_bot: false, first_name: `Admin ${adminId}` },
+            migrate_to_chat_id: to
         }
     });
 
@@ -111,17 +128,16 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         })
     );
 
-    it.effect('tells the approver and the owner once about an unknown group, stores nothing it hears there and leaves with one tap', () =>
+    it.effect('tells the owner about a few unknown groups a day, once each, stores nothing it hears there and leaves with one tap', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const chatId = -41_031;
             const { admin } = yield* season('groups-unknown', 4131, []);
             const owner = conversation(recorder, adminNumbered(42));
             const ownerBefore = owner.seen().length;
-            yield* botIs(chatId, 'left', 'member');
-            yield* botIs(chatId, 'left', 'member');
-            const told = admin.screen();
-            const ownerTold = owner.seen().slice(ownerBefore);
+            yield* botIs(chatId, 'left', 'member', { title: 'Strangers' });
+            yield* botIs(chatId, 'left', 'member', { title: 'Strangers' });
+            const told = owner.seen().slice(ownerBefore);
             const rows = (yield* db.select().from(processedUpdate)).length;
             const people = (yield* db.select().from(membership)).length;
             yield* write(chatId, 4131, 'Понеділок, 4 травня, 19.00 Park');
@@ -133,15 +149,19 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                     new_chat_member: { status: 'member', user: { id: 77_001, is_bot: false, first_name: 'X' } }
                 }
             });
+            const rowsAfter = (yield* db.select().from(processedUpdate)).length;
+            yield* owner.tap('🚪 Вийти з групи');
+            yield* Effect.all([1, 2, 3, 4].map(index => botIs(chatId - index, 'left', 'member', { title: 'Strangers' })));
 
-            expect(told.text).toBe('❓ Мене додали в незнайому групу «Games». Я там нічого не пишу й не читаю.');
-            expect(ownerTold.map(message => message.text)).toEqual([told.text]);
-            expect((yield* db.select().from(processedUpdate)).length).toBe(rows);
+            expect(told.map(message => message.text)).toEqual([
+                '❓ Мене додали в незнайому групу «Strangers». Я там нічого не пишу й не читаю.'
+            ]);
+            expect(admin.screen().text).toBe('');
+            expect(rowsAfter).toBe(rows);
             expect((yield* db.select().from(membership)).length).toBe(people);
             expect(yield* chatRow(chatId)).toBeUndefined();
-            expect(sentTo(chatId)).toEqual([]);
-            yield* admin.tap('🚪 Вийти з групи');
             expect(sentTo(chatId).map(call => call.method)).toEqual(['leaveChat']);
+            expect(owner.seen().length - ownerBefore).toBe(3);
         })
     );
 
@@ -184,6 +204,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 knownChat(chatId),
                 knownChat(second, { title: 'Second', purpose: 'other', weekdays: ['wed'] })
             ]);
+            titles.set(second, 'Second');
             yield* grantOrganizer(communityId, 4152);
             const other = conversation(recorder, adminNumbered(4152));
             yield* botIs(chatId, 'left', 'administrator', full);
@@ -241,21 +262,91 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* season('groups-migrate', 4171, [knownChat(-4171, { topicId: 6 })]);
-            yield* deliver({
-                message: {
-                    message_id: 5,
-                    date: 0,
-                    chat: { id: -4171, type: 'group', title: 'Games' },
-                    from: { id: 4171, is_bot: false, first_name: 'Admin 4171' },
-                    migrate_to_chat_id: -41_071
-                }
-            });
+            yield* migrate(-4171, -41_071, 4171);
             const admin = conversation(recorder, adminNumbered(4171));
             yield* botIs(-41_071, 'left', 'administrator', full);
             yield* admin.tap('✅ Так, підключити');
             const [row] = yield* db.select().from(telegramChat).where(eq(telegramChat.communityId, communityId));
 
             expect(row).toMatchObject({ chatId: -41_071n, purpose: 'main', topicId: 6 });
+        })
+    );
+
+    it.effect('raises no alarm when the membership of the new supergroup comes before the move, and asks about it then', () =>
+        Effect.gen(function* () {
+            const { admin } = yield* season('groups-migrate-late', 4172, [knownChat(-4172)]);
+            const owner = conversation(recorder, adminNumbered(42));
+            const before = owner.seen().length;
+            yield* botIs(-41_072, 'left', 'administrator', full);
+            const early = admin.screen().text;
+            yield* migrate(-4172, -41_072, 4172);
+            const asked = admin.screen();
+            yield* admin.tap('✅ Так, підключити');
+
+            expect(early).toBe('');
+            expect(owner.seen()).toHaveLength(before);
+            expect(asked.text).toContain('👋 Мене додали в «Games»');
+            expect((yield* chatRow(-41_072))?.purpose).toBe('main');
+        })
+    );
+
+    it.effect('keeps the switch of a linked group that becomes a supergroup and tells the approver', () =>
+        Effect.gen(function* () {
+            const { communityId, admin } = yield* season('groups-migrate-linked', 4173, [knownChat(-4173)]);
+            yield* linkGroup(communityId, { chatId: -4173, title: 'Games' }, 4173);
+            yield* botIs(-41_073, 'left', 'administrator', full);
+            const early = admin.screen().text;
+            yield* migrate(-4173, -41_073, 4173);
+
+            expect(early).toBe('');
+            expect(admin.screen().text).toBe('🔁 «Games» стала супергрупою. Налаштування ті самі, у групу нічого не надіслано.');
+            expect((yield* chatRow(-41_073))?.isPosting).toBe(true);
+        })
+    );
+
+    it.effect('shows and stores the real title, warns when the settings name it otherwise and lists what is not linked yet', () =>
+        Effect.gen(function* () {
+            const { admin } = yield* season('groups-title', 4174, [knownChat(-41_074, { title: 'Football' })]);
+            titles.set(-41_074, '<b>Other</b>');
+            yield* admin.type('/menu');
+            yield* admin.tap('👥 Групи');
+            const listed = labelsOf(admin.screen());
+            yield* admin.tap('➕ Football');
+            const asked = admin.screen().text;
+            yield* admin.tap('✅ Так, підключити');
+            recorder.failures.set('getChat', refusal('getChat', 'Bad Request: chat not found'));
+            yield* admin.press('g:y:-41074');
+            recorder.failures.delete('getChat');
+
+            expect(listed).toContain('➕ Football');
+            expect(asked).toContain('👋 Мене додали в «&lt;b&gt;Other&lt;/b&gt;».');
+            expect(asked).toContain('⚠️ У налаштуваннях вона називається «Football». Перевір, чи це та група.');
+            expect((yield* chatRow(-41_074))?.title).toBe('<b>Other</b>');
+            expect(admin.screen().text).toContain('Мене немає в «Football». Спершу додай мене в групу.');
+        })
+    );
+
+    it.effect('can give up the topic, and takes it only while the sender is still the approver', () =>
+        Effect.gen(function* () {
+            const chatId = -41_075;
+            const { communityId, admin } = yield* season('groups-topic-off', 4175, [knownChat(chatId)]);
+            yield* admin.press(`g:t:${chatId}`);
+            const prompt = admin.screen();
+            yield* admin.tap('✖️ Не треба');
+            yield* write(chatId, 4175, 'тут', 4);
+            const given = yield* chatRow(chatId);
+            yield* admin.press(`g:t:${chatId}`);
+            yield* linkGroup(communityId, { chatId: -41_076, title: 'Elsewhere', purpose: 'other' }, 42);
+            yield* write(chatId, 4175, 'тут', 4);
+            const replaced = yield* chatRow(chatId);
+            yield* linkGroup(communityId, { chatId, title: 'Games', topicId: 4 }, 4175);
+            yield* admin.press(`g:t:${chatId}`);
+            yield* write(chatId, 4175, 'Понеділок', 9);
+
+            expect(prompt.text).toContain('анонімний адміністратор');
+            expect(given).toBeUndefined();
+            expect(replaced).toBeUndefined();
+            expect((yield* chatRow(chatId))?.topicId).toBe(9);
         })
     );
 

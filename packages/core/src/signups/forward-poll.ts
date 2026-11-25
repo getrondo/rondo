@@ -79,7 +79,7 @@ export const unknownForwardsOf = Effect.fn('Core.unknownForwardsOf')(function* (
 export const forwardPoll = Effect.fn('Core.forwardPoll')(function* (
     sessionId: string,
     target: GroupTarget,
-    { resend, approval }: { readonly resend: string | null; readonly approval: Approval }
+    { resend, pollId, approval }: { readonly resend: string | null; readonly pollId?: string | undefined; readonly approval: Approval }
 ) {
     const db = yield* Db;
     const [poll] = yield* db
@@ -89,6 +89,11 @@ export const forwardPoll = Effect.fn('Core.forwardPoll')(function* (
 
     if (!isDefined(poll)) {
         return yield* ActionFailedError.make({ failure: { code: 'no_open_poll' } });
+    }
+
+    // The previewed poll goes out, never another one that took its place
+    if (isDefined(pollId) && poll.pollId !== pollId) {
+        return yield* ActionFailedError.make({ failure: { code: 'preview_changed' } });
     }
 
     const audience = yield* audienceOf(sessionId);

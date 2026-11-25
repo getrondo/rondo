@@ -12,7 +12,7 @@ Nothing is posted in a group until the organizer (the approver) allowed that gro
    ```json
    {
        "slug": "<community-slug>",
-       "approverPersonId": "<person id>",
+       "approverTgUserId": 123456789,
        "chats": [
            { "chatId": -1001, "title": "Main", "purpose": "main", "weekdays": ["mon", "fri"], "topicId": 5 },
            { "chatId": -1002, "title": "Second", "purpose": "other", "weekdays": ["wed"] }
@@ -44,10 +44,14 @@ Nothing is posted in a group until the organizer (the approver) allowed that gro
 
 ## What happens
 
-- **Unknown group:** nothing is linked, posted or stored. The approver and the owner are told once, with 🚪 to leave.
+- **Unknown group:** nothing is linked, posted or stored. The owner is told once per group, three times a day at most, with 🚪 to leave.
 - **Removed or no longer an admin:** the approver is told and the group is back to "only me".
 - **Waitlist mentions:** off until the approver turns on **🔔 Кликати з резерву без мене** in that group.
-- **Opening a group** drops every open proposal: what was prepared before needs a fresh approval.
+- **Opening a group** drops the open proposals for that group: what was prepared before needs a fresh approval.
+- **The approver** is one Telegram account. Loading another one voids the requests the old one still had. Only the approver can
+  approve a merge of the person behind that account.
+- **Closing a poll** closes every forwarded copy, also one the bot never saw. A copy in a linked group needs the approver's ✅. The
+  nightly job closes a group's poll only after such a cancellation, so the polls of played games stay open there.
 - **Imports:** linking the main group sets `org.community.live_since`. After that the importer needs
   `RONDO_ACKNOWLEDGE_LIVE=true` and refuses games after that day, so export only older messages. Unlinking keeps the date.
   Clear it by hand only when the group was linked by mistake and nothing was recorded live.

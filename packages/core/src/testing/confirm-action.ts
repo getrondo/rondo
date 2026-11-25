@@ -62,3 +62,23 @@ export const confirmAsOwner = Effect.fn('Testing.confirmAsOwner')(function* (com
         context: id => Effect.succeed({ communityId: id, timezone: 'Europe/Vienna', group, groupLocale: 'uk', actorPersonId: null })
     });
 });
+
+export const decideAs = (actionId: string, tgUserId: bigint, now?: Date) =>
+    decideAction({
+        actionId,
+        tgUserId,
+        confirm: true,
+        ...(isDefined(now) ? { now } : {}),
+        context: (communityId, requester) =>
+            mainGroupOf(communityId).pipe(
+                Effect.orDie,
+                Effect.map(group => ({
+                    communityId,
+                    timezone: 'Europe/Vienna',
+                    group,
+                    groupLocale: 'uk' as const,
+                    actorPersonId: null,
+                    requester
+                }))
+            )
+    });

@@ -12,13 +12,11 @@ import * as Layer from 'effect/Layer';
 import * as Random from 'effect/Random';
 
 import { Access, grantAdmin } from '../src/access/admin-access';
-import { decideAction } from '../src/actions/pending-action.service';
 import { linkChat, setChatSwitch } from '../src/community/chat-links';
-import { mainGroupOf } from '../src/community/community.repository';
 import { loadGroups } from '../src/community/group-settings';
 import { syncMember } from '../src/identity/telegram-user';
 import { createSession } from '../src/sessions/session.service';
-import { proposeAs } from '../src/testing/confirm-action';
+import { decideAs, proposeAs } from '../src/testing/confirm-action';
 import { linkGroup } from '../src/testing/link-group';
 import { localPostgresLayer, raceDatabaseUrl } from '../src/testing/local-postgres.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
@@ -34,23 +32,16 @@ const racers = 8;
 const withoutPostgres = isEmptyString(raceDatabaseUrl);
 const postgresLayer = Layer.mergeAll(localPostgresLayer(raceDatabaseUrl), recordingTelegramLayer(recorder), Access.layerFor([42n]));
 
-const decide = (actionId: string, tgUserId: bigint) =>
-    decideAction({
-        actionId,
-        tgUserId,
-        confirm: true,
-        context: (communityId, requester) =>
-            mainGroupOf(communityId).pipe(
-                Effect.orDie,
-                Effect.map(group => ({
-                    communityId,
-                    timezone: 'Europe/Vienna',
-                    group,
-                    groupLocale: 'uk' as const,
-                    actorPersonId: null,
-                    requester
-                }))
-            )
+const gameOf = (communityId: string) =>
+    createSession({
+        communityId,
+        timezone: 'Europe/Vienna',
+        localDate: '2030-12-04',
+        localTime: '19:00',
+        venueId: null,
+        capacityMax: null,
+        title: null,
+        actorPersonId: null
     });
 
 const atOnce = <Value, Failure, Requirements>(effect: (index: number) => Effect.Effect<Value, Failure, Requirements>) =>
@@ -69,21 +60,12 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('approvals
             yield* linkGroup(communityId, { chatId });
             const personId = yield* syncMember(communityId, { id: BigInt(base), firstName: 'Helper' }, 'active');
             yield* grantAdmin({ communityId, personId, grantedBy: null });
-            const sessionId = yield* createSession({
-                communityId,
-                timezone: 'Europe/Vienna',
-                localDate: '2030-12-04',
-                localTime: '19:00',
-                venueId: null,
-                capacityMax: null,
-                title: null,
-                actorPersonId: null
-            });
+            const sessionId = yield* gameOf(communityId);
             const actionId = yield* proposeAs(communityId, BigInt(base), { _tag: 'announce_session', sessionId });
             const other = yield* proposeAs(communityId, BigInt(base), { _tag: 'announce_session', sessionId });
-            const asked = yield* atOnce(() => decide(actionId, BigInt(base)));
-            yield* decide(other, BigInt(base));
-            const taps = yield* atOnce(index => decide(index % 2 === 0 ? actionId : other, 42n));
+            const asked = yield* atOnce(() => decideAs(actionId, BigInt(base)));
+            yield* decideAs(other, BigInt(base));
+            const taps = yield* atOnce(index => decideAs(index % 2 === 0 ? actionId : other, 42n));
             const polls = recorder.calls.filter(call => call.method === 'sendPoll' && call.payload.chat_id === chatId);
             const stored = yield* db.select().from(telegramPoll).where(eq(telegramPoll.sessionId, sessionId));
 
@@ -100,19 +82,25 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('approvals
             const base = yield* Random.nextIntBetween(1_000_000_000, 2_000_000_000);
             const slug = `race-link-${base}`;
             const { communityId } = yield* seedCommunity(seedConfig(slug));
-            const approverPersonId = yield* syncMember(communityId, { id: BigInt(base), firstName: 'Approver' }, 'active');
+            yield* syncMember(communityId, { id: BigInt(base), firstName: 'Approver' }, 'active');
             const ids = Array.from({ length: racers }, (_, index) => -95_000_000 - base * 10 - index);
             yield* atOnce(index =>
                 loadGroups({
                     slug,
-                    approverPersonId,
+                    approverTgUserId: base,
                     chats: [{ chatId: ids[index] ?? 0, title: `Group ${index}`, purpose: 'main', weekdays: [] }]
-                }).pipe(Effect.andThen(linkChat({ communityId, chatId: BigInt(ids[index] ?? 0), actorPersonId: null })), Effect.ignore)
+                }).pipe(
+                    Effect.andThen(linkChat({ communityId, chatId: BigInt(ids[index] ?? 0), title: 'Main', actorPersonId: null })),
+                    Effect.ignore
+                )
             );
             const linked = yield* db.select().from(telegramChat).where(eq(telegramChat.communityId, communityId));
             const mains = linked.filter(chat => chat.purpose === 'main');
             const [row] = yield* db.select({ since: community.liveSince }).from(community).where(eq(community.id, communityId));
-            const proposals = yield* atOnce(() => proposeAs(communityId, 42n, { _tag: 'create_person', displayName: 'Old' }));
+            const sessionId = yield* gameOf(communityId);
+            const proposals = yield* atOnce(() =>
+                proposeAs(communityId, 42n, { _tag: 'announce_session', sessionId, chatId: String(mains[0]?.chatId) })
+            );
             yield* atOnce(() => setChatSwitch({ communityId, chatId: mains[0]?.chatId ?? 0n, actorPersonId: null }, { isPosting: true }));
             const open = yield* db
                 .select()

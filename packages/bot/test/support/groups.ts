@@ -29,20 +29,20 @@ export const seedGroups = Effect.fn('test.seedGroups')(function* (
     const personId = yield* upsertTelegramUser({ id: BigInt(approverId), firstName: `Admin ${approverId}`, languageCode: 'uk' });
     yield* grantAdmin({ communityId: community.communityId, personId, grantedBy: null });
     yield* ensureMembership(community.communityId, personId);
-    yield* loadGroups({ slug: community.slug, approverPersonId: personId, chats });
+    yield* loadGroups({ slug: community.slug, approverTgUserId: approverId, chats });
 });
 
 let updateId = 700_000;
 
 type Status = 'member' | 'administrator' | 'left' | 'kicked' | 'restricted';
 
-export const botIs = (chatId: number, from: Status, to: Status, rights: Readonly<Record<string, boolean>> = {}) => {
+export const botIs = (chatId: number, from: Status, to: Status, rights: Readonly<Record<string, boolean | string>> = {}) => {
     updateId += 1;
 
     return handleUpdate({
         update_id: updateId,
         my_chat_member: {
-            chat: groupOf(chatId),
+            chat: groupOf(chatId, String(rights.title ?? 'Games')),
             from: { id: 5, is_bot: false, first_name: 'Adder' },
             date: 0,
             old_chat_member: { status: from, user: bot },

@@ -25,7 +25,11 @@ import type { SessionView } from '@rondo/core/sessions/session.model';
 const full = buttonBudget(1);
 
 const groupHtml = Effect.fn('Bot.groupHtml')(function* (user: MenuUser, game: SessionView, action: Action) {
-    if (action._tag === 'announce_session' || action._tag === 'forward_poll') {
+    if (action._tag === 'forward_poll') {
+        return menuText(user.locale, 'forwardBelow');
+    }
+
+    if (action._tag === 'announce_session') {
         const poll = yield* pollFor(user.communityId, game, null);
 
         return pollHtml(poll);

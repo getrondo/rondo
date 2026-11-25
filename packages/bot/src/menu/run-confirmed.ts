@@ -11,14 +11,14 @@ import * as Predicate from 'effect/Predicate';
 import { actionContextFor } from '../context/action-context';
 
 import { failureText, type FailureTarget } from './failure-text';
-import { askApprover, noteOutcome } from './groups/approval';
+import { askApprover, noteOutcome, staysOpen } from './groups/approval';
 
 import type { MenuUser } from './screen.interface';
 import type { Action } from '@rondo/core/actions/action.model';
 import type { ActionFailure } from '@rondo/core/error/action-failed.error';
 
 type ConfirmedOutcome =
-    | { readonly _tag: 'done'; readonly sessionId: string | null }
+    | { readonly _tag: 'done'; readonly sessionId: string | null; readonly note: string }
     | { readonly _tag: 'asked'; readonly text: string }
     | { readonly _tag: 'failed'; readonly text: string; readonly uncertain: boolean; readonly failure: ActionFailure };
 
@@ -45,6 +45,7 @@ export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (
 
         return {
             _tag: 'done',
+            note: staysOpen(user.locale, escapeHtml(outcome.openIn ?? '')),
             sessionId: sessionId ?? ('sessionId' in action && isDefined(action.sessionId) ? action.sessionId : null)
         } satisfies ConfirmedOutcome;
     }
@@ -54,7 +55,9 @@ export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (
     }
 
     yield* noteOutcome(outcome, { decidedBy: user.tgUserId, isEdited: false });
-    const failure: ActionFailure = outcome._tag === 'failed' ? outcome.failure : { code: 'unexpected' };
+    const failed: ActionFailure = outcome._tag === 'failed' ? outcome.failure : { code: 'unexpected' };
+    const failure: ActionFailure =
+        failed.code === 'notice_missed' ? { ...failed, chats: escapeHtml(failed.chats), sent: escapeHtml(failed.sent) } : failed;
     const postsPoll = action._tag === 'announce_session' || (action._tag === 'create_session' && action.announce);
     const shown =
         failure.code === 'result_uncertain' && !postsPoll

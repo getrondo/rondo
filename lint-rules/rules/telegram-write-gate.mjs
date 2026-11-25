@@ -1,4 +1,4 @@
-const ALLOWED = new Set(['answerCallbackQuery', 'getWebhookInfo', 'leaveChat', 'sendChatAction', 'setMyCommands', 'setWebhook']);
+const ALLOWED = new Set(['answerCallbackQuery', 'getChat', 'getWebhookInfo', 'leaveChat', 'sendChatAction', 'setMyCommands', 'setWebhook']);
 
 const isNamed = (node, name) => node.type === 'Identifier' && node.name === name;
 

@@ -92,6 +92,7 @@ const words = {
         publishPoll: '📣 Опублікувати опитування',
         forward: '📣 Відкрити опитування для',
         remove: '🗑 Видалити гру',
+        closes: 'Опитування закриється і в пересланих копіях',
         self: 'тобі в особисті',
         teams: '👥 Опублікувати склади',
         sendTo: 'Надішлю',
@@ -121,6 +122,7 @@ const words = {
         publishPoll: '📣 Опубликовать опрос',
         forward: '📣 Открыть опрос для',
         remove: '🗑 Удалить игру',
+        closes: 'Опрос закроется и в пересланных копиях',
         self: 'тебе в личку',
         teams: '👥 Опубликовать составы',
         sendTo: 'Отправлю',
@@ -160,6 +162,16 @@ const chatTitle = Effect.fn('Core.chatTitle')(function* (chatId: string, locale:
     return row?.title ?? chatId;
 });
 
+// A topic has no name the bot could know, its number tells two topics apart
+const placeOfPoll = Effect.fn('Core.placeOfPoll')(function* (
+    { chatId, topicId }: { readonly chatId?: string | undefined; readonly topicId?: number | null | undefined },
+    locale: Locale
+) {
+    const topic = isDefined(topicId) ? ` 🧵 ${topicId}` : '';
+
+    return isDefined(chatId) ? ` «${yield* chatTitle(chatId, locale)}»${topic}` : '';
+});
+
 const sizeOf = (
     locale: Locale,
     { fieldsPlanned, capacityMax }: { readonly fieldsPlanned?: number | null; readonly capacityMax?: number | null }
@@ -184,9 +196,7 @@ const describeCreate = Effect.fn('Core.describeCreate')(function* (
     const game = { ...action, ...display, fieldsPlanned: action.fieldsPlanned ?? null };
     const poll = yield* pollFor(communityId, game, action.note);
 
-    const where = isDefined(action.chatId) ? ` «${yield* chatTitle(action.chatId, locale)}»` : '';
-
-    return `${summary} ${word.announce}${where}:\n\n${previewOf(poll)}`;
+    return `${summary} ${word.announce}${yield* placeOfPoll(action, locale)}:\n\n${previewOf(poll)}`;
 });
 
 const noticeText = (action: Extract<Action, { _tag: 'update_session' | 'cancel_session' }>, word: string): string => {
@@ -224,16 +234,16 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
             return `${word.update}: ${yield* sessionLabel(locale, action.sessionId)} → ${changes}${noticeText(action, word.notify)}`;
         }
         case 'cancel_session': {
-            return `${word.cancel}: ${yield* sessionLabel(locale, action.sessionId)} — ${cancelReasonText(locale, action.reason)}${noticeText(action, word.notify)}`;
+            return `${word.cancel}: ${yield* sessionLabel(locale, action.sessionId)} — ${cancelReasonText(locale, action.reason)}. ${word.closes}${noticeText(action, word.notify)}`;
         }
         case 'announce_session': {
             const target = yield* requireSession(communityId, action.sessionId);
             const poll = yield* pollFor(communityId, target, action.note);
 
-            return `${word.publishPoll}: ${formatSessionLabel(locale, target)}\n\n${previewOf(poll)}`;
+            return `${word.publishPoll}${yield* placeOfPoll(action, locale)}: ${formatSessionLabel(locale, target)}\n\n${previewOf(poll)}`;
         }
         case 'delete_session': {
-            return `${word.remove}: ${yield* sessionLabel(locale, action.sessionId)}`;
+            return `${word.remove}: ${yield* sessionLabel(locale, action.sessionId)}. ${word.closes}`;
         }
         case 'forward_poll': {
             return `${word.forward} «${yield* chatTitle(action.chatId, locale)}»: ${yield* sessionLabel(locale, action.sessionId)}`;

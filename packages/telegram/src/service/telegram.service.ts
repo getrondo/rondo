@@ -14,20 +14,22 @@ const timeoutSeconds = 10;
 const leastAttemptMs = 2000;
 const onceOnly = new Set(['pinChatMessage', 'answerCallbackQuery', 'sendChatAction', 'setMyCommands']);
 
-export interface CallOptions {
-    readonly maxWaitSeconds: number;
+export interface CallOptions<Failure = never, Requirements = never> {
+    readonly maxWaitSeconds?: number;
+    // Runs again before every later attempt, and its failure stops the call
+    readonly guard?: Effect.Effect<unknown, Failure, Requirements>;
 }
 
 export interface TelegramClient {
     readonly botId: number;
-    readonly call: <Value>(
+    readonly call: <Value, Failure = never, Requirements = never>(
         method: string,
         request: (api: Api) => Promise<Value>,
-        options?: CallOptions
-    ) => Effect.Effect<Value, TelegramApiError>;
+        options?: CallOptions<Failure, Requirements>
+    ) => Effect.Effect<Value, TelegramApiError | Failure, Requirements>;
 }
 
-export const maxWaitInTransaction: CallOptions = { maxWaitSeconds: 3 };
+export const maxWaitInTransaction = { maxWaitSeconds: 3 };
 
 const failureOf = (method: string, error: unknown): TelegramApiError =>
     TelegramApiError.make({
@@ -37,11 +39,11 @@ const failureOf = (method: string, error: unknown): TelegramApiError =>
         retryAfterSeconds: error instanceof GrammyError && error.error_code === 429 ? (error.parameters.retry_after ?? null) : null
     });
 
-const requestUntil = <Value>(
+const requestUntil = <Value, Failure, Requirements>(
     request: Effect.Effect<Value, TelegramApiError>,
-    deadline: number,
-    waitLeftMs: number
-): Effect.Effect<Value, TelegramApiError> =>
+    guard: Effect.Effect<unknown, Failure, Requirements>,
+    { deadline, waitLeftMs }: { readonly deadline: number; readonly waitLeftMs: number }
+): Effect.Effect<Value, TelegramApiError | Failure, Requirements> =>
     request.pipe(
         Effect.catchTag('TelegramApiError', error =>
             Effect.gen(function* () {
@@ -52,8 +54,9 @@ const requestUntil = <Value>(
                 }
 
                 yield* Effect.sleep(waitMs);
+                yield* guard;
 
-                return yield* requestUntil(request, deadline, waitLeftMs - waitMs);
+                return yield* requestUntil(request, guard, { deadline, waitLeftMs: waitLeftMs - waitMs });
             })
         )
     );
@@ -71,7 +74,9 @@ export const makeTelegramClient = (api: Api): TelegramClient => ({
         });
 
         return Clock.currentTimeMillis.pipe(
-            Effect.flatMap(startedAt => requestUntil(once, startedAt + timeoutSeconds * 1000, maxWaitMs)),
+            Effect.flatMap(startedAt =>
+                requestUntil(once, options?.guard ?? Effect.void, { deadline: startedAt + timeoutSeconds * 1000, waitLeftMs: maxWaitMs })
+            ),
             Effect.timeoutOrElse({ duration: timeoutSeconds * 1000, orElse: () => Effect.fail(timedOut) }),
             Effect.withSpan(`Telegram.${method}`)
         );

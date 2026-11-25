@@ -6,18 +6,27 @@ import { community, telegramChat } from '@rondo/db/schema/org.schema';
 import { auditLog, pendingAction } from '@rondo/db/schema/platform.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { makeRecorder, refusal } from '@rondo/telegram/testing/recording-telegram.layer';
+import { defaultReply, makeRecorder, refusal } from '@rondo/telegram/testing/recording-telegram.layer';
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
+import { runTeamsTick } from '../src/jobs/teams.job';
+
 import { conversation, deliver, forwardsTo, labelsOf, lastPollId, pollsTo } from './support/conversation';
 import { advanceNow } from './support/fixed-clock';
-import { gamesOn, grantOrganizer, seedSeason } from './support/season';
+import { gamesOn, grantOrganizer, seedSeason, thursdayMorning } from './support/season';
 import { teamsGame } from './support/teams-game';
 import { buttonData, openOverview } from './support/teams-screen';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
-const recorder = makeRecorder();
+const blocked = new Set<unknown>();
+const recorder = makeRecorder((method, payload) => {
+    if (method === 'sendMessage' && blocked.has(payload.chat_id)) {
+        throw refusal(method, 'Forbidden: bot was kicked', 403);
+    }
+
+    return defaultReply(method, payload);
+});
 const sentTo = (chatId: number) => recorder.calls.filter(call => call.payload.chat_id === chatId);
 const writesTo = (chatId: number) => sentTo(chatId).map(call => call.method);
 
@@ -201,7 +210,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* helper.tapOn(form, '✅ Отправить в «Games»');
             recorder.failures.delete('sendMessage');
             const unheard = helper.screen().text;
-            yield* db.update(community).set({ approverPersonId: null }).where(eq(community.id, communityId));
+            yield* db.update(community).set({ approverTgUserId: null }).where(eq(community.id, communityId));
             yield* proposed(helper);
             const rows = yield* db.select().from(pendingAction).where(eq(pendingAction.communityId, communityId));
 
@@ -210,6 +219,104 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(sentTo(42).some(call => String(call.payload.text).includes('Організатор недоступний'))).toBe(true);
             expect(rows.map(row => row.status)).toEqual(['failed', 'failed']);
             expect(sentTo(-42_061)).toEqual([]);
+        })
+    );
+});
+
+layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('what a request and its result say', it => {
+    it.effect('previews a forward with the poll itself and sends nothing when it cannot be shown', () =>
+        Effect.gen(function* () {
+            const { approver, communityId } = yield* twoAdmins('say-forward', 4401, -44_001);
+            yield* approver.type('/newgame');
+            yield* approver.tap('✅ Надіслати');
+            yield* linkGroup(communityId, { chatId: -44_002, title: 'Second', purpose: 'other' });
+            yield* approver.type('/games');
+            yield* approver.tap('Пт 27.11 19:00');
+            const card = approver.screen();
+            recorder.failures.set('forwardMessage', refusal('forwardMessage', 'Bad Request: message to forward not found'));
+            yield* approver.tap('📣 Надіслати ще в «Second»');
+            recorder.failures.delete('forwardMessage');
+            const hidden = approver.screen();
+            yield* approver.tapOn(card, '📣 Надіслати ще в «Second»');
+            const shown = approver.screen().text;
+            const [preview] = forwardsTo(recorder, 4401).slice(-1);
+            yield* approver.tap('✅ Надіслати в «Second»');
+            const [sent] = forwardsTo(recorder, -44_002);
+
+            expect(labelsOf(hidden).some(label => label.startsWith('✅'))).toBe(false);
+            expect(shown).toContain('Надішлю саме це опитування 👇');
+            expect(preview?.payload.message_id).toBe(sent?.payload.message_id);
+            expect(forwardsTo(recorder, -44_002)).toHaveLength(1);
+        })
+    );
+
+    it.effect('tells the other admin once, within the hour, that the time for an approval ran out', () =>
+        Effect.gen(function* () {
+            const { helper } = yield* twoAdmins('say-expired', 4411, -44_011);
+            yield* proposed(helper);
+            yield* advanceNow(40 * 60 * 60_000);
+            yield* runTeamsTick(new Date(thursdayMorning + 40 * 60 * 60_000));
+            const told = helper.screen().text;
+            const count = helper.seen().length;
+            yield* runTeamsTick(new Date(thursdayMorning + 41 * 60 * 60_000));
+
+            expect(told).toContain('⌛ Время на подтверждение истекло. В группу ничего не отправлено.');
+            expect(helper.seen()).toHaveLength(count);
+            expect(sentTo(-44_011)).toEqual([]);
+        })
+    );
+
+    it.effect('names the group whose poll stays open, what was sent and what was not', () =>
+        Effect.gen(function* () {
+            const { approver, communityId } = yield* twoAdmins('say-result', 4421, -44_021);
+            yield* linkGroup(communityId, { chatId: -44_021, title: '<i>Games</i>' });
+            yield* approver.type('/newgame');
+            yield* approver.tap('✅ Надіслати');
+            yield* linkGroup(communityId, { chatId: -44_022, title: 'Second', purpose: 'other' });
+            const card = (time: string) => approver.type('/games').pipe(Effect.andThen(approver.tap(`Пт 27.11 ${time}`)));
+            yield* card('19:00');
+            yield* approver.tap('📣 Надіслати ще в «Second»');
+            yield* approver.tap('✅ Надіслати в «Second»');
+            yield* card('19:00');
+            yield* approver.tap('🕖 Час');
+            yield* approver.tap('19:30');
+            blocked.add(-44_022);
+            yield* approver.tap('✅ Змінити й написати');
+            blocked.clear();
+            const partial = approver.screen().text;
+            yield* linkGroup(communityId, { chatId: -44_022, title: 'Second', purpose: 'other', isPosting: false });
+            yield* card('19:30');
+            yield* approver.tap('✖️ Скасувати гру');
+            yield* approver.tap('Погода');
+            yield* approver.tap('Скасувати, у групу не писати');
+
+            expect(partial).toContain('Надіслано: «&lt;i&gt;Games&lt;/i&gt;». Не дійшло або невідомо: «Second».');
+            expect(approver.screen().text).toContain('Опитування ще відкрите в «&lt;i&gt;Games&lt;/i&gt;», «Second»');
+            expect(writesTo(-44_021)).not.toContain('stopPoll');
+        })
+    );
+
+    it.effect('fits the request into one message', () =>
+        Effect.gen(function* () {
+            const { helper, approver, communityId } = yield* twoAdmins('say-long', 4431, -44_031);
+            const action = {
+                _tag: 'create_session' as const,
+                localDate: '2026-12-11',
+                localTime: '19:00',
+                venueId: null,
+                capacityMax: null,
+                title: null,
+                announce: true,
+                chatId: '-44031'
+            };
+            const actionId = yield* proposeAction({ communityId, tgUserId: 4432n, action, summary: `Гра\n\n${'<'.repeat(5000)}` });
+            yield* helper.type('/menu');
+            yield* helper.press(`act:${actionId}:y`);
+            const sent = String(sentTo(4431).at(-1)?.payload.text);
+
+            expect(approver.screen().buttons.length).toBeGreaterThan(0);
+            expect(sent.split('&lt;').length).toBeGreaterThan(3000);
+            expect(sent.replaceAll('&lt;', '<').length).toBeLessThan(4096);
         })
     );
 });

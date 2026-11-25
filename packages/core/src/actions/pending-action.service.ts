@@ -1,15 +1,16 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { pendingAction } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq, isNull, lt, ne, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 import * as Cause from 'effect/Cause';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 import * as Option from 'effect/Option';
+import * as Predicate from 'effect/Predicate';
 import * as Schema from 'effect/Schema';
 
-import { approverOf } from '../community/group-settings';
+import { approverOf, isApproverOf } from '../community/group-settings';
 import { failureOf, type ActionFailure } from '../error/action-failed.error';
 import { findSameGame } from '../sessions/session.service';
 import { addMillis } from '../utils/add-millis.util';
@@ -22,7 +23,6 @@ import type { Locale } from '../i18n/locale';
 
 export interface ApprovalRequest {
     readonly actionId: string;
-    readonly communityId: string;
     readonly requestedBy: bigint;
     readonly groups: readonly string[];
     readonly action: Action;
@@ -40,7 +40,7 @@ export type DecisionOutcome =
     | { readonly _tag: 'expired' }
     | { readonly _tag: 'awaiting'; readonly request: ApprovalRequest }
     | { readonly _tag: 'rejected'; readonly summary: string; readonly requestedBy: bigint; readonly action: Action | null }
-    | { readonly _tag: 'done'; readonly summary: string; readonly requestedBy: bigint }
+    | { readonly _tag: 'done'; readonly summary: string; readonly requestedBy: bigint; readonly openIn: string | null }
     | { readonly _tag: 'failed'; readonly summary: string; readonly requestedBy: bigint; readonly failure: ActionFailure };
 
 export const proposeAction = Effect.fn('Core.proposeAction')(function* (input: {
@@ -113,7 +113,11 @@ const failProposal = Effect.fn('Core.failProposal')(function* (actionId: string,
 });
 
 // A write to a group is decided by the approver alone, whoever prepared it
-const passOn = Effect.fn('Core.passOn')(function* (proposed: typeof pendingAction.$inferSelect, action: Action, context: ActionContext) {
+const passOn = Effect.fn('Core.passOn')(function* (
+    proposed: typeof pendingAction.$inferSelect,
+    action: Action,
+    { context, now }: { readonly context: ActionContext; readonly now: Date }
+) {
     const groups = isDefined(proposed.approverTgUserId) ? [] : yield* groupsTouched(action, context);
 
     if (!isNotEmptyArray(groups)) {
@@ -130,7 +134,7 @@ const passOn = Effect.fn('Core.passOn')(function* (proposed: typeof pendingActio
         return yield* refuse({ code: 'no_approver' });
     }
 
-    if (approver.tgUserIds.includes(requestedBy)) {
+    if (approver.tgUserId === requestedBy) {
         return null;
     }
 
@@ -141,18 +145,43 @@ const passOn = Effect.fn('Core.passOn')(function* (proposed: typeof pendingActio
     }
 
     const kickoff = yield* kickoffOf(action, context).pipe(Effect.orElseSucceed(() => null));
+    const expiresAt = isDefined(kickoff) && kickoff > now ? kickoff : addMillis(now, confirmationWindowMs);
     const passed = yield* db
         .update(pendingAction)
-        .set({ approverTgUserId: approver.tgUserId, expiresAt: kickoff ?? proposed.expiresAt })
+        .set({ approverTgUserId: approver.tgUserId, expiresAt })
         .where(and(eq(pendingAction.id, id), eq(pendingAction.status, 'proposed'), isNull(pendingAction.approverTgUserId)))
         .returning({ id: pendingAction.id });
 
     return isNotEmptyArray(passed)
         ? ({
               _tag: 'awaiting',
-              request: { actionId: id, communityId: proposed.communityId, action, summary, requestedBy, groups, approver }
+              request: {
+                  actionId: id,
+                  action,
+                  summary,
+                  requestedBy,
+                  groups: groups.map(({ title }) => title),
+                  approver
+              }
           } as const)
         : ({ _tag: 'missing' } as const);
+});
+
+// A request ends with the kick-off as it is now, and with the designation of its approver
+const isRequestOver = Effect.fn('Core.isRequestOver')(function* (
+    row: typeof pendingAction.$inferSelect,
+    action: Action,
+    { context, now }: { readonly context: ActionContext; readonly now: Date }
+) {
+    if (!isDefined(row.approverTgUserId)) {
+        return false;
+    }
+
+    const kickoff = yield* kickoffOf(action, context).pipe(Effect.orElseSucceed(() => null));
+
+    return (
+        (isDefined(kickoff) && row.createdAt < kickoff && kickoff <= now) || !(yield* isApproverOf(row.approverTgUserId, row.communityId))
+    );
 });
 
 export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
@@ -170,7 +199,7 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
 
     if (input.confirm && isDefined(proposed) && proposed.expiresAt >= now && Option.isSome(action)) {
         const context = yield* input.context(proposed.communityId, proposed.requestedByTgUserId);
-        const passed = yield* passOn(proposed, action.value, context);
+        const passed = yield* passOn(proposed, action.value, { context, now });
 
         if (isDefined(passed)) {
             return passed;
@@ -190,7 +219,10 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
 
     const { requestedByTgUserId: requestedBy } = claimed;
 
-    if (claimed.expiresAt < now) {
+    const context = yield* input.context(claimed.communityId, requestedBy);
+    const isOver = input.confirm && Option.isSome(action) && (yield* isRequestOver(claimed, action.value, { context, now }));
+
+    if (claimed.expiresAt < now || isOver) {
         yield* db.update(pendingAction).set({ status: 'expired' }).where(eq(pendingAction.id, claimed.id));
 
         return { _tag: 'expired' } as const;
@@ -208,10 +240,8 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
         return { _tag: 'failed', summary: claimed.summary, requestedBy, failure } as const;
     }
 
-    const context = yield* input.context(claimed.communityId, requestedBy);
     const exit = yield* Effect.exit(
         runAdminAction(requestedBy, action.value, context, {
-            actionId: claimed.id,
             approval: { _tag: 'approver', tgUserId: input.tgUserId },
             summary: claimed.summary,
             settle: result => db.update(pendingAction).set({ result }).where(eq(pendingAction.id, claimed.id))
@@ -219,7 +249,9 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
     );
 
     if (Exit.isSuccess(exit)) {
-        return { _tag: 'done', summary: claimed.summary, requestedBy } as const;
+        const openIn = 'openIn' in exit.value && Predicate.isString(exit.value.openIn) ? exit.value.openIn : null;
+
+        return { _tag: 'done', summary: claimed.summary, requestedBy, openIn } as const;
     }
 
     const failure = failureOf(Cause.squash(exit.cause));
@@ -232,7 +264,7 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
 
     // The result is written by a commit whose answer was lost
     if (!isNotEmptyArray(failed)) {
-        return { _tag: 'done', summary: claimed.summary, requestedBy } as const;
+        return { _tag: 'done', summary: claimed.summary, requestedBy, openIn: null } as const;
     }
 
     return { _tag: 'failed', summary: claimed.summary, requestedBy, failure } as const;
@@ -248,6 +280,17 @@ export const expireStaleActions = Effect.fn('Core.expireStaleActions')(function*
         .update(pendingAction)
         .set({ status: 'expired' })
         .where(and(eq(pendingAction.status, 'proposed'), lt(pendingAction.expiresAt, now)));
+});
+
+// Requests that ended without an answer, each handed out once to tell who asked
+export const takeExpiredRequests = Effect.fn('Core.takeExpiredRequests')(function* () {
+    const db = yield* Db;
+
+    return yield* db
+        .update(pendingAction)
+        .set({ result: { told: true } })
+        .where(and(eq(pendingAction.status, 'expired'), isNotNull(pendingAction.approverTgUserId), isNull(pendingAction.result)))
+        .returning({ requestedBy: pendingAction.requestedByTgUserId, summary: pendingAction.summary });
 });
 
 export const removeActionTexts = Effect.fn('Core.removeActionTexts')(function* (createdBefore: Date) {

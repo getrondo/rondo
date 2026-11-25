@@ -1,23 +1,22 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { telegramChat } from '@rondo/db/schema/org.schema';
+import { telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { Telegram, type CallOptions } from '@rondo/telegram/service/telegram.service';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Predicate from 'effect/Predicate';
 
 import { isApproverOf } from '../community/group-settings';
 import { ActionFailedError } from '../error/action-failed.error';
+import { pollChatsOf } from '../signups/poll-chats';
 import { topicOptions } from '../utils/topic-options.util';
 
 import type { GroupTarget } from '../interface/group-target.interface';
 import type { PollText } from '../interface/poll.interface';
 
 // Who allowed a write to a group: the approver with a ✅, or a switch of the group
-export type Approval =
-    | { readonly _tag: 'approver'; readonly tgUserId: bigint }
-    | { readonly _tag: 'mention' }
-    | { readonly _tag: 'upkeep' };
+export type Approval = { readonly _tag: 'approver'; readonly tgUserId: bigint } | { readonly _tag: 'mention' };
 
 type ChatContent =
     | { readonly _tag: 'text'; readonly html: string; readonly hasLinkPreview: boolean }
@@ -31,7 +30,7 @@ interface ChatWrite {
     readonly target: GroupTarget;
     readonly approval: Approval | null;
     readonly content: ChatContent;
-    readonly options?: CallOptions;
+    readonly options?: Pick<CallOptions, 'maxWaitSeconds'>;
 }
 
 const refused = (code: 'group_off' | 'not_approved' | 'preview_changed') => ActionFailedError.make({ failure: { code } });
@@ -44,19 +43,28 @@ const isAllowed = (chat: typeof telegramChat.$inferSelect, approval: Approval, c
         case 'mention': {
             return Effect.succeed(chat.isMentioning && content._tag === 'text');
         }
-        case 'upkeep': {
-            return Effect.succeed(content._tag === 'stop_poll');
-        }
         default: {
             return Effect.succeed(false);
         }
     }
 };
 
-const requirePass = Effect.fn('Core.requireGroupPass')(function* ({ target, approval, content }: ChatWrite) {
+// Closing a poll closes its forwarded copies too, so it writes to every linked group that has one
+const copyChats = Effect.fn('Core.copyChats')(function* (chatId: bigint, messageId: number) {
     const db = yield* Db;
-    const [chat] = yield* db.select().from(telegramChat).where(eq(telegramChat.chatId, target.chatId));
+    const [poll] = yield* db
+        .select({ pollId: telegramPoll.pollId, sessionId: telegramPoll.sessionId })
+        .from(telegramPoll)
+        .where(and(eq(telegramPoll.chatId, chatId), eq(telegramPoll.messageId, messageId)));
+    const chatIds = isDefined(poll) ? yield* pollChatsOf(poll.sessionId) : [];
 
+    return isNotEmptyArray(chatIds) ? yield* db.select().from(telegramChat).where(inArray(telegramChat.chatId, chatIds)) : [];
+});
+
+const requireChat = Effect.fn('Core.requireGroupPass')(function* (
+    chat: typeof telegramChat.$inferSelect | undefined,
+    { target, approval, content }: ChatWrite
+) {
     if (!isDefined(chat) || !chat.isPosting) {
         return yield* refused('group_off');
     }
@@ -68,33 +76,51 @@ const requirePass = Effect.fn('Core.requireGroupPass')(function* ({ target, appr
     return chat.topicId !== target.topicId && ['text', 'poll', 'forward'].includes(content._tag) ? yield* refused('preview_changed') : chat;
 });
 
+const requirePass = Effect.fn('Core.requirePass')(function* (write: ChatWrite) {
+    const db = yield* Db;
+    const { target, content } = write;
+
+    if (target.chatId <= 0n) {
+        const [chat] = yield* db.select().from(telegramChat).where(eq(telegramChat.chatId, target.chatId));
+        yield* requireChat(chat, write);
+    }
+
+    for (const copy of content._tag === 'stop_poll' ? yield* copyChats(target.chatId, content.messageId) : []) {
+        yield* requireChat(copy, write);
+    }
+});
+
 const sent = (messageId: number, pollId = '', voters: number | null = null) => ({ messageId, pollId, voters });
 
 // The only place that writes to a chat. A group gets nothing unless it is linked, switched on and the content approved
 export const writeToChat = Effect.fn('Core.writeToChat')(function* (write: ChatWrite) {
     const telegram = yield* Telegram;
-    const { target, content, options } = write;
+    const { target, content } = write;
+    const options = { ...write.options, guard: requirePass(write) };
     const chatId = Number(target.chatId);
 
-    if (target.chatId <= 0n) {
-        yield* requirePass(write);
-    }
+    yield* requirePass(write);
 
     switch (content._tag) {
         case 'text': {
             const preview = content.hasLinkPreview ? {} : { link_preview_options: { is_disabled: true } };
-            const message = yield* telegram.call('sendMessage', api =>
-                api.sendMessage(chatId, content.html, { parse_mode: 'HTML', ...preview, ...topicOptions(target) })
+            const message = yield* telegram.call(
+                'sendMessage',
+                api => api.sendMessage(chatId, content.html, { parse_mode: 'HTML', ...preview, ...topicOptions(target) }),
+                options
             );
 
             return sent(message.message_id);
         }
         case 'edit': {
-            yield* telegram.call('editMessageText', api =>
-                api.editMessageText(chatId, content.messageId, content.html, {
-                    parse_mode: 'HTML',
-                    link_preview_options: { is_disabled: true }
-                })
+            yield* telegram.call(
+                'editMessageText',
+                api =>
+                    api.editMessageText(chatId, content.messageId, content.html, {
+                        parse_mode: 'HTML',
+                        link_preview_options: { is_disabled: true }
+                    }),
+                options
             );
 
             return sent(content.messageId);
@@ -122,8 +148,10 @@ export const writeToChat = Effect.fn('Core.writeToChat')(function* (write: ChatW
             return sent(message.message_id, message.poll.id);
         }
         case 'forward': {
-            const message = yield* telegram.call('forwardMessage', api =>
-                api.forwardMessage(chatId, Number(content.fromChatId), content.messageId, topicOptions(target))
+            const message = yield* telegram.call(
+                'forwardMessage',
+                api => api.forwardMessage(chatId, Number(content.fromChatId), content.messageId, topicOptions(target)),
+                options
             );
 
             return sent(message.message_id);

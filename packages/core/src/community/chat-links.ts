@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { community, telegramChat } from '@rondo/db/schema/org.schema';
 import { pendingAction } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -7,10 +7,14 @@ import { and, eq, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Predicate from 'effect/Predicate';
+import * as Schema from 'effect/Schema';
 
+import { ActionSchema } from '../actions/action.model';
+import { groupsTouched } from '../actions/groups-touched';
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 
+import { mainGroupOf } from './community.repository';
 import { findKnownChat } from './group-settings';
 
 interface ChatOf {
@@ -22,17 +26,31 @@ interface ChatOf {
 const audited = ({ communityId, chatId, actorPersonId }: ChatOf, action: string, diff: unknown = null) =>
     recordAudit({ communityId, actorPersonId, action, entityType: 'telegram_chat', entityId: String(chatId), diff });
 
-// What was proposed while the bot wrote only privately must be shown and approved again
-const dropProposals = Effect.fn('Core.dropProposals')(function* (communityId: string) {
-    const db = yield* Db;
+const decodeAction = Schema.decodeUnknownOption(ActionSchema);
 
-    yield* db
-        .update(pendingAction)
-        .set({ status: 'expired' })
+// What was proposed for this group while the bot wrote only privately must be shown and approved again
+const dropProposals = Effect.fn('Core.dropProposals')(function* (communityId: string, chatId: bigint) {
+    const db = yield* Db;
+    const group = yield* mainGroupOf(communityId);
+    const proposed = yield* db
+        .select({ id: pendingAction.id, payload: pendingAction.payload })
+        .from(pendingAction)
         .where(and(eq(pendingAction.communityId, communityId), eq(pendingAction.status, 'proposed')));
+
+    for (const { id, payload } of proposed) {
+        const action = decodeAction(payload);
+        const touched = Option.isSome(action) ? yield* groupsTouched(action.value, { communityId, group }) : [];
+
+        if (touched.some(chat => chat.chatId === chatId)) {
+            yield* db
+                .update(pendingAction)
+                .set({ status: 'expired' })
+                .where(and(eq(pendingAction.id, id), eq(pendingAction.status, 'proposed')));
+        }
+    }
 });
 
-export const linkChat = Effect.fn('Core.linkChat')((input: ChatOf & { readonly topicId?: number | null }) =>
+export const linkChat = Effect.fn('Core.linkChat')((input: ChatOf & { readonly title: string; readonly topicId?: number | null }) =>
     withCommunityLock(
         { id: input.communityId },
         Effect.gen(function* () {
@@ -43,7 +61,8 @@ export const linkChat = Effect.fn('Core.linkChat')((input: ChatOf & { readonly t
                 Effect.mapError(() => ActionFailedError.make({ failure: { code: 'chat_not_linked' } }))
             );
 
-            const { purpose, title } = known.chat;
+            const { purpose } = known.chat;
+            const { title } = input;
             const topicId = Predicate.isUndefined(input.topicId) ? (known.chat.topicId ?? null) : input.topicId;
 
             if (purpose === 'main') {
@@ -59,15 +78,21 @@ export const linkChat = Effect.fn('Core.linkChat')((input: ChatOf & { readonly t
                     .where(eq(community.id, communityId));
             }
 
-            yield* db
+            const linked = yield* db
                 .insert(telegramChat)
                 .values({ chatId, communityId, kind: 'supergroup', purpose, title, topicId })
                 .onConflictDoUpdate({
                     target: telegramChat.chatId,
                     set: { purpose, title, topicId },
                     setWhere: eq(telegramChat.communityId, communityId)
-                });
-            yield* audited(input, 'chat.link', { purpose, topicId });
+                })
+                .returning({ chatId: telegramChat.chatId });
+
+            if (!isNotEmptyArray(linked)) {
+                return yield* ActionFailedError.make({ failure: { code: 'chat_not_linked' } });
+            }
+
+            return yield* audited(input, 'chat.link', { purpose, topicId });
         })
     )
 );
@@ -102,7 +127,7 @@ export const setChatSwitch = Effect.fn('Core.setChatSwitch')(
                 }
 
                 if ('isPosting' in change && change.isPosting) {
-                    yield* dropProposals(input.communityId);
+                    yield* dropProposals(input.communityId, input.chatId);
                 }
 
                 yield* audited(input, 'chat.switch', change);

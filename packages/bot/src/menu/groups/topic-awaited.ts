@@ -1,6 +1,6 @@
 import { linkChat } from '@rondo/core/community/chat-links';
 import { findLinkedChat } from '@rondo/core/community/community.repository';
-import { findKnownChat } from '@rondo/core/community/group-settings';
+import { findKnownChat, isApproverOf } from '@rondo/core/community/group-settings';
 import { personIdOfTelegramUser } from '@rondo/core/identity/telegram-user';
 import { clearAdminState, loadAdminState } from '@rondo/core/menu/admin-state.repository';
 import { escapeHtml } from '@rondo/telegram/format/html';
@@ -12,6 +12,8 @@ import * as Schema from 'effect/Schema';
 import { menuText } from '../menu-text';
 
 import { tellApprover } from './tell';
+
+import type { Message } from '@rondo/telegram/webhook/telegram-update.model';
 
 export const topicAwaited = 'group_topic';
 
@@ -29,19 +31,30 @@ export const isTopicAwaited = Effect.fn('Bot.isTopicAwaited')(function* (tgUserI
     );
 });
 
-export const bindTopic = Effect.fn('Bot.bindTopic')(function* (tgUserId: number, chatId: number, topicId: number | null) {
+export const bindTopic = Effect.fn('Bot.bindTopic')(function* (
+    tgUserId: number,
+    { id: chatId, title: liveTitle }: Message['chat'],
+    topicId: number | null
+) {
     const known = yield* findKnownChat(chatId);
 
-    if (Option.isNone(known)) {
+    if (Option.isNone(known) || !(yield* isApproverOf(BigInt(tgUserId), known.value.communityId))) {
         return;
     }
 
     const { communityId, chat } = known.value;
     const linked = yield* findLinkedChat(BigInt(chatId));
-    yield* linkChat({ communityId, chatId: BigInt(chatId), topicId, actorPersonId: yield* personIdOfTelegramUser(BigInt(tgUserId)) });
+    const title = liveTitle ?? chat.title;
+    yield* linkChat({
+        communityId,
+        chatId: BigInt(chatId),
+        topicId,
+        title,
+        actorPersonId: yield* personIdOfTelegramUser(BigInt(tgUserId))
+    });
     yield* clearAdminState(BigInt(tgUserId));
     yield* tellApprover(communityId, locale => ({
-        text: menuText(locale, Option.isSome(linked) ? 'groupTopicSet' : 'groupLinkedTopic', { title: escapeHtml(chat.title) }),
+        text: menuText(locale, Option.isSome(linked) ? 'groupTopicSet' : 'groupLinkedTopic', { title: escapeHtml(title) }),
         keyboard: [[{ text: menuText(locale, 'groupOpen'), callback_data: `g:s:${chatId}` }]]
     }));
 });

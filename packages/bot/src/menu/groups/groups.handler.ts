@@ -1,10 +1,10 @@
 import { isDefined } from '@rnw-community/shared';
 import { Access } from '@rondo/core/access/admin-access';
 import { linkChat, setChatSwitch, unlinkChat } from '@rondo/core/community/chat-links';
-import { linkedChatsOf } from '@rondo/core/community/community.repository';
+import { findLinkedChat, linkedChatsOf } from '@rondo/core/community/community.repository';
 import { findKnownChat, isApproverOf } from '@rondo/core/community/group-settings';
 import { personIdOfTelegramUser } from '@rondo/core/identity/telegram-user';
-import { saveAdminState } from '@rondo/core/menu/admin-state.repository';
+import { clearAdminState, saveAdminState } from '@rondo/core/menu/admin-state.repository';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
 import * as Effect from 'effect/Effect';
@@ -13,7 +13,7 @@ import * as Option from 'effect/Option';
 import { menuText } from '../menu-text';
 import { showScreen } from '../show-screen';
 
-import { groupScreen, groupsScreen, leaveScreen } from './groups.screen';
+import { askScreen, groupScreen, groupsScreen, leaveScreen } from './groups.screen';
 import { topicAwaited } from './topic-awaited';
 
 import type { MenuUser } from '../screen.interface';
@@ -30,20 +30,37 @@ const showGroup = Effect.fn('Bot.showGroup')(function* (user: MenuUser, { chatId
     yield* showScreen(user.chatId, messageId, screen);
 });
 
+// The title Telegram knows, none when the bot is not in the group
+const liveTitle = Effect.fn('Bot.liveTitle')(function* (chatId: number) {
+    const telegram = yield* Telegram;
+    const chat = yield* telegram.call('getChat', api => api.getChat(chatId)).pipe(Effect.option);
+
+    return chat.pipe(Option.map(({ title }) => title ?? ''));
+});
+
 const decide = Effect.fn('Bot.decideGroup')(function* (user: MenuUser, op: string, tap: GroupTap) {
     const { chatId, messageId } = tap;
     const known = yield* findKnownChat(chatId);
-    const title = escapeHtml(
-        known.pipe(
-            Option.map(({ chat }) => chat.title),
-            Option.getOrElse(() => '')
-        )
-    );
+    const linked = yield* findLinkedChat(BigInt(chatId));
+    const live = op === 'q' || op === 'y' ? yield* liveTitle(chatId) : linked.pipe(Option.map(chat => chat.title));
+    const settings = known.pipe(Option.map(({ chat }) => chat.title));
+    const title = escapeHtml(Option.getOrElse(live, () => Option.getOrElse(settings, () => '')));
     const chat = { communityId: user.communityId, chatId: BigInt(chatId), actorPersonId: yield* personIdOfTelegramUser(user.tgUserId) };
 
     switch (op) {
+        case 'q':
         case 'y': {
-            yield* linkChat(chat);
+            if (Option.isNone(live) || Option.isNone(known)) {
+                const groups = yield* groupsScreen(user);
+
+                return yield* showScreen(user.chatId, messageId, { ...groups, text: menuText(user.locale, 'groupNotIn', { title }) });
+            }
+
+            if (op === 'q') {
+                return yield* showScreen(user.chatId, messageId, askScreen(user.locale, known.value.chat, live.value));
+            }
+
+            yield* linkChat({ ...chat, title: live.value });
 
             return yield* showGroup(user, tap, menuText(user.locale, 'groupLinked', { title }));
         }
@@ -57,7 +74,15 @@ const decide = Effect.fn('Bot.decideGroup')(function* (user: MenuUser, op: strin
                 now: user.now
             });
 
-            return yield* showScreen(user.chatId, messageId, { text: menuText(user.locale, 'groupTopicAsk', { title }), keyboard: [] });
+            return yield* showScreen(user.chatId, messageId, {
+                text: menuText(user.locale, 'groupTopicAsk', { title }),
+                keyboard: [[{ text: menuText(user.locale, 'groupTopicCancel'), callback_data: `g:k:${chatId}` }]]
+            });
+        }
+        case 'k': {
+            yield* clearAdminState(user.tgUserId);
+
+            return yield* showGroup(user, tap, '');
         }
         case 'u': {
             yield* unlinkChat(chat);

@@ -20,6 +20,7 @@ import { topicOf } from '../context/topic-of';
 import { bindTopic, isTopicAwaited } from '../menu/groups/topic-awaited';
 import { menuText } from '../menu/menu-text';
 
+import { tellMoved } from './bot-membership.handler';
 import { syncGroupUsers } from './chat-member.handler';
 import { proposeUnknownPlace } from './unknown-place.handler';
 
@@ -49,6 +50,7 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
 
     if (isDefined(message.migrate_to_chat_id)) {
         yield* moveChat(BigInt(message.chat.id), BigInt(message.migrate_to_chat_id));
+        yield* tellMoved(message.migrate_to_chat_id);
 
         return noFollowUp;
     }
@@ -58,9 +60,7 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
     }
 
     if (yield* isTopicAwaited(sender.id, message.chat.id)) {
-        yield* bindTopic(sender.id, message.chat.id, topicOf(message));
-
-        return noFollowUp;
+        yield* bindTopic(sender.id, message.chat, topicOf(message));
     }
 
     const chat = yield* findLinkedChat(BigInt(message.chat.id));
