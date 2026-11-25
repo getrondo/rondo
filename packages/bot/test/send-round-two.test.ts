@@ -1,5 +1,8 @@
 import { expect, layer } from '@effect/vitest';
+import { telegramChat } from '@rondo/db/schema/org.schema';
+import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
+import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { conversation, labelsOf } from './support/conversation';
@@ -45,12 +48,17 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(1702));
             yield* admin.type('/newgame');
             const preview = admin.screen();
+            yield* admin.tap('+1');
             yield* admin.tap('✅ Надіслати');
+            const card = admin.screen();
+            yield* admin.tapOn(preview, '✅ Надіслати');
+            const afterOld = admin.screen();
             yield* admin.tap('🕖 Час');
             const times = admin.screen();
             yield* admin.tapOn(preview, '✅ Надіслати');
             const toast = recorder.calls.findLast(call => call.method === 'answerCallbackQuery');
 
+            expect(afterOld).toEqual(card);
             expect(times.id).toBe(preview.id);
             expect(admin.screen()).toEqual(times);
             expect(toast?.payload.text).toBe('Екран застарів');
@@ -58,13 +66,18 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         })
     );
 
-    it.effect('sends to the groups shown in the preview even when another group is linked before ✅', () =>
+    it.effect('sends to the groups shown in the preview even when the linked groups change before ✅', () =>
         Effect.gen(function* () {
+            const db = yield* Db;
             const { communityId, north } = yield* seedSeason('r2-previewed', { groupChatId: -17_003, adminId: 1703 });
             const admin3 = conversation(recorder, adminNumbered(1703));
             yield* admin3.type('/newgame');
             const preview = admin3.screen();
             yield* seedSecondGroup(communityId, { main: -17_003, second: -17_004, venueId: north });
+            yield* db
+                .update(telegramChat)
+                .set({ createdAt: new Date('2020-01-01T00:00:00Z') })
+                .where(eq(telegramChat.chatId, -17_004n));
             yield* admin3.tap('✅ Надіслати');
 
             expect(preview.text).toContain('📤 Куди: «Games»');
