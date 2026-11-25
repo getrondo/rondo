@@ -101,7 +101,17 @@ export const undo = (state: DraftState): DraftState => {
 export const pickVariant = (state: DraftState, variant: number): DraftState => {
     const teams = state.variants[variant];
 
-    return isDefined(teams) ? withChange(state, { teams, pending: [] }, variant) : state;
+    if (!isDefined(teams)) {
+        return state;
+    }
+
+    const free = teams.map(members => members.filter(personId => !state.locks.includes(personId)));
+
+    for (const personId of state.locks) {
+        free[teamIndexOf(state, personId)]?.push(personId);
+    }
+
+    return withChange(state, { teams: free, pending: [] }, variant);
 };
 
 export const syncRoster = (state: DraftState, roster: readonly string[]): DraftState => {

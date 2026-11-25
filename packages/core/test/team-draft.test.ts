@@ -1,6 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { auditLog } from '@rondo/db/schema/platform.schema';
-import { rating, ratingEvent, team } from '@rondo/db/schema/play.schema';
+import { rating, ratingEvent, team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, asc, eq } from 'drizzle-orm';
@@ -132,6 +132,38 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
             expect(events).toHaveLength(10);
             expect(events.filter(event => event.muAfter > event.muBefore)).toHaveLength(5);
             expect(audit?.diff).toEqual({ winner: 1, isCorrection: false });
+        })
+    );
+
+    it.effect('starts a new draft from the stored teams, their colours and keepers, and places the rest with the fewest moves', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId, people } = yield* playedGame('draft-seeded', 9, 85_000);
+            const [green] = yield* db.insert(teamColor).values({ communityId, name: 'green', emoji: '🟢' }).returning({ id: teamColor.id });
+            const [yellow] = yield* db
+                .insert(teamColor)
+                .values({ communityId, name: 'yellow', emoji: '🟡' })
+                .returning({ id: teamColor.id });
+            const stored = [people.slice(0, 4), people.slice(4, 8)];
+
+            for (const [index, members] of stored.entries()) {
+                const [row] = yield* db
+                    .insert(team)
+                    .values({ sessionId, ordinal: index + 1, colorId: index === 0 ? green?.id : yellow?.id })
+                    .returning({ id: team.id });
+                yield* db
+                    .insert(teamMember)
+                    .values(members.map(personId => ({ teamId: row?.id ?? '', sessionId, personId, isGk: personId === people[5] })));
+            }
+
+            const { row } = yield* openDraft(communityId, sessionId, null);
+
+            expect(row.state.colours).toEqual(['green', 'yellow']);
+            expect(row.state.keepers).toEqual([people[5]]);
+            expect(row.state.pending).toEqual([]);
+            expect(row.state.teams[0]).toEqual(expect.arrayContaining(stored[0] ?? []));
+            expect(row.state.teams[1]).toEqual(expect.arrayContaining(stored[1] ?? []));
+            expect(row.state.teams.flat()).toContain(people[8]);
         })
     );
 });

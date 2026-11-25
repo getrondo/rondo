@@ -120,6 +120,7 @@ const transformOf = (context: ChangeContext, state: DraftState) => {
     const first = at(0) ?? '';
     const second = at(1) ?? '';
     const number = (position: number) => Number(tap.args[position]);
+    const roster = inputs.members.map(member => member.personId);
 
     switch (tap.op) {
         case 'w': {
@@ -137,13 +138,13 @@ const transformOf = (context: ChangeContext, state: DraftState) => {
             return Effect.succeed(isDefined(at(0)) ? toggleKeeper(state, first) : state);
         }
         case 'u': {
-            return Effect.succeed(undo(state));
+            return Effect.succeed(syncByAdmin(undo(state), roster));
         }
         case 'h': {
             return Effect.succeed(shuffled(inputs, state));
         }
         case 'v': {
-            return Effect.succeed(pickVariant(state, number(0)));
+            return Effect.succeed(syncByAdmin(pickVariant(state, number(0)), roster));
         }
         case 'b':
         case 'A': {

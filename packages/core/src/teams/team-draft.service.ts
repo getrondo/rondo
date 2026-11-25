@@ -1,12 +1,12 @@
 import { isDefined, isEmptyArray, isNotEmptyArray } from '@rnw-community/shared';
-import { teamDraft } from '@rondo/db/schema/play.schema';
+import { team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 
-import { defaultColours } from './badges';
+import { badgeOfRow, defaultColours, paddedColours } from './badges';
 import { DraftStateSchema, initialState, playersOf, syncRoster, teamIndexOf, withChange, type DraftState } from './draft-state';
 import { solveTeams } from './solve-teams';
 import { loadTeamInputs } from './team-inputs';
@@ -15,6 +15,14 @@ import type { SolverInput, SolverPlayer } from './interface/solver.interface';
 import type { TeamInputs } from './interface/team-inputs.interface';
 
 const decodeState = Schema.decodeUnknownOption(DraftStateSchema);
+
+interface StoredRow {
+    readonly ordinal: number;
+    readonly personId: string | null;
+    readonly isGk: boolean | null;
+    readonly emoji: string | null;
+    readonly name: string | null;
+}
 const playersPerTeam = 6.5;
 
 export interface DraftRow {
@@ -97,12 +105,57 @@ export const rebalanced = (inputs: TeamInputs, state: DraftState): DraftState =>
 };
 
 export const shuffled = (inputs: TeamInputs, state: DraftState): DraftState => {
-    const current = new Set(state.teams.map(team => team.toSorted().join(',')));
+    const current = new Set(state.teams.map(members => members.toSorted().join(',')));
     const proposals = solveTeams(solverInputFor(inputs, state));
-    const differing = (teams: readonly (readonly string[])[]) => teams.filter(team => !current.has(team.toSorted().join(','))).length;
+    const differing = (teams: readonly (readonly string[])[]) => teams.filter(members => !current.has(members.toSorted().join(','))).length;
     const [best] = proposals.toSorted((left, right) => differing(right.teams) - differing(left.teams));
 
     return isDefined(best) ? withChange(state, { teams: best.teams, pending: [] }) : state;
+};
+
+const storedSquad = Effect.fn('Core.storedSquad')(function* (sessionId: string) {
+    const db = yield* Db;
+
+    return yield* db
+        .select({
+            ordinal: team.ordinal,
+            personId: teamMember.personId,
+            isGk: teamMember.isGk,
+            emoji: teamColor.emoji,
+            name: teamColor.name
+        })
+        .from(team)
+        .leftJoin(teamMember, eq(teamMember.teamId, team.id))
+        .leftJoin(teamColor, eq(teamColor.id, team.colorId))
+        .where(eq(team.sessionId, sessionId))
+        .orderBy(asc(team.ordinal));
+});
+
+const seededState = (inputs: TeamInputs, rows: readonly StoredRow[]): DraftState | null => {
+    const count = Math.max(0, ...rows.map(row => row.ordinal));
+
+    if (count < 2) {
+        return null;
+    }
+
+    const roster = inputs.members.map(member => member.personId);
+    const playedIn = (row: StoredRow, ordinal: number | null): string[] =>
+        isDefined(row.personId) && roster.includes(row.personId) && (!isDefined(ordinal) || row.ordinal === ordinal) ? [row.personId] : [];
+    const colourOf = (ordinal: number): string => {
+        const row = rows.find(entry => entry.ordinal === ordinal);
+
+        return badgeOfRow({ emoji: row?.emoji ?? null, name: row?.name ?? '' })?.colour ?? '';
+    };
+    const teams = Array.from({ length: count }, (_team, index) => rows.flatMap(row => playedIn(row, index + 1)));
+    const colours = paddedColours(
+        Array.from({ length: count }, (_team, index) => colourOf(index + 1)),
+        count
+    );
+    const keepers = rows.flatMap(row => (row.isGk === true ? playedIn(row, null) : []));
+    const seeded = syncRoster({ ...initialState({ variants: [], reasons: [], colours, keepers }), teams }, roster);
+    const placed = isNotEmptyArray(seeded.pending) ? rebalanced(inputs, seeded) : seeded;
+
+    return { ...placed, history: [], joined: [], left: [], variant: -1 };
 };
 
 export const createDraft = Effect.fn('Core.createDraft')(function* (
@@ -110,7 +163,9 @@ export const createDraft = Effect.fn('Core.createDraft')(function* (
     marks: { readonly actorPersonId: string | null; readonly proposedAt: Date | null; readonly teamCount?: number }
 ) {
     const db = yield* Db;
-    const state = freshState(inputs, marks.teamCount ?? usualTeamCount(inputs.players.length));
+    const stored = yield* storedSquad(inputs.game.id);
+    const seeded = seededState(inputs, stored);
+    const state = seeded ?? freshState(inputs, marks.teamCount ?? usualTeamCount(inputs.players.length));
 
     yield* db
         .insert(teamDraft)
