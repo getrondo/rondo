@@ -89,11 +89,11 @@ export const upsertReference = Effect.fn('IngestTelegram.upsertReference')(funct
               .onConflictDoUpdate({
                   target: [venue.communityId, venue.name],
                   set: {
-                      district: sql`coalesce(excluded.district, ${venue.district})`,
-                      lat: sql`coalesce(excluded.lat, ${venue.lat})`,
-                      lng: sql`coalesce(excluded.lng, ${venue.lng})`,
-                      indoor: sql`coalesce(excluded.indoor, ${venue.indoor})`,
-                      transit: sql`coalesce(excluded.transit, ${venue.transit})`
+                      district: sql`coalesce(${venue.district}, excluded.district)`,
+                      lat: sql`coalesce(${venue.lat}, excluded.lat)`,
+                      lng: sql`coalesce(${venue.lng}, excluded.lng)`,
+                      indoor: sql`coalesce(${venue.indoor}, excluded.indoor)`,
+                      transit: sql`coalesce(${venue.transit}, excluded.transit)`
                   }
               })
               .returning({ id: venue.id, name: venue.name })

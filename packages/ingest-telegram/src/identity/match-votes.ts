@@ -32,7 +32,7 @@ export interface VoteMatch {
 export const minGames = 10;
 const minShare = 0.9;
 const minMargin = 0.12;
-const maxGapDays = 180;
+export const maxGapDays = 180;
 const runCost = 1;
 const dayMs = 24 * 60 * 60_000;
 

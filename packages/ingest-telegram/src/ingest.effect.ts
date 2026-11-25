@@ -12,6 +12,7 @@ import { CommunityConfigSchema, type CommunityConfig } from './config/community-
 import { ExportPagesNotFoundError } from './error/export-pages-not-found.error';
 import { assemblePlan } from './extract/assemble-plan';
 import { extractAll } from './extract/extract-all';
+import { numberPosts, planOtherChats, type ChatContent } from './extract/plan-other-chats';
 import { instantToLocalDate } from './extract/zoned-time';
 import { withoutLiveMessages } from './load/live-messages';
 import { loadPlan } from './load/load-plan';
@@ -19,6 +20,7 @@ import { withCommunityLock } from './load/with-community-lock';
 import { parseHtmlPage } from './parse/parse-html-export';
 import { parseJsonExport } from './parse/parse-json-export';
 import { parseSnapshot } from './parse/parse-snapshot';
+import { parseTelethonExport } from './parse/parse-telethon-export';
 
 import type { TelegramMessage } from './model/telegram-message.model';
 import type { TelegramSnapshot } from './model/telegram-snapshot.model';
@@ -63,11 +65,18 @@ const readMessages = Effect.fn('IngestTelegram.readMessages')(function* (exportD
     return { messages: yield* parseJsonExport(json), fileSha256: createHash('sha256').update(json).digest('hex') };
 });
 
-const readSnapshot = Effect.fn('IngestTelegram.readSnapshot')(function* (exportDir: string) {
+const readerOf = Effect.fn('IngestTelegram.readerOf')(function* (exportDir: string) {
     const fs = yield* FileSystem.FileSystem;
     const names = (yield* fs.readDirectory(exportDir)).toSorted();
-    const readAll = (pattern: RegExp) =>
-        Effect.all(names.filter(name => pattern.test(name)).map(name => fs.readFileString(join(exportDir, name))));
+
+    return {
+        readAll: (pattern: RegExp) =>
+            Effect.all(names.filter(name => pattern.test(name)).map(name => fs.readFileString(join(exportDir, name))))
+    };
+});
+
+const readSnapshot = Effect.fn('IngestTelegram.readSnapshot')(function* (exportDir: string) {
+    const { readAll } = yield* readerOf(exportDir);
     const [messages] = yield* readAll(/^messages\.jsonl$/u);
 
     if (!isDefined(messages)) {
@@ -81,6 +90,18 @@ const readSnapshot = Effect.fn('IngestTelegram.readSnapshot')(function* (exportD
     return Option.fromNullishOr(snapshot);
 });
 
+const readTelethonChat = Effect.fn('IngestTelegram.readTelethonChat')(function* (exportDir: string) {
+    const { readAll } = yield* readerOf(exportDir);
+    const [messages = ''] = yield* readAll(/^messages\.jsonl$/u);
+    const parsed = yield* parseTelethonExport({
+        messages,
+        users: yield* readAll(/^users.*\.json$/u),
+        votes: yield* readAll(/^votes\d*\.jsonl$/u)
+    });
+
+    return { messages: parsed.messages, snapshot: Option.fromNullishOr(parsed.snapshot) } satisfies ChatContent;
+});
+
 export const readConfig = Effect.fn('IngestTelegram.readConfig')(function* (configPath: string) {
     const fs = yield* FileSystem.FileSystem;
     const raw = yield* fs.readFileString(configPath);
@@ -88,12 +109,11 @@ export const readConfig = Effect.fn('IngestTelegram.readConfig')(function* (conf
     return yield* Schema.decodeEffect(Schema.fromJsonString(CommunityConfigSchema))(raw);
 });
 
-interface ExportContent {
+interface ExportContent extends ChatContent {
     readonly config: CommunityConfig;
-    readonly messages: readonly TelegramMessage[];
     readonly fileSha256: string;
-    readonly snapshot: Option.Option<TelegramSnapshot>;
     readonly allowRemoval?: boolean;
+    readonly otherChats?: readonly ChatContent[];
 }
 
 const gamePosts = (config: CommunityConfig, snapshot: Option.Option<TelegramSnapshot>) =>
@@ -110,21 +130,35 @@ export const importMessages = Effect.fn('IngestTelegram.importMessages')(functio
     messages,
     fileSha256,
     snapshot,
-    allowRemoval
+    allowRemoval,
+    otherChats
 }: ExportContent) {
     const now = yield* DateTime.nowAsDate;
     const lastSent = messages.findLast(message => isDefined(message.sentAt))?.sentAt ?? now;
+    const asOf = instantToLocalDate(lastSent, config.timeZone);
 
     return yield* withCommunityLock(
         { slug: config.slug },
         Effect.gen(function* () {
-            const unhandled = yield* withoutLiveMessages(config.slug, messages);
-            const plan = assemblePlan(
-                extractAll(unhandled, config, gamePosts(config, snapshot)),
-                instantToLocalDate(lastSent, config.timeZone)
+            const unhandled = yield* withoutLiveMessages(config, messages);
+            const main = assemblePlan(extractAll(unhandled, config, gamePosts(config, snapshot)), asOf);
+            const others = yield* Effect.all(
+                (otherChats ?? [])
+                    .map((content, index) => numberPosts(index + 1, content))
+                    .map(content =>
+                        withoutLiveMessages(config, content.messages).pipe(
+                            Effect.map((posts): ChatContent => ({ messages: posts, snapshot: content.snapshot }))
+                        )
+                    )
             );
+            const all = planOtherChats({ config, main, snapshot, others, asOf });
+            const stats = yield* loadPlan(config, all.plan, {
+                fileSha256,
+                snapshot: Option.getOrUndefined(all.snapshot),
+                allowRemoval
+            });
 
-            return yield* loadPlan(config, plan, { fileSha256, snapshot: Option.getOrUndefined(snapshot), allowRemoval });
+            return { ...stats, review: all.review.length };
         })
     );
 });
@@ -133,7 +167,8 @@ export const ingest = Effect.fn('IngestTelegram.ingest')(function* (exportDir: s
     const config = yield* readConfig(configPath);
     const { messages, fileSha256 } = yield* readMessages(exportDir, config);
     const snapshot = yield* readSnapshot(exportDir);
-    const stats = yield* importMessages({ config, messages, fileSha256, snapshot, allowRemoval });
+    const otherChats = yield* Effect.all((config.otherChats ?? []).map(chat => readTelethonChat(join(exportDir, chat.exportDir))));
+    const stats = yield* importMessages({ config, messages, fileSha256, snapshot, allowRemoval, otherChats });
 
     yield* Effect.logInfo('Telegram export ingested', stats);
 

@@ -1,0 +1,132 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "9927f977-c988-41d6-9905-469ac2547b37",
+    "prevIds": ["3e429f11-eb55-4bc1-af15-2df65bc4b110"],
+    "footprints": [
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "comms", "imported_poll", "chat_id"],
+            "writes": ["s|col|comms.imported_poll.chat_id", "n|col|comms.imported_poll.chat_id", "e|col|comms.imported_poll.chat_id"],
+            "reads": ["n|tbl|comms.imported_poll", "n|sch|comms"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "ingest", "source_ref", "chat_id"],
+            "writes": ["s|col|ingest.source_ref.chat_id", "n|col|ingest.source_ref.chat_id", "e|col|ingest.source_ref.chat_id"],
+            "reads": ["n|tbl|ingest.source_ref", "n|sch|ingest"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "play", "lineup_entry", "chat_id"],
+            "writes": ["s|col|play.lineup_entry.chat_id", "n|col|play.lineup_entry.chat_id", "e|col|play.lineup_entry.chat_id"],
+            "reads": ["n|tbl|play.lineup_entry", "n|sch|play"]
+        },
+        {
+            "statementType": "recreate_index",
+            "statementTarget": ["index", "ingest", "source_ref", "source_ref_message_kind_uq"],
+            "writes": [
+                "s|idx|ingest.source_ref_message_kind_uq",
+                "n|idx|ingest.source_ref_message_kind_uq",
+                "e|idx|ingest.source_ref_message_kind_uq",
+                "n|rel|ingest.source_ref_message_kind_uq"
+            ],
+            "reads": [
+                "n|tbl|ingest.source_ref",
+                "n|sch|ingest",
+                "n|col|ingest.source_ref.community_id",
+                "n|col|ingest.source_ref.message_id",
+                "n|col|ingest.source_ref.kind"
+            ],
+            "sharedWrites": ["e|uniqueness|ingest.source_ref.community_id.kind.message_id"],
+            "sqlHash": "c763d31c38735bf6"
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "imported_poll",
+                "name": "chat_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "ingest",
+                "table": "source_ref",
+                "name": "chat_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_entry",
+                "name": "chat_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "alter",
+            "key": "indexes\u0000[\"ingest\",\"source_ref_message_kind_uq\"]",
+            "set": {
+                "columns": [
+                    {
+                        "value": "community_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    },
+                    {
+                        "value": "coalesce(\"chat_id\", 0)",
+                        "isExpression": true,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    },
+                    {
+                        "value": "message_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    },
+                    {
+                        "value": "kind",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ]
+            }
+        }
+    ]
+}

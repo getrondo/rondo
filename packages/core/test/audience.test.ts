@@ -1,5 +1,5 @@
 import { expect, layer } from '@effect/vitest';
-import { messageRef } from '@rondo/db/schema/platform.schema';
+import { extraction, ingestRun, messageRef, sourceRef } from '@rondo/db/schema/platform.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { refusal } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -9,6 +9,7 @@ import * as Option from 'effect/Option';
 
 import { bindChat, linkedChatsOf, mainGroupOf } from '../src/community/community.repository';
 import { syncMember } from '../src/identity/telegram-user';
+import { footballHistory } from '../src/menu/game-history.repository';
 import { createSession } from '../src/sessions/session.service';
 import { audienceOf } from '../src/signups/audience';
 import { confirmAsOwner } from '../src/testing/confirm-action';
@@ -162,6 +163,69 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('one game, one poll, several
 
             expect(audience.map(target => target.chatId)).toEqual([-7101n, 7103n]);
             expect(recorder.calls.slice(start).filter(call => call.method === 'sendMessage')).toEqual([]);
+        })
+    );
+
+    it.effect('knows the chats in which the poll of an imported game was posted', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, venueIdByName } = yield* seedCommunity(seedConfig('audience-import'));
+            const venueId = venueIdByName.get('Park Field') ?? null;
+            const game = {
+                communityId,
+                timezone: 'Europe/Vienna',
+                localTime: '19:00',
+                venueId,
+                capacityMax: null,
+                title: null,
+                actorPersonId: null
+            };
+            const sessionIds = yield* Effect.all(
+                ['2026-11-16', '2026-11-18', '2026-11-20'].map(localDate => createSession({ ...game, localDate }))
+            );
+            const [run] = yield* db
+                .insert(ingestRun)
+                .values({ communityId, source: 'telegram_json', fileSha256: 'sha', parserVersion: '2' })
+                .returning();
+            const posts = [
+                { session: 0, chatId: null },
+                { session: 1, chatId: second },
+                { session: 2, chatId: second },
+                { session: 2, chatId: null }
+            ];
+            const refs = yield* db
+                .insert(sourceRef)
+                .values(
+                    posts.map(({ chatId }, index) => ({
+                        runId: run?.id ?? '',
+                        communityId,
+                        chatId,
+                        messageId: index,
+                        sentAt: new Date('2026-11-16T10:00:00Z'),
+                        kind: 'poll' as const
+                    }))
+                )
+                .returning();
+            yield* db.insert(extraction).values(
+                posts.map((post, index) => ({
+                    sourceRefId: refs[index]?.id ?? '',
+                    entityType: 'scheduling.session',
+                    entityId: sessionIds[post.session] ?? ''
+                }))
+            );
+            const chatsOf = () =>
+                footballHistory(communityId, '2026-11-01', ['training']).pipe(
+                    Effect.map(history =>
+                        history.toSorted((left, right) => left.localDate.localeCompare(right.localDate)).map(past => past.chatIds)
+                    )
+                );
+            const unlinked = yield* chatsOf();
+            yield* link(communityId, main - 20, 'Main');
+            yield* link(communityId, second - 10, 'Second');
+            const linked = yield* chatsOf();
+
+            expect(unlinked).toEqual([[], [String(second)], [String(second)]]);
+            expect(linked).toEqual([[String(main - 20)], [String(second)], [String(main - 20), String(second)]]);
         })
     );
 });

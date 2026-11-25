@@ -2,7 +2,7 @@ import { isNotEmptyArray } from '@rnw-community/shared';
 import { personAlias } from '@rondo/db/schema/identity.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, count, eq, gte, inArray, ne, sql } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, isNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { syncSessionRoster } from '../roster/sync-session-roster';
@@ -15,7 +15,14 @@ export const markShared = Effect.fn('IngestTelegram.markShared')(function* (comm
         .select({ aliasId: lineupEntry.aliasId, sessionId: lineupEntry.sessionId })
         .from(lineupEntry)
         .innerJoin(personAlias, eq(personAlias.id, lineupEntry.aliasId))
-        .where(and(eq(personAlias.communityId, communityId), eq(personAlias.kind, 'nickname'), eq(lineupEntry.isGuest, false)))
+        .where(
+            and(
+                eq(personAlias.communityId, communityId),
+                eq(personAlias.kind, 'nickname'),
+                eq(lineupEntry.isGuest, false),
+                isNull(lineupEntry.chatId)
+            )
+        )
         .groupBy(lineupEntry.aliasId, lineupEntry.sessionId)
         .having(gte(count(), minRepeats))
         .as('repeated');

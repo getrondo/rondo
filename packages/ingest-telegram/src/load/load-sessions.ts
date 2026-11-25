@@ -5,6 +5,7 @@ import { session, sessionChange } from '@rondo/db/schema/scheduling.schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
+import { postIdIn, sourceOf } from '../extract/post-id';
 import { zonedToInstant } from '../extract/zoned-time';
 import { markShared } from '../identity/mark-shared';
 import { entriesOf } from '../roster/entries-of';
@@ -33,7 +34,7 @@ const startOf = (planned: PlannedSession, timeZone: string): Date => {
 };
 
 const existingSessions = Effect.fn('IngestTelegram.existingSessions')(function* (
-    { transaction, communityId }: LoadContext,
+    { transaction, communityId, config }: LoadContext,
     live: LiveMessages
 ) {
     const rows = yield* transaction
@@ -41,7 +42,7 @@ const existingSessions = Effect.fn('IngestTelegram.existingSessions')(function* 
         .from(session)
         .where(eq(session.communityId, communityId));
     const references = yield* transaction
-        .select({ messageId: sourceRef.messageId, sessionId: extraction.entityId })
+        .select({ chatId: sourceRef.chatId, messageId: sourceRef.messageId, sessionId: extraction.entityId })
         .from(sourceRef)
         .innerJoin(extraction, eq(extraction.sourceRefId, sourceRef.id))
         .where(and(eq(sourceRef.communityId, communityId), eq(extraction.entityType, sessionEntity)));
@@ -68,7 +69,10 @@ const existingSessions = Effect.fn('IngestTelegram.existingSessions')(function* 
 
             return isDefined(first) && isDefined(second) ? [first.localDate] : [];
         }),
-        byMessage: new Map([...references, ...live].map(({ messageId, sessionId }) => [messageId, rowById.get(sessionId)])),
+        byMessage: new Map([
+            ...references.map(row => [postIdIn(config.otherChats, row), rowById.get(row.sessionId)] as const),
+            ...live.map(({ messageId, sessionId }) => [messageId, rowById.get(sessionId)] as const)
+        ]),
         byDay
     };
 });
@@ -253,7 +257,10 @@ const replaceEntries = Effect.fn('IngestTelegram.replaceEntries')(function* (
     directory: Directory,
     games: readonly SessionLineup[]
 ) {
-    const { transaction } = context;
+    const {
+        transaction,
+        config: { otherChats }
+    } = context;
     const previous: EntryRow[] = [];
 
     for (const batch of chunks(games)) {
@@ -270,7 +277,11 @@ const replaceEntries = Effect.fn('IngestTelegram.replaceEntries')(function* (
         );
     }
 
-    const manual = previous.filter(entry => entry.resolvedBy === 'manual');
+    const manual = previous
+        .filter(entry => entry.resolvedBy === 'manual')
+        .map(entry =>
+            Object.assign(entry, { messageId: postIdIn(otherChats, { chatId: entry.chatId ?? null, messageId: entry.messageId }) })
+        );
     const requests = guestRequestEntries(context, directory, games);
     const entries = games.flatMap(({ sessionId, lineup }) =>
         isDefined(lineup)
@@ -283,7 +294,9 @@ const replaceEntries = Effect.fn('IngestTelegram.replaceEntries')(function* (
             : []
     );
 
-    yield* insertMany([...entries, ...requests.entries], batch => transaction.insert(lineupEntry).values(batch));
+    const rows = [...entries, ...requests.entries].map(entry => Object.assign(entry, sourceOf(otherChats, entry.messageId)));
+
+    yield* insertMany(rows, batch => transaction.insert(lineupEntry).values(batch));
     yield* markShared(context.communityId);
     yield* syncSessionRoster([...new Set([...previous, ...entries].filter(entry => entry.teamOrdinal > 0).map(entry => entry.sessionId))]);
 
@@ -295,7 +308,7 @@ export const loadSessions = Effect.fn('IngestTelegram.loadSessions')(function* (
     reference: ReferenceIds,
     directory: Directory
 ) {
-    const live = yield* liveMessages(context.config.slug);
+    const live = yield* liveMessages(context.config);
     const liveSessionIds = new Set(live.map(({ sessionId }) => sessionId));
     const lineups = live.filter(({ isLineup }) => isLineup);
     const liveLineups = new Set(lineups.map(({ sessionId }) => sessionId));

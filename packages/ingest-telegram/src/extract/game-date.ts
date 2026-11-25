@@ -8,7 +8,7 @@ export const statedDateConfidence = 0.8;
 const weekdays: readonly (readonly [number, RegExp])[] = [
     [1, /(?:понедельник|понеділ(?:ок|ка))(?!\p{L})/iu],
     [2, /(?:вторник|вівтор(?:ок|ка))(?!\p{L})/iu],
-    [3, /(?:сред[ауы]|серед[аиу])(?!\p{L})/iu],
+    [3, /(?:[сc]ред[ауы]|серед[аиу])(?!\p{L})/iu],
     [4, /(?:четверг|четвер)(?!\p{L})/iu],
     [5, /(?:пятниц|пʼятниц|п'ятниц)[аеуыію]?(?!\p{L})/iu],
     [6, /(?:суббот|субот)[аеуыи]?(?!\p{L})/iu],
@@ -88,10 +88,12 @@ const weekdayDate = (text: string, postedDate: string): Option.Option<string> =>
 
 export const withoutNumericDates = (text: string): string => text.replaceAll(/(?<!\d)\d{1,2}\.\d{1,2}(?=\D*\p{L})/gu, '');
 
+const farAhead = 90;
+
 export const resolvePollDate = (text: string, postedDate: string): { date: string; confidence: number } => {
     const resolved = resolveGameDate(text, postedDate);
 
-    return resolved.date < postedDate
+    return resolved.date < postedDate || resolved.date > addDays(postedDate, farAhead)
         ? weekdayDate(text, postedDate).pipe(
               Option.map(date => ({ date, confidence: statedDateConfidence })),
               Option.getOrElse(() => resolved)

@@ -29,6 +29,12 @@ export const defaultGuestPatterns: readonly string[] = [
     '^\\+\\.?\\s*(?<count>\\d{1,2})\\s+(?:с|из|from)\\s'
 ];
 
+const OtherChatConfigSchema = Schema.Struct({
+    chatId: Schema.Int,
+    exportDir: Schema.String,
+    matchPatterns: Schema.Array(Schema.String)
+});
+
 export const CommunityConfigSchema = Schema.Struct({
     slug: Schema.String,
     name: Schema.String,
@@ -39,7 +45,10 @@ export const CommunityConfigSchema = Schema.Struct({
     teamColors: Schema.Array(TeamColorConfigSchema),
     squads: Schema.Array(SquadConfigSchema),
     guestPatterns: Schema.optional(Schema.Array(Schema.String)),
-    gamesTopicId: Schema.optional(Schema.Int)
+    gamesTopicId: Schema.optional(Schema.Int),
+    otherChats: Schema.optional(Schema.Array(OtherChatConfigSchema))
 });
+
+export type OtherChatConfig = typeof OtherChatConfigSchema.Type;
 
 export type CommunityConfig = typeof CommunityConfigSchema.Type;

@@ -161,7 +161,7 @@ erDiagram
 ### `comms`: Telegram I/O
 
 `message_ref(chat_id, message_id, purpose (game_card/lineup/announcement), entity_type, entity_id)`: which Telegram message renders which entity (edited in place);
-`imported_poll(poll_id, community_id, session_id?, message_id, posted_at, kind (participation/reserve/other), answers)`: every public poll of the history, once per poll id;
+`imported_poll(poll_id, community_id, session_id?, chat_id?, message_id, posted_at, kind (participation/reserve/other), answers)`: every public poll of the history, once per poll id;
 `poll_vote(poll_id, tg_user_id, session_id?, choice (yes/no/other), voted_at?)`: answers in imported polls and in the bot's polls (a retracted one is removed), signed up but not attended, `other` is unreadable; `session_id` only for participation polls; primary key `(poll_id, tg_user_id)`, forwards share one poll;
 `notification_pref(person_id, channel (dm/group), kind, enabled)`;
 `outbox(id, aggregate_type, aggregate_id, event_type, payload jsonb, created_at, dispatched_at?, attempts)`.

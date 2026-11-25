@@ -1,6 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { telegramChat } from '@rondo/db/schema/org.schema';
+import { extraction, ingestRun, messageRef, sourceRef } from '@rondo/db/schema/platform.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder, refusal } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -143,6 +144,37 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 [-4031n, 5],
                 [-4032n, null]
             ]);
+        })
+    );
+
+    it.effect('posts the usual Wednesday to the second group when its games came from an import', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, park } = yield* seedSeason('aud-imported', { groupChatId: -4091, adminId: 709 });
+            yield* seedSecondGroup(communityId, { main: -4091, second: -4092, venueId: park });
+            const posted = yield* db.delete(messageRef).where(eq(messageRef.chatId, -4092n)).returning();
+            const [run] = yield* db
+                .insert(ingestRun)
+                .values({ communityId, source: 'telegram_json', fileSha256: 'sha', parserVersion: '2' })
+                .returning();
+
+            for (const { messageId, entityId } of posted) {
+                const [ref] = yield* db
+                    .insert(sourceRef)
+                    .values({ runId: run?.id ?? '', communityId, chatId: -4092, messageId, sentAt: new Date(0), kind: 'poll' })
+                    .returning();
+                yield* db.insert(extraction).values({ sourceRefId: ref?.id ?? '', entityType: 'scheduling.session', entityId });
+            }
+
+            yield* setNow(Date.parse('2026-12-01T09:00:00Z'));
+            const admin = conversation(recorder, adminNumbered(709));
+            yield* admin.type('/newgame');
+            const main = admin.screen();
+            yield* admin.tap('✅ Опублікувати');
+
+            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Опублікувати', '➡️ Second']);
+            expect(callsTo(-4092, 'sendPoll')).toHaveLength(1);
+            expect(callsTo(-4091, 'sendPoll')).toHaveLength(0);
         })
     );
 });

@@ -1,10 +1,10 @@
 import { isDefined } from '@rnw-community/shared';
 import { personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
-import { pollVote } from '@rondo/db/schema/platform.schema';
+import { importedPoll, pollVote } from '@rondo/db/schema/platform.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import type { AliasGame, Squad, VoteEvidence } from './match-votes';
@@ -21,6 +21,7 @@ export interface EvidenceEntry {
     readonly personId: string | null;
     readonly resolvedBy: (typeof lineupEntry.$inferSelect)['resolvedBy'];
     readonly kind: (typeof personAlias.$inferSelect)['kind'] | null;
+    readonly isMain: boolean;
     readonly date: string;
 }
 
@@ -71,7 +72,7 @@ export const withLinks = (evidence: LinkEvidence, personIdByEntry: ReadonlyMap<s
     ...entryIndex(evidence.entries.map(entry => withPerson(entry, personIdByEntry.get(entry.id))))
 });
 
-export const loadEvidence = Effect.fn('IngestTelegram.loadEvidence')(function* (communityId: string) {
+export const loadEvidence = Effect.fn('IngestTelegram.loadEvidence')(function* (communityId: string, isMainOnly = false) {
     const db = yield* Db;
     const votes = yield* db
         .selectDistinctOn([pollVote.sessionId, telegramAccount.personId], {
@@ -82,7 +83,14 @@ export const loadEvidence = Effect.fn('IngestTelegram.loadEvidence')(function* (
         .from(pollVote)
         .innerJoin(session, eq(session.id, pollVote.sessionId))
         .innerJoin(telegramAccount, eq(telegramAccount.tgUserId, pollVote.tgUserId))
-        .where(and(eq(session.communityId, communityId), inArray(pollVote.choice, ['yes', 'no'])))
+        .leftJoin(importedPoll, eq(importedPoll.pollId, pollVote.pollId))
+        .where(
+            and(
+                eq(session.communityId, communityId),
+                inArray(pollVote.choice, ['yes', 'no']),
+                ...(isMainOnly ? [isNull(importedPoll.chatId)] : [])
+            )
+        )
         .orderBy(pollVote.sessionId, telegramAccount.personId, desc(pollVote.votedAt));
     const entries: EvidenceEntry[] = yield* db
         .select({
@@ -92,12 +100,20 @@ export const loadEvidence = Effect.fn('IngestTelegram.loadEvidence')(function* (
             personId: lineupEntry.personId,
             resolvedBy: lineupEntry.resolvedBy,
             kind: personAlias.kind,
+            isMain: sql<boolean>`${lineupEntry.chatId} is null`,
             date: session.localDate
         })
         .from(lineupEntry)
         .innerJoin(session, eq(session.id, lineupEntry.sessionId))
         .leftJoin(personAlias, eq(personAlias.id, lineupEntry.aliasId))
-        .where(and(eq(session.communityId, communityId), eq(lineupEntry.isGuest, false), ne(session.status, 'cancelled')))
+        .where(
+            and(
+                eq(session.communityId, communityId),
+                eq(lineupEntry.isGuest, false),
+                ne(session.status, 'cancelled'),
+                ...(isMainOnly ? [isNull(lineupEntry.chatId)] : [])
+            )
+        )
         .orderBy(asc(session.localDate), asc(lineupEntry.sessionId), asc(lineupEntry.teamOrdinal), asc(lineupEntry.position));
     const yesBySession = new Map<string, Set<string>>();
 
