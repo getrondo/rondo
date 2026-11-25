@@ -137,6 +137,9 @@ const catalogue = {
         postCard: '📣 Надіслати в {where}',
         sentMe: '✅ Опитування в тебе.',
         placeGone: 'Цього місця вже немає.',
+        reasonPollOpen: 'Не вдалося закрити опитування, гру не видалено.',
+        reasonUnseenVotes: 'В опитуванні є голоси, яких бот не бачив. Гру не видалено, опитування закрито.',
+        reasonNotDeletable: 'Цю гру вже не можна видалити, у ній є голоси гравців. Її можна скасувати.',
         sendMeShort: '✅ Надіслати мені'
     },
     ru: {
@@ -275,6 +278,9 @@ const catalogue = {
         postCard: '📣 Отправить в {where}',
         sentMe: '✅ Опрос у тебя.',
         placeGone: 'Этого места уже нет.',
+        reasonPollOpen: 'Не удалось закрыть опрос, игра не удалена.',
+        reasonUnseenVotes: 'В опросе есть голоса, которых бот не видел. Игра не удалена, опрос закрыт.',
+        reasonNotDeletable: 'Эту игру уже нельзя удалить, в ней есть голоса игроков. Её можно отменить.',
         sendMeShort: '✅ Отправить мне'
     }
 } as const satisfies Record<Locale, Record<string, string>>;

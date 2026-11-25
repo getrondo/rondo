@@ -137,8 +137,12 @@ without the bot still arrive as poll answers with public voters.
 | 124 | SEND SAFETY | Notices only to linked chats | Change or cancel after a chat is unlinked | Only chats still linked, or the admin chat | — | — | service | `sends notices only to chats still linked to the game community or the admin chat, and never to a stand-in` |
 | 125 | SECURITY | Map links | Google Maps link on a new place | — | ⚠️ for other schemes, look-alike hosts, other paths, broken escapes | Coordinates only from allowed hosts | unit | `refuses other schemes, look-alike hosts, paths outside /maps and broken escapes without throwing` |
 | 126 | SECURITY | Sign-up history is append-only | Delete a sign-up event | — | — | Allowed only together with its sign-up | service | `lets a sign-up event go only together with its sign-up, whatever the session settings say` |
-| 127 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 128 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 129 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 130 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 131 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 127 | SEND SAFETY | Foreign place | Preview or card with a place of another community | — | «Цього місця вже немає», no ✅ | Nothing | update | `says a place of another community is gone and offers no ✅ on the preview or the card` |
+| 128 | ADMIN AFTER | Delete keeps a game it cannot prove empty | 🗑 → ✅ with stopPoll refused, or more voters than stored | Poll closed when it could be | Plain reason, game kept | Game kept | update | `keeps the game when the poll cannot be closed or holds votes the bot has not seen` |
+| 129 | ADMIN AFTER | No delete without the bot poll | Card of a 💾 game or one with a line-up of other players | — | No 🗑 | — | update | `offers no delete for a game without the bot poll or with a line-up of other players` |
+| 130 | SEND SAFETY | Delete versus vote | Delete and a player vote at the same time (Postgres) | — | — | Never a deleted game with a counted vote | service | `never deletes a game whose player vote was counted at the same time` |
+| 131 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 132 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 133 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 134 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 135 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
