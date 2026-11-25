@@ -1,0 +1,178 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "55d172f9-78f3-4617-b369-0ef6ed40d121",
+    "prevIds": ["97ce662f-b041-412a-a94e-2200cf086087"],
+    "footprints": [
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "play_private", "home_colour"],
+            "writes": [
+                "s|tbl|play_private.home_colour",
+                "n|tbl|play_private.home_colour",
+                "e|tbl|play_private.home_colour",
+                "n|rel|play_private.home_colour",
+                "n|type|play_private.home_colour",
+                "n|rel|play_private.home_colour_pkey"
+            ],
+            "reads": ["n|sch|play_private"]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play_private", "home_colour"],
+            "writes": [
+                "s|fk|play_private.home_colour.home_colour_person_id_person_id_fkey",
+                "n|fk|play_private.home_colour.home_colour_person_id_person_id_fkey",
+                "e|fk|play_private.home_colour.home_colour_person_id_person_id_fkey",
+                "n|con|play_private.home_colour.home_colour_person_id_person_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play_private.home_colour",
+                "n|sch|play_private",
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|col|play_private.home_colour.person_id",
+                "n|col|identity.person.id",
+                "e|uniqueness|identity.person.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play_private", "home_colour"],
+            "writes": [
+                "s|fk|play_private.home_colour.home_colour_activity_id_activity_id_fkey",
+                "n|fk|play_private.home_colour.home_colour_activity_id_activity_id_fkey",
+                "e|fk|play_private.home_colour.home_colour_activity_id_activity_id_fkey",
+                "n|con|play_private.home_colour.home_colour_activity_id_activity_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play_private.home_colour",
+                "n|sch|play_private",
+                "n|tbl|org.activity",
+                "n|sch|org",
+                "n|col|play_private.home_colour.activity_id",
+                "n|col|org.activity.id",
+                "e|uniqueness|org.activity.id"
+            ]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "name": "home_colour",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "home_colour",
+                "name": "person_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "home_colour",
+                "name": "activity_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "home_colour",
+                "name": "colour",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "home_colour",
+                "name": "updated_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "now()",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "home_colour",
+                "name": "home_colour_person_id_person_id_fkey",
+                "nameExplicit": false,
+                "columns": ["person_id"],
+                "schemaTo": "identity",
+                "tableTo": "person",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "home_colour",
+                "name": "home_colour_activity_id_activity_id_fkey",
+                "nameExplicit": false,
+                "columns": ["activity_id"],
+                "schemaTo": "org",
+                "tableTo": "activity",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "home_colour",
+                "name": "home_colour_pkey",
+                "columns": ["person_id", "activity_id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        }
+    ]
+}

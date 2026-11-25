@@ -165,6 +165,10 @@ export const mergePeople = Effect.fn('Core.mergePeople')((input: MergeInput) =>
                 return yield* ActionFailedError.make({ failure: { code: 'nickname_rejected' } });
             }
 
+            // The surviving person's fixed colour wins, two would refuse the merge
+            yield* db.execute(sql`delete from play_private.home_colour gone using play_private.home_colour kept
+                where gone.person_id = ${input.fromPersonId}::uuid and kept.person_id = ${input.intoPersonId}::uuid
+                    and kept.activity_id = gone.activity_id`);
             yield* db.execute(sql`select identity.merge_person(${input.fromPersonId}::uuid, ${input.intoPersonId}::uuid)`).pipe(
                 Effect.tapError(error => Effect.logWarning('[merge] refused', error)),
                 Effect.mapError(() =>

@@ -98,7 +98,7 @@ const randomSplit = ({ players, teamCount }: Case, seed: number) => {
 
 const median = (values: readonly number[]) => values.toSorted((left, right) => left - right)[Math.floor(values.length / 2)] ?? 0;
 
-const solve = ({ players, teamCount }: Case, anchor?: readonly (readonly string[])[]) =>
+const solve = ({ players, teamCount }: Case, anchor?: readonly (readonly string[])[], homes?: Parameters<typeof solveTeams>[0]['homes']) =>
     solveTeams({
         players,
         teamCount,
@@ -106,7 +106,8 @@ const solve = ({ players, teamCount }: Case, anchor?: readonly (readonly string[
         habits: new Map(),
         recent: new Map(),
         proposals: 1,
-        ...(isDefined(anchor) ? { anchor } : {})
+        ...(isDefined(anchor) ? { anchor } : {}),
+        ...(isDefined(homes) ? { homes } : {})
     })[0]?.teams ?? [];
 
 describe('solver benchmark on 12 players against the exhaustive optimum, snake draft and random', () => {
@@ -114,6 +115,10 @@ describe('solver benchmark on 12 players against the exhaustive optimum, snake d
     const rows = cases.map((entry, index) => {
         const best = optimum(entry);
         const ours = solve(entry);
+        const homes = new Map(
+            entry.players.map(({ id }, player) => [id, { team: (player * 5 + index) % entry.teamCount, isFixed: false }])
+        );
+        const coloured = solve(entry, undefined, homes);
         const snake = balanceTeams(
             entry.players.map(({ id, strength, isGk }) => ({ personId: id, displayName: id, strength, isGk })),
             entry.teamCount
@@ -131,6 +136,8 @@ describe('solver benchmark on 12 players against the exhaustive optimum, snake d
             oursMisses: keeperMisses(entry.players, ours),
             snakeMisses: keeperMisses(entry.players, snake),
             gap: (spreadOf(entry.players, ours) - best.spread) / teamTotal,
+            colouredMisses: keeperMisses(entry.players, coloured),
+            colouredGap: (spreadOf(entry.players, coloured) - best.spread) / teamTotal,
             snakeGap: (spreadOf(entry.players, snake) - best.spread) / teamTotal,
             randomGap: (spreadOf(entry.players, randomSplit(entry, index + 1)) - best.spread) / teamTotal,
             moved: moved.length
@@ -142,6 +149,12 @@ describe('solver benchmark on 12 players against the exhaustive optimum, snake d
         expect(Math.max(...rows.map(row => row.gap))).toBeLessThanOrEqual(0.02);
         expect(rows.reduce((sum, row) => sum + row.gap, 0)).toBeLessThan(rows.reduce((sum, row) => sum + row.snakeGap, 0));
         expect(rows.reduce((sum, row) => sum + row.gap, 0)).toBeLessThan(rows.reduce((sum, row) => sum + row.randomGap, 0));
+    });
+
+    it('keeps the hard rules and the 2% with a home colour for every player', () => {
+        expect(rows.map(row => row.colouredMisses - row.optimumMisses)).toEqual(rows.map(() => 0));
+        expect(Math.max(...rows.map(row => row.colouredGap))).toBeLessThanOrEqual(0.02);
+        expect(rows.reduce((sum, row) => sum + row.colouredGap, 0)).toBeLessThanOrEqual(rows.reduce((sum, row) => sum + row.gap, 0));
     });
 
     it('moves at most two placed players for one late joiner in the median', () => {

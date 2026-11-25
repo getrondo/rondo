@@ -83,6 +83,10 @@ export const toggleKeeper = (state: DraftState, personId: string): DraftState =>
 });
 
 export const setColour = (state: DraftState, team: number, colour: string): DraftState => {
+    if (state.colours[team] === colour) {
+        return state;
+    }
+
     const holder = state.colours.indexOf(colour);
     const current = state.colours[team] ?? colour;
     const colourAt = (index: number, entry: string): string => {

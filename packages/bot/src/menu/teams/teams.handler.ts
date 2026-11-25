@@ -4,7 +4,6 @@ import { guestsOf, joinCandidates, markedNoShows, waitingOf } from '@rondo/core/
 import { playersOf } from '@rondo/core/teams/draft-state';
 import { personNames } from '@rondo/core/teams/team-inputs';
 import { recordResult } from '@rondo/core/teams/team-result';
-import { setTier } from '@rondo/core/teams/team.service';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
@@ -18,6 +17,7 @@ import { applyChange, hostGuestsInTeam } from './teams-changes';
 import { editorScreen } from './teams-editor.screen';
 import { handlePasteTap } from './teams-input';
 import { notifyRosterChange } from './teams-notify';
+import { homeColourTap, tierTap } from './teams-player';
 import { overviewScreen, publishAndShow } from './teams-publish';
 import {
     colourScreen,
@@ -26,6 +26,7 @@ import {
     joinersScreen,
     moveScreen,
     namePrompt,
+    playerColourScreen,
     removeScreen,
     settingsScreen
 } from './teams-screens';
@@ -34,11 +35,9 @@ import { actorOf, loadView, showTeams } from './teams-view';
 
 import type { MenuUser } from '../screen.interface';
 import type { EditorView } from './teams-view.interface';
-import type { Tier } from '@rondo/core/teams/interface/team-inputs.interface';
 
 const changingOps = new Set(['w', 'm', 'l', 'k', 'u', 'h', 'V', 'b', 'A', 'f', 'n', 'C', 'P', 'R', 'o', 'J']);
 const overviewOps = new Set(['A', 'V']);
-const nextTier: Readonly<Record<Tier | 'none', Tier>> = { none: 'normal', normal: 'strong', strong: 'new', new: 'normal' };
 
 const viewScreen = Effect.fn('Bot.teamsViewScreen')(function* (user: MenuUser, view: EditorView, tap: TeamsTap) {
     const selected = playersOf(view.row.state)[Number(tap.args[0])] ?? null;
@@ -49,6 +48,9 @@ const viewScreen = Effect.fn('Bot.teamsViewScreen')(function* (user: MenuUser, v
         }
         case 'c': {
             return colourScreen(user, view, Math.min(Number(tap.args[0]), view.row.state.teams.length - 1));
+        }
+        case 'z': {
+            return playerColourScreen(user, view, selected ?? '');
         }
         case 'g': {
             return namePrompt(user, view);
@@ -141,7 +143,7 @@ const changeScreen = Effect.fn('Bot.teamsChange')(function* (user: MenuUser, tap
     const fresh = yield* loadView(user, tap.sessionId, { page: tap.page, notes, row: change.row });
 
     return {
-        screen: tap.op === 'C' ? settingsScreen(user, fresh) : yield* changedScreen(user, tap, fresh),
+        screen: yield* changedScreen(user, tap, fresh),
         toast: change._tag === 'stale' ? teamsText(user.locale, 'changedByOther') : null
     };
 });
@@ -170,23 +172,13 @@ const resultTap = Effect.fn('Bot.teamsResult')(function* (user: MenuUser, tap: T
     return recorded ? Option.none<string>() : Option.some(teamsText(user.locale, 'squadChanged'));
 });
 
-const tierTap = Effect.fn('Bot.teamsTier')(function* (user: MenuUser, view: EditorView, tap: TeamsTap) {
-    const personId = playersOf(view.row.state)[Number(tap.args[0])];
-    const member = view.inputs.members.find(entry => entry.personId === personId);
-
-    if (isDefined(member) && !member.isGuest) {
-        yield* setTier({
-            communityId: user.communityId,
-            personId: member.personId,
-            tier: nextTier[member.tier ?? 'none'],
-            actorPersonId: yield* actorOf(user)
-        });
+const tapScreen = (user: MenuUser, view: EditorView, tap: TeamsTap) => {
+    if (tap.op === 'Y') {
+        return tierTap(user, view, tap);
     }
 
-    const fresh = yield* loadView(user, tap.sessionId, { page: tap.page });
-
-    return settingsScreen(user, fresh);
-});
+    return tap.op === 'Z' ? homeColourTap(user, view, tap) : viewScreen(user, view, tap);
+};
 
 const routedTap = Effect.fn('Bot.teamsRoutedTap')(function* (user: MenuUser, tap: TeamsTap, messageId: number) {
     if (tap.op === 'W') {
@@ -244,8 +236,7 @@ const teamsTap = Effect.fn('Bot.teamsTap')(function* (user: MenuUser, data: stri
     const isStale = tap.version !== view.row.version && tap.op !== 'e' && tap.op !== 'O';
     const isGuestStep = (tap.op === 'G' || tap.op === 'g') && !isStale;
     const shown = isStale ? { ...view, notes: [teamsText(user.locale, 'changedByOther')] } : view;
-    const screen =
-        tap.op === 'Y' && !isStale ? yield* tierTap(user, view, tap) : yield* viewScreen(user, shown, isStale ? { ...tap, op: 'e' } : tap);
+    const screen = yield* tapScreen(user, shown, isStale ? { ...tap, op: 'e' } : tap);
     yield* showTeams(user, messageId, {
         sessionId: tap.sessionId,
         screen,

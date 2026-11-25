@@ -60,8 +60,11 @@ const walkTeams = Effect.fn('test.walkTeams')(function* (locale: 'uk' | 'ru', id
     yield* admin.press(firstButton(admin.screen()));
     yield* admin.press(buttonData(admin.screen(), word('⚙️ Рівні та кольори', '⚙️ Уровни и цвета')));
     yield* admin.press(buttonData(admin.screen(), '🎨'));
-    yield* admin.press(buttonData(admin.screen(), word('⬅️ Назад', '⬅️ Назад')));
     yield* admin.tap(toEditor);
+    yield* admin.press(gridButton(admin.screen(), 1, 0));
+    yield* admin.press(buttonData(admin.screen(), '🎽'));
+    yield* admin.tap(word('🟠 Помаранчеві', '🟠 Оранжевые'));
+    yield* admin.press(buttonData(admin.screen(), word('✖️ Скасувати вибір', '✖️ Отменить выбор')));
     yield* admin.press(buttonData(admin.screen(), word('➕ Хтось прийшов', '➕ Кто-то пришёл')));
     yield* admin.tap(toEditor);
     yield* admin.press(gridButton(admin.screen(), 1, 1));

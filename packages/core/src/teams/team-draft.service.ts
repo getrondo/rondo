@@ -6,10 +6,19 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 
-import { badgeOfRow, defaultColours, paddedColours } from './badges';
-import { DraftStateSchema, initialState, playersOf, syncRoster, teamIndexOf, withChange, type DraftState } from './draft-state';
+import { badgeOfRow, paddedColours } from './badges';
+import {
+    DraftStateSchema,
+    initialState,
+    pickVariant,
+    playersOf,
+    syncRoster,
+    teamIndexOf,
+    withChange,
+    type DraftState
+} from './draft-state';
+import { arranged, coloursFor, solveColoured } from './home-colours';
 import { squadOf } from './lineup-of-draft';
-import { solveTeams } from './solve-teams';
 import { loadTeamInputs } from './team-inputs';
 
 import type { SolverInput, SolverPlayer } from './interface/solver.interface';
@@ -91,11 +100,18 @@ export const solverInputFor = (inputs: TeamInputs, state: DraftState, extra: Par
     };
 };
 
+const solve = (inputs: TeamInputs, state: DraftState, extra: Partial<SolverInput> = {}) =>
+    solveColoured(solverInputFor(inputs, state, extra), { colours: state.colours, affinities: inputs.affinities });
+
+// The colours of the draft, the admin's among them, stay for the same number of teams
+export const coloursOf = (inputs: TeamInputs, colours: readonly string[], count: number): readonly string[] =>
+    colours.length === count ? colours : coloursFor(inputs.history, count);
+
 export const freshState = (inputs: TeamInputs, teamCount: number, base: DraftState | null = null): DraftState => {
     const keepers = base?.keepers ?? inputs.members.filter(member => member.isGk).map(member => member.personId);
-    const empty = initialState({ variants: [], reasons: [], colours: [], keepers });
-    const proposals = solveTeams(solverInputFor(inputs, base ?? empty, { teamCount }));
-    const colours = base?.colours.length === teamCount ? base.colours : defaultColours(teamCount, inputs.lastColours);
+    const colours = coloursOf(inputs, base?.colours ?? [], teamCount);
+    const start = base ?? initialState({ variants: [], reasons: [], colours, keepers });
+    const proposals = solve(inputs, { ...start, colours }, { teamCount });
     const variants = proposals.map(proposal => proposal.teams);
     const reasons = proposals.map(proposal => proposal.reason);
 
@@ -107,18 +123,27 @@ export const freshState = (inputs: TeamInputs, teamCount: number, base: DraftSta
 };
 
 export const rebalanced = (inputs: TeamInputs, state: DraftState): DraftState => {
-    const [best] = solveTeams(solverInputFor(inputs, state, { anchor: state.teams, proposals: 1 }));
+    const [best] = solve(inputs, state, { anchor: state.teams, proposals: 1 });
 
     return isDefined(best) ? withChange(state, { teams: best.teams, pending: [] }) : state;
 };
 
 export const shuffled = (inputs: TeamInputs, state: DraftState): DraftState => {
     const current = new Set(state.teams.map(members => members.toSorted().join(',')));
-    const proposals = solveTeams(solverInputFor(inputs, state));
+    const proposals = solve(inputs, state);
     const differing = (teams: readonly (readonly string[])[]) => teams.filter(members => !current.has(members.toSorted().join(','))).length;
     const [best] = proposals.toSorted((left, right) => differing(right.teams) - differing(left.teams));
 
     return isDefined(best) ? withChange(state, { teams: best.teams, pending: [] }) : state;
+};
+
+export const nextVariant = (inputs: TeamInputs, state: DraftState): DraftState => {
+    const picked = pickVariant(state, (Math.max(state.variant, 0) + 1) % Math.max(1, state.variants.length));
+    const colours = paddedColours(state.colours, picked.teams.length);
+
+    return picked === state || isNotEmptyArray(state.locks)
+        ? picked
+        : { ...picked, teams: arranged(picked.teams, { colours, affinities: inputs.affinities }) };
 };
 
 export const goalkeepersOf = (inputs: TeamInputs): string[] => inputs.members.flatMap(member => (member.isGk ? [member.personId] : []));

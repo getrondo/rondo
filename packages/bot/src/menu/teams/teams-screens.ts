@@ -130,22 +130,40 @@ export const moveScreen = (
     };
 };
 
+const badgeRows = (user: MenuUser, chosen: string | null | undefined, dataOf: (index: number) => string): MenuButton[][] =>
+    badges.map((badge, index) => [
+        {
+            text: `${badge.badge} ${teamName(user.locale, badge.badge, index)}${chosen === badge.colour ? ' ✓' : ''}`,
+            callback_data: dataOf(index)
+        }
+    ]);
+
 export const colourScreen = (user: MenuUser, view: EditorView, team: number): Screen => ({
     text: [
         header(user, view),
         teamsText(user.locale, 'colourTitle', { team: `${badgeAt(view, team)} ${teamAt(user.locale, view, team)}` })
     ].join('\n'),
-    keyboard: [
-        ...chunk(
-            badges.map((badge, index) => ({
-                text: `${view.row.state.colours[team] === badge.colour ? '✓' : ''}${badge.badge} ${teamName(user.locale, badge.badge, index)}`,
-                callback_data: teamsData(baseOf(view), 'C', [team, index])
-            })),
-            2
-        ),
-        [{ text: teamsText(user.locale, 'toSettings'), callback_data: teamsData(baseOf(view), 'L') }]
-    ]
+    keyboard: [...badgeRows(user, view.row.state.colours[team], index => teamsData(baseOf(view), 'C', [team, index])), backRow(user, view)]
 });
+
+export const playerColourScreen = (user: MenuUser, view: EditorView, personId: string): Screen => {
+    const position = playersOf(view.row.state).indexOf(personId);
+    const fixed = view.inputs.affinities.get(personId)?.fixed;
+
+    return {
+        text: [header(user, view), teamsText(user.locale, 'playerColourTitle', { name: escapeHtml(nameOf(view, personId)) })].join('\n'),
+        keyboard: [
+            ...badgeRows(user, fixed, index => teamsData(baseOf(view), 'Z', [position, index])),
+            [
+                {
+                    text: `${teamsText(user.locale, 'autoColour')}${isDefined(fixed) ? '' : ' ✓'}`,
+                    callback_data: teamsData(baseOf(view), 'Z', [position, 'auto'])
+                }
+            ],
+            [{ text: teamsText(user.locale, 'toSettings'), callback_data: teamsData(baseOf(view), 's', [position]) }]
+        ]
+    };
+};
 
 const tierMark: Readonly<Record<Tier, string>> = { strong: '💪', normal: '🙂', new: '🌱' };
 

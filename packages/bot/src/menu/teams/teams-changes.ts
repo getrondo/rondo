@@ -3,7 +3,6 @@ import { addGuests, joinGame, removeFromGame, toggleNoShow } from '@rondo/core/s
 import { badges } from '@rondo/core/teams/badges';
 import {
     movePlayers,
-    pickVariant,
     playersOf,
     setColour,
     swapPlayers,
@@ -14,7 +13,7 @@ import {
     undo,
     type DraftState
 } from '@rondo/core/teams/draft-state';
-import { changeDraft, freshState, goalkeepersOf, rebalanced, shuffled } from '@rondo/core/teams/team-draft.service';
+import { changeDraft, freshState, goalkeepersOf, nextVariant, rebalanced, shuffled } from '@rondo/core/teams/team-draft.service';
 import { loadTeamInputs } from '@rondo/core/teams/team-inputs';
 import * as Effect from 'effect/Effect';
 
@@ -161,7 +160,7 @@ const transformOf = (context: ChangeContext, state: DraftState) => {
             return Effect.succeed(shuffled(inputs, state));
         }
         case 'V': {
-            const next = syncByAdmin(pickVariant(state, (Math.max(state.variant, 0) + 1) % Math.max(1, state.variants.length)), roster);
+            const next = syncByAdmin(nextVariant(inputs, state), roster);
 
             return Effect.succeed(isNotEmptyArray(next.pending) ? rebalanced(inputs, next) : next);
         }

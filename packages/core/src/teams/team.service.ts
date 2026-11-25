@@ -1,7 +1,8 @@
-import { isDefined } from '@rnw-community/shared';
-import { rating } from '@rondo/db/schema/play.schema';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { person } from '@rondo/db/schema/identity.schema';
+import { homeColour, rating } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
@@ -9,17 +10,17 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { footballActivity } from '../sessions/session.service';
 import { plainText } from '../utils/plain-text.util';
 
-import { paddedColours } from './badges';
 import { initialState, syncRoster, withChange, type DraftState } from './draft-state';
+import { solveColoured } from './home-colours';
 import { planLineup } from './lineup-plan';
 import { publishLineup } from './publish-lineup';
-import { solveTeams } from './solve-teams';
-import { changeDraft, openDraft, solverInputFor, usualTeamCount } from './team-draft.service';
+import { changeDraft, coloursOf, openDraft, solverInputFor, usualTeamCount } from './team-draft.service';
 import { loadTeamInputs, tierLevel } from './team-inputs';
 
 import type { Action } from '../actions/action.model';
 import type { Locale } from '../i18n/locale';
 import type { GroupTarget } from '../interface/group-target.interface';
+import type { BadgeColour } from './interface/badge.interface';
 import type { TeamInputs, Tier } from './interface/team-inputs.interface';
 import type * as Option from 'effect/Option';
 
@@ -28,11 +29,14 @@ export interface ProposedTeam {
     readonly players: readonly { readonly personId: string; readonly displayName: string; readonly isGk: boolean }[];
 }
 
-const solvedTeams = (inputs: TeamInputs, teamCount: number | null): ProposedTeam[] => {
+const solvedTeams = (inputs: TeamInputs, draftColours: readonly string[], teamCount: number | null): ProposedTeam[] => {
     const keepers = inputs.members.filter(member => member.isGk).map(member => member.personId);
     const count = teamCount ?? usualTeamCount(inputs.players.length);
     const empty = initialState({ variants: [], reasons: [], colours: [], keepers });
-    const [best] = solveTeams(solverInputFor(inputs, empty, { teamCount: count, proposals: 1 }));
+    const [best] = solveColoured(solverInputFor(inputs, empty, { teamCount: count, proposals: 1 }), {
+        colours: coloursOf(inputs, draftColours, count),
+        affinities: inputs.affinities
+    });
     const nameOf = new Map(inputs.members.map(member => [member.personId, member.displayName]));
 
     return (best?.teams ?? []).map((members, index): ProposedTeam => ({
@@ -41,13 +45,13 @@ const solvedTeams = (inputs: TeamInputs, teamCount: number | null): ProposedTeam
     }));
 };
 
-const withProposed = (state: DraftState, teams: readonly ProposedTeam[]): DraftState =>
+const withProposed = (inputs: TeamInputs, state: DraftState, teams: readonly ProposedTeam[]): DraftState =>
     withChange(state, {
         teams: teams.map(entry => entry.players.map(player => player.personId)),
         keepers: teams.flatMap(entry => entry.players.filter(player => player.isGk).map(player => player.personId)),
         pending: [],
         locks: [],
-        colours: paddedColours(state.colours, teams.length)
+        colours: coloursOf(inputs, state.colours, teams.length)
     });
 
 export const publishTeamsAction = Effect.fn('Core.publishTeamsAction')(function* (input: {
@@ -61,8 +65,8 @@ export const publishTeamsAction = Effect.fn('Core.publishTeamsAction')(function*
     readonly actorPersonId: string | null;
 }) {
     const opened = yield* openDraft(input.communityId, input.sessionId, input.actorPersonId);
-    const teams = input.teams ?? solvedTeams(opened.inputs, input.teamCount);
-    const plan = yield* planLineup({ ...input, loaded: opened, state: withProposed(opened.row.state, teams) });
+    const teams = input.teams ?? solvedTeams(opened.inputs, opened.row.state.colours, input.teamCount);
+    const plan = yield* planLineup({ ...input, loaded: opened, state: withProposed(opened.inputs, opened.row.state, teams) });
     const due = plan.deliveries.filter(delivery => delivery.isDue);
 
     return {
@@ -89,10 +93,11 @@ export const executePublishTeams = Effect.fn('Core.executePublishTeams')(functio
         readonly fallback: Option.Option<GroupTarget>;
     }
 ) {
-    const roster = (yield* loadTeamInputs(context.communityId, action.sessionId)).members.map(member => member.personId);
+    const inputs = yield* loadTeamInputs(context.communityId, action.sessionId);
+    const roster = inputs.members.map(member => member.personId);
     const change = yield* changeDraft(
         { sessionId: action.sessionId, version: action.version, key: 'assistant', actorPersonId: context.actorPersonId },
-        state => Effect.succeed(syncRoster(withProposed(state, action.teams), roster))
+        state => Effect.succeed(syncRoster(withProposed(inputs, state, action.teams), roster))
     );
 
     if (change._tag !== 'changed') {
@@ -141,3 +146,44 @@ export const setTier = (input: {
     readonly tier: Tier;
     readonly actorPersonId: string | null;
 }) => setSeedRating({ ...input, level: tierLevel(input.tier) });
+
+export const setHomeColour = Effect.fn('Core.setHomeColour')(function* (input: {
+    readonly personId: string;
+    readonly communityId: string;
+    readonly colour: BadgeColour | null;
+    readonly actorPersonId: string | null;
+}) {
+    const db = yield* Db;
+    const { personId, colour } = input;
+    const activityId = yield* footballActivity(input.communityId);
+
+    if (isDefined(colour)) {
+        yield* db.transaction(() =>
+            Effect.gen(function* () {
+                // An erasure running at the same time waits or is seen: an erased person gets no colour
+                const active = yield* db
+                    .select({ id: person.id })
+                    .from(person)
+                    .where(and(eq(person.id, personId), isNull(person.anonymizedAt)))
+                    .for('share');
+
+                if (isNotEmptyArray(active)) {
+                    yield* db
+                        .insert(homeColour)
+                        .values({ personId, activityId, colour })
+                        .onConflictDoUpdate({ target: [homeColour.personId, homeColour.activityId], set: { colour } });
+                }
+            })
+        );
+    } else {
+        yield* db.delete(homeColour).where(and(eq(homeColour.personId, personId), eq(homeColour.activityId, activityId)));
+    }
+
+    yield* recordAudit({
+        communityId: input.communityId,
+        actorPersonId: input.actorPersonId,
+        action: 'player.home_colour',
+        entityType: 'person',
+        entityId: personId
+    });
+});

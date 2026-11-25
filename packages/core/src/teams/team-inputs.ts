@@ -2,10 +2,10 @@ import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { community, playerProfile } from '@rondo/db/schema/org.schema';
 import { telegramPoll } from '@rondo/db/schema/platform.schema';
-import { rating, team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
+import { homeColour, rating, team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, desc, eq, inArray, lt, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt, ne } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
@@ -13,12 +13,13 @@ import * as Schema from 'effect/Schema';
 import { primaryAccount } from '../identity/primary-account';
 import { requireSession } from '../sessions/session.service';
 
-import { badgeOfRow } from './badges';
+import { badgeOfColour, badgeOfRow } from './badges';
 import { habitsOf } from './habits';
+import { affinitiesOf } from './home-colours';
 import { outAfterSquad, squadOf } from './lineup-of-draft';
 import { unknownRating } from './rate-result';
 
-import type { BadgeColour } from './interface/badge.interface';
+import type { ColouredRow } from './interface/home-colour.interface';
 import type { SolverPlayer } from './interface/solver.interface';
 import type { TeamInputs, TeamMember, TeamSettings, Tier } from './interface/team-inputs.interface';
 
@@ -172,29 +173,28 @@ export const membersOf = Effect.fn('Core.membersOf')(function* (sessionId: strin
 
 const historyRows = Effect.fn('Core.historyRows')(function* (communityId: string, before: string) {
     const db = yield* Db;
-
-    return yield* db
-        .select({ game: teamMember.sessionId, date: session.localDate, team: team.ordinal, player: teamMember.personId })
+    const rows = yield* db
+        .select({
+            game: teamMember.sessionId,
+            date: session.localDate,
+            team: team.ordinal,
+            player: teamMember.personId,
+            emoji: teamColor.emoji,
+            name: teamColor.name
+        })
         .from(teamMember)
         .innerJoin(team, eq(team.id, teamMember.teamId))
+        .leftJoin(teamColor, eq(teamColor.id, team.colorId))
         .innerJoin(session, eq(session.id, teamMember.sessionId))
         .where(and(eq(session.communityId, communityId), lt(session.localDate, before), ne(session.status, 'cancelled')));
-});
 
-const lastColoursAt = Effect.fn('Core.lastColoursAt')(function* (communityId: string, venueId: string | null, before: string) {
-    const db = yield* Db;
-    const venue = isDefined(venueId) ? [eq(session.venueId, venueId)] : [];
-    const rows = yield* db
-        .select({ sessionId: team.sessionId, emoji: teamColor.emoji, name: teamColor.name })
-        .from(team)
-        .innerJoin(session, eq(session.id, team.sessionId))
-        .innerJoin(teamColor, eq(teamColor.id, team.colorId))
-        .where(and(eq(session.communityId, communityId), lt(session.localDate, before), ...venue))
-        .orderBy(desc(session.localDate), asc(team.ordinal))
-        .limit(12);
-    const latest = rows.filter(row => row.sessionId === rows[0]?.sessionId);
-
-    return latest.flatMap((row): BadgeColour[] => Option.toArray(Option.fromNullishOr(badgeOfRow(row)?.colour)));
+    return rows.map((row): ColouredRow => ({
+        game: row.game,
+        date: row.date,
+        team: row.team,
+        player: row.player,
+        colour: badgeOfRow({ emoji: row.emoji, name: row.name ?? '' })?.colour ?? null
+    }));
 });
 
 export const loadTeamInputs = Effect.fn('Core.loadTeamInputs')(function* (communityId: string, sessionId: string) {
@@ -205,17 +205,19 @@ export const loadTeamInputs = Effect.fn('Core.loadTeamInputs')(function* (commun
     const { members, strengthOf, hasLevels } = yield* membersOf(sessionId, activityId);
     const ids = members.map(member => member.personId);
     const among = new Set(ids);
-    const roles = isNotEmptyArray(ids)
+    const profiles = isNotEmptyArray(ids)
         ? yield* db
-              .select({ personId: playerProfile.personId, positions: playerProfile.positions })
-              .from(playerProfile)
-              .where(and(eq(playerProfile.activityId, activityId), inArray(playerProfile.personId, ids)))
+              .select({ personId: person.id, positions: playerProfile.positions, colour: homeColour.colour })
+              .from(person)
+              .leftJoin(playerProfile, and(eq(playerProfile.personId, person.id), eq(playerProfile.activityId, activityId)))
+              .leftJoin(homeColour, and(eq(homeColour.personId, person.id), eq(homeColour.activityId, activityId)))
+              .where(inArray(person.id, ids))
         : [];
     const history = yield* historyRows(communityId, game.localDate);
     const { habits, recent, short } = habitsOf(history, game.localDate, among);
     const players = members.map((member): SolverPlayer => {
         const { mu, sigma } = strengthOf(member.personId);
-        const positions = roles.find(row => row.personId === member.personId)?.positions ?? [];
+        const positions = profiles.find(row => row.personId === member.personId)?.positions ?? [];
 
         return {
             id: member.personId,
@@ -230,7 +232,17 @@ export const loadTeamInputs = Effect.fn('Core.loadTeamInputs')(function* (commun
             shortScore: short.get(member.personId) ?? 0
         };
     });
-    const lastColours = yield* lastColoursAt(communityId, game.venueId, game.localDate);
+    const affinities = affinitiesOf(
+        history,
+        new Map(
+            members
+                .filter(member => !member.isGuest)
+                .map(member => [
+                    member.personId,
+                    badgeOfColour(profiles.find(row => row.personId === member.personId)?.colour)?.colour ?? null
+                ])
+        )
+    );
     const settings = yield* teamSettingsOf(communityId);
 
     return {
@@ -240,7 +252,8 @@ export const loadTeamInputs = Effect.fn('Core.loadTeamInputs')(function* (commun
         habits,
         recent,
         hasLevels,
-        lastColours,
+        history,
+        affinities,
         settings
     } satisfies TeamInputs;
 });
