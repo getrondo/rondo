@@ -103,8 +103,9 @@ add nullable columns or tables, never rename or drop in the same release. A drop
   with an Effect span (`Bot.*`, `Core.*`, `Assistant.*`).
 - **Webhook health:** `getWebhookInfo` shows pending updates and the last error.
 - **Pending proposals:** `select * from comms.pending_action order by created_at desc`.
-- **Uncertain polls:** a pending action with status `failed` and the reason "uncertain, check the group" means Telegram
-  did not answer in time. A new game was not stored, and nothing is sent again. If its poll is in the group, delete it,
+- **Uncertain polls:** `select id, kind, created_at from comms.pending_action where status = 'failed' and result -> 'failure' ->> 'code' = 'result_uncertain'`
+  (rows before the failure codes have the text in `result ->> 'reason'`) lists actions whose send Telegram did not answer
+  in time. A new game was not stored, and nothing is sent again. If its poll is in the group, delete it,
   then ask for the game again. A game with an open poll is not announced twice: if that poll was deleted in Telegram, set
   its `comms.telegram_poll.closed_at` first.
 - **Audit:** `select * from audit.log order by at desc`.

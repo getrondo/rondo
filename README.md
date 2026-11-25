@@ -51,7 +51,7 @@ docs/                     Vision, research, epics, architecture, ADRs, runbooks
 
 ```bash
 pnpm install
-pnpm db:up && pnpm db:migrate   # local Postgres 17 on :54329
+pnpm db:up && pnpm db:migrate   # local Postgres 18 on :54329
 pnpm check                      # format, types, lint, dead code, duplication, tests
 ```
 

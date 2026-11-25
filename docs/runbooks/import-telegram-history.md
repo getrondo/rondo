@@ -46,7 +46,7 @@ A JSON file validated by `CommunityConfigSchema` (`packages/core/src/config/comm
 ## 3. Run
 
 ```bash
-pnpm db:up                       # local Postgres 17 (docker compose, port 54329)
+pnpm db:up                       # local Postgres 18 (docker compose, port 54329)
 pnpm db:migrate                  # DATABASE_URL from .env
 DATABASE_URL=postgres://rondo:rondo@localhost:54329/rondo \
 RONDO_EXPORT_DIR=/path/to/ChatExport_... \

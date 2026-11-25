@@ -12,7 +12,7 @@ Prefer the simplest solution that satisfies the goal and fits the existing code.
 
 ```bash
 pnpm install
-pnpm db:up                 # Postgres 17 on localhost:54329 (docker compose)
+pnpm db:up                 # Postgres 18 on localhost:54329 (docker compose)
 pnpm db:generate           # drizzle-kit generate (packages/db)
 pnpm db:migrate            # apply migrations to DATABASE_URL
 pnpm db:check              # drizzle-kit check, fails on a drifted migration set

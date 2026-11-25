@@ -20,12 +20,12 @@ program composed from `Layer`s; promises exist only at foreign boundaries.
 |---|---|
 | Runtime | Node 26 (`.nvmrc`); pnpm 12 workspaces; Turborepo |
 | Core library | `effect` 4.x: `Context.Service`, `Layer`, `Schema`, `Config`, `Schema.TaggedError`, `effect/FileSystem` |
-| Database | PostgreSQL 17, one schema per bounded context ([data model](../architecture/data-model.md)) |
+| Database | PostgreSQL 18, one schema per bounded context ([data model](../architecture/data-model.md)) |
 | Data access | Drizzle ORM 1.0 (`drizzle-orm/effect-postgres`) over `@effect/sql-pg`; queries are Effects; `Db` service in `@rondo/db` |
 | Migrations | `drizzle-kit generate` from the TypeScript schema, plus hand-written SQL migrations for invariants Drizzle can't express (exclusion constraints, deferred triggers, role grants, materialized views; row-level security arrives with the second tenant, no epic yet) |
 | Tests | Vitest 5 and `@effect/vitest`; integration tests run real SQL on in-process Postgres (PGlite served over the wire protocol with `@electric-sql/pglite-socket`), so CI needs no Docker; the PGlite test layer is exported from `@rondo/db/testing` |
 | Bot | grammY behind an Effect `Telegram` service (webhook mode); updates are decoded with `Schema` |
-| Durable work | Transactional outbox (`comms.outbox`) and Effect workers with `FOR UPDATE SKIP LOCKED`; Effect Workflow/Cluster with SQL storage is evaluated for long-lived timers (E04, E06) |
+| Durable work | Claims and receipts in Postgres, hourly and nightly jobs ([ADR 0002](0002-bot-runtime-and-assistant.md)); an outbox with workers was planned and is not built |
 | Mini App and API | React and Vite with `@effect/atom-react`; Effect `HttpApi` for the typed API shared with the client; auth via signed Telegram `initData` |
 | i18n | Catalogs per locale: `uk` (default), `ru`; `en` and `de` later. Language from Telegram `language_code`, falling back to `uk` |
 | Ratings | `openskill` (Weng-Lin) behind a `Rating` service; private schema `play_private` |
@@ -45,6 +45,6 @@ program composed from `Layer`s; promises exist only at foreign boundaries.
 ## Consequences
 
 - One language, one effect system and one error model from the database to the Mini App.
-- Postgres is the single source of truth, including jobs (outbox) and analytics (materialized views).
+- Postgres is the single source of truth, including claims of jobs and analytics (materialized views).
 - Community-specific knowledge (organizer names, venue catalog, squad tags) lives in private config, never in code.
 - Drizzle 1.0 and Effect 4 are young; versions are pinned exactly, and the 24h release quarantine (`minimumReleaseAge`) exempts only those vendor families.

@@ -1,8 +1,9 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { describe, expect, it } from 'vitest';
 
-import { balanceTeams } from '../src/teams/balance-teams';
 import { solveTeams } from '../src/teams/solve-teams';
+
+import { balanceTeams } from './support/snake-draft';
 
 import type { SolverPlayer } from '../src/teams/interface/solver.interface';
 
