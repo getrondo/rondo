@@ -17,11 +17,13 @@ import {
 import { loadTeamInputs, personNames, teamSettingsOf } from '@rondo/core/teams/team-inputs';
 import {
     afterStartMs,
+    canPropose,
     claimFewNotice,
     claimNotice,
     claimProposal,
     communityAdmins,
     hasStoredTeams,
+    recordProposalReached,
     releaseNotice,
     releaseProposal
 } from '@rondo/core/teams/team-schedule';
@@ -93,7 +95,7 @@ export const proposeTeamsFor = Effect.fn('Bot.proposeTeamsFor')(function* (game:
     const isDue = game.startsAt.getTime() - hour < (settings.leadMinutes + hourMinutes) * 60_000 && now < game.startsAt;
     const existing = yield* loadDraft(game.id);
 
-    if (!isDue || (yield* hasStoredTeams(game.id)) || Option.exists(existing, row => isDefined(row.proposedAt))) {
+    if (!isDue || (yield* hasStoredTeams(game.id)) || (Option.isSome(existing) && !(yield* canPropose(game.id, now)))) {
         return 'skipped';
     }
 
@@ -134,6 +136,12 @@ export const proposeTeamsFor = Effect.fn('Bot.proposeTeamsFor')(function* (game:
                 Effect.flatMap(screen => sendScreen(admin, screen)),
                 Effect.catchCause(cause => Effect.logError('[teams] proposal screen failed', cause).pipe(Effect.as(false)))
             );
+            if (isReached && !reached.includes(true)) {
+                yield* recordProposalReached(game.communityId, game.id, now).pipe(
+                    Effect.catchCause(cause => Effect.logError('[teams] reached proposal not noted', cause))
+                );
+            }
+
             reached.push(isReached);
         }
 
