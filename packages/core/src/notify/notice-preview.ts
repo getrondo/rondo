@@ -20,10 +20,7 @@ type NoticeAction = Extract<Action, { _tag: 'update_session' | 'cancel_session' 
 export const isNoticeAction = (action: Action): action is NoticeAction =>
     action._tag === 'update_session' || action._tag === 'cancel_session' || action._tag === 'publish_teams';
 
-export const afterChange = Effect.fn('Core.afterChange')(function* (
-    game: SessionView,
-    action: Extract<Action, { _tag: 'update_session' }>
-) {
+const afterChange = Effect.fn('Core.afterChange')(function* (game: SessionView, action: Extract<Action, { _tag: 'update_session' }>) {
     const display = isDefined(action.venueId) ? yield* displayOfVenue(action.venueId, game.communityId) : {};
 
     return {

@@ -127,3 +127,6 @@ export const walkManual = (admin: ReturnType<typeof conversation>, labels: reado
         labels.map(label => admin.tap(label)),
         { concurrency: 1 }
     );
+
+export const pollsTo = (recorder: TelegramRecorder, chatId: number) =>
+    recorder.calls.filter(call => call.method === 'sendPoll' && call.payload.chat_id === chatId);

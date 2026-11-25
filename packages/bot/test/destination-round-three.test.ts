@@ -7,12 +7,11 @@ import * as Effect from 'effect/Effect';
 
 import { toShortId } from '../src/utils/to-short-id.util';
 
-import { conversation } from './support/conversation';
+import { conversation, pollsTo } from './support/conversation';
 import { gamesOn, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
-const pollsIn = (chatId: number) => recorder.calls.filter(call => call.method === 'sendPoll' && call.payload.chat_id === chatId);
 
 layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('destinations after the council', it => {
     it.effect('sends nothing when the previewed group moved to another topic and shows a fresh preview', () =>
@@ -28,8 +27,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const games = yield* gamesOn(communityId, '2026-11-27');
 
             expect(refused.text.split('\n').at(-1)).toBe('⚠️ Дані змінилися, нічого не надіслано. Переглянь ще раз і натисни ✅.');
-            expect(pollsIn(-21_101)).toHaveLength(1);
-            expect(pollsIn(-21_101)[0]?.payload.message_thread_id).toBe(77);
+            expect(pollsTo(recorder, -21_101)).toHaveLength(1);
+            expect(pollsTo(recorder, -21_101)[0]?.payload.message_thread_id).toBe(77);
             expect(games).toHaveLength(1);
         })
     );
