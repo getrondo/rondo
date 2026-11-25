@@ -1,18 +1,5 @@
 import { sql } from 'drizzle-orm';
-import {
-    bigint,
-    boolean,
-    index,
-    integer,
-    jsonb,
-    numeric,
-    pgSchema,
-    primaryKey,
-    smallint,
-    text,
-    uniqueIndex,
-    uuid
-} from 'drizzle-orm/pg-core';
+import { bigint, index, integer, jsonb, numeric, pgSchema, primaryKey, smallint, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { createdAt, id, instant, ref, requiredRef } from './columns';
 import { person, telegramAccount } from './identity.schema';
@@ -25,7 +12,6 @@ export const audit = pgSchema('audit');
 
 export const messagePurposeEnum = comms.enum('message_purpose', ['game_card', 'lineup', 'announcement', 'reminder', 'poll']);
 export const importedPollKindEnum = comms.enum('imported_poll_kind', ['participation', 'reserve', 'other']);
-export const channelEnum = comms.enum('channel', ['dm', 'group']);
 export const ingestSourceEnum = ingest.enum('ingest_source', ['telegram_html', 'telegram_json']);
 export const sourceRefKindEnum = ingest.enum('source_ref_kind', ['poll', 'lineup', 'cancel', 'result', 'price', 'service', 'message']);
 export const actorKindEnum = audit.enum('actor_kind', ['user', 'bot', 'system']);
@@ -43,32 +29,6 @@ export const messageRef = comms.table(
         createdAt: createdAt()
     },
     t => [primaryKey({ columns: [t.chatId, t.messageId] }), index('message_ref_entity_idx').on(t.entityType, t.entityId)]
-);
-
-export const notificationPref = comms.table(
-    'notification_pref',
-    {
-        personId: requiredRef('person_id', () => person.id),
-        channel: channelEnum('channel').notNull(),
-        kind: text('kind').notNull(),
-        enabled: boolean('enabled').notNull().default(true)
-    },
-    t => [primaryKey({ columns: [t.personId, t.channel, t.kind] })]
-);
-
-export const outbox = comms.table(
-    'outbox',
-    {
-        id: id(),
-        aggregateType: text('aggregate_type').notNull(),
-        aggregateId: ref('aggregate_id').notNull(),
-        eventType: text('event_type').notNull(),
-        payload: jsonb('payload').notNull(),
-        createdAt: createdAt(),
-        dispatchedAt: instant('dispatched_at'),
-        attempts: integer('attempts').notNull().default(0)
-    },
-    t => [index('outbox_pending_idx').on(t.createdAt)]
 );
 
 export const telegramPoll = comms.table(

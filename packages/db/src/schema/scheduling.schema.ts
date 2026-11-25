@@ -3,7 +3,6 @@ import {
     boolean,
     check,
     date,
-    doublePrecision,
     index,
     interval,
     jsonb,
@@ -19,7 +18,7 @@ import {
 import { createdAt, daterange, id, instant, ref, updatedAt, requiredRef } from './columns';
 import { person, recordSourceEnum } from './identity.schema';
 import { activity, community } from './org.schema';
-import { booking, field, venue } from './venue.schema';
+import { venue } from './venue.schema';
 
 export const scheduling = pgSchema('scheduling');
 
@@ -31,10 +30,6 @@ export const signupRoleEnum = scheduling.enum('signup_role', ['field', 'gk']);
 export const signupStatusEnum = scheduling.enum('signup_status', ['in', 'maybe', 'out', 'waitlisted', 'offered']);
 export const signupPriorityEnum = scheduling.enum('signup_priority', ['normal', 'held', 'reserve_bonus']);
 export const attendanceOutcomeEnum = scheduling.enum('attendance_outcome', ['attended', 'no_show', 'late', 'left_early', 'excused']);
-export const dutyKindEnum = scheduling.enum('duty_kind', ['key', 'bibs', 'balls', 'collector', 'scorekeeper', 'first_aid']);
-export const checkpointKindEnum = scheduling.enum('checkpoint_kind', ['second_field', 'weather', 'min_players', 'lineup']);
-export const checkpointStateEnum = scheduling.enum('checkpoint_state', ['pending', 'proposed', 'decided']);
-export const holidayKindEnum = scheduling.enum('holiday_kind', ['public', 'school']);
 
 export const series = scheduling.table('series', {
     id: id(),
@@ -92,16 +87,6 @@ export const session = scheduling.table(
     ]
 );
 
-export const sessionField = scheduling.table(
-    'session_field',
-    {
-        sessionId: requiredRef('session_id', () => session.id),
-        fieldId: requiredRef('field_id', () => field.id, 'restrict'),
-        bookingId: ref('booking_id').references(() => booking.id, { onDelete: 'set null' })
-    },
-    t => [primaryKey({ columns: [t.sessionId, t.fieldId] })]
-);
-
 export const sessionChange = scheduling.table(
     'session_change',
     {
@@ -157,69 +142,4 @@ export const attendance = scheduling.table(
         source: recordSourceEnum('source').notNull().default('bot')
     },
     t => [primaryKey({ columns: [t.sessionId, t.personId] }), index('attendance_person_idx').on(t.personId)]
-);
-
-export const duty = scheduling.table(
-    'duty',
-    {
-        sessionId: requiredRef('session_id', () => session.id),
-        personId: requiredRef('person_id', () => person.id, 'restrict'),
-        kind: dutyKindEnum('kind').notNull()
-    },
-    t => [primaryKey({ columns: [t.sessionId, t.kind, t.personId] })]
-);
-
-export const logistics = scheduling.table('logistics', {
-    sessionId: ref('session_id')
-        .primaryKey()
-        .references(() => session.id, { onDelete: 'cascade' }),
-    changingRoom: text('changing_room'),
-    meetingNote: text('meeting_note'),
-    updatedBy: ref('updated_by').references(() => person.id, { onDelete: 'set null' }),
-    updatedAt: updatedAt()
-});
-
-export const checkpoint = scheduling.table(
-    'checkpoint',
-    {
-        id: id(),
-        sessionId: requiredRef('session_id', () => session.id),
-        kind: checkpointKindEnum('kind').notNull(),
-        dueAt: instant('due_at').notNull(),
-        state: checkpointStateEnum('state').notNull().default('pending'),
-        recommendation: jsonb('recommendation'),
-        decision: text('decision'),
-        decidedBy: ref('decided_by').references(() => person.id, { onDelete: 'set null' }),
-        decidedAt: instant('decided_at')
-    },
-    t => [index('checkpoint_due_idx').on(t.state, t.dueAt)]
-);
-
-export const weatherSnapshot = scheduling.table(
-    'weather_snapshot',
-    {
-        id: id(),
-        sessionId: requiredRef('session_id', () => session.id),
-        fetchedAt: instant('fetched_at').notNull().defaultNow(),
-        provider: text('provider').notNull(),
-        forTime: instant('for_time').notNull(),
-        tempC: doublePrecision('temp_c'),
-        precipMm: doublePrecision('precip_mm'),
-        precipProb: smallint('precip_prob'),
-        windKmh: doublePrecision('wind_kmh'),
-        thunderProb: smallint('thunder_prob'),
-        raw: jsonb('raw')
-    },
-    t => [index('weather_session_idx').on(t.sessionId, t.fetchedAt)]
-);
-
-export const holiday = scheduling.table(
-    'holiday',
-    {
-        date: date('date', { mode: 'string' }).notNull(),
-        region: text('region').notNull(),
-        kind: holidayKindEnum('kind').notNull(),
-        name: text('name').notNull()
-    },
-    t => [primaryKey({ columns: [t.date, t.region, t.kind] })]
 );

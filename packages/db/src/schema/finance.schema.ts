@@ -29,7 +29,6 @@ export const txnKindEnum = finance.enum('txn_kind', [
     'prize',
     'adjustment'
 ]);
-export const paymentMethodEnum = finance.enum('payment_method', ['cash', 'sepa', 'other']);
 
 export const account = finance.table(
     'account',
@@ -94,14 +93,3 @@ export const ledgerEntry = finance.table(
         check('ledger_entry_nonzero_ck', sql`${t.amountCents} <> 0`)
     ]
 );
-
-export const payment = finance.table('payment', {
-    txnId: ref('txn_id')
-        .primaryKey()
-        .references(() => ledgerTxn.id, { onDelete: 'restrict' }),
-    payerPersonId: requiredRef('payer_person_id', () => person.id, 'restrict'),
-    method: paymentMethodEnum('method').notNull(),
-    collectedByPersonId: ref('collected_by_person_id').references(() => person.id, { onDelete: 'set null' }),
-    confirmedBy: ref('confirmed_by').references(() => person.id, { onDelete: 'set null' }),
-    confirmedAt: instant('confirmed_at')
-});

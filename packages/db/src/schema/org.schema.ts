@@ -21,7 +21,6 @@ export const sportEnum = org.enum('sport', [
     'boxing',
     'other'
 ]);
-export const notifyLevelEnum = org.enum('notify_level', ['all', 'reminders', 'none']);
 export const positionEnum = org.enum('position', ['gk', 'def', 'mid', 'fwd', 'any']);
 export const footEnum = org.enum('foot', ['left', 'right', 'both']);
 
@@ -96,16 +95,6 @@ export const roleGrant = org.table(
         createdAt: createdAt()
     },
     t => [index('role_grant_person_idx').on(t.communityId, t.personId)]
-);
-
-export const activityFollow = org.table(
-    'activity_follow',
-    {
-        personId: requiredRef('person_id', () => person.id),
-        activityId: requiredRef('activity_id', () => activity.id),
-        notify: notifyLevelEnum('notify').notNull().default('all')
-    },
-    t => [primaryKey({ columns: [t.personId, t.activityId] })]
 );
 
 export const playerProfile = org.table(

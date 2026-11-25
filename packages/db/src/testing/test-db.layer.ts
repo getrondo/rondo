@@ -37,4 +37,6 @@ const clientLayer = Layer.unwrap(
     )
 );
 
-export const testDbLayer = Layer.effectDiscard(runMigrations()).pipe(Layer.provideMerge(Db.layerWithoutClient), Layer.provide(clientLayer));
+export const unmigratedDbLayer = Db.layerWithoutClient.pipe(Layer.provide(clientLayer));
+
+export const testDbLayer = Layer.effectDiscard(runMigrations()).pipe(Layer.provideMerge(unmigratedDbLayer));

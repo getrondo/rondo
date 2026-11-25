@@ -1,0 +1,1868 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "97ce662f-b041-412a-a94e-2200cf086087",
+    "prevIds": ["5bc718cd-db84-4e6a-8097-42b7d57000e1"],
+    "footprints": [
+        {
+            "statementType": "drop_fk",
+            "statementTarget": ["table", "community", "equipment_custody"],
+            "writes": [
+                "s|fk|community.equipment_custody.equipment_custody_equipment_id_equipment_id_fkey",
+                "n|fk|community.equipment_custody.equipment_custody_equipment_id_equipment_id_fkey",
+                "e|fk|community.equipment_custody.equipment_custody_equipment_id_equipment_id_fkey",
+                "n|con|community.equipment_custody.equipment_custody_equipment_id_equipment_id_fkey"
+            ],
+            "reads": ["n|tbl|community.equipment_custody", "n|sch|community", "e|col|community.equipment_custody.equipment_id"]
+        },
+        {
+            "statementType": "drop_fk",
+            "statementTarget": ["table", "community", "event_rsvp"],
+            "writes": [
+                "s|fk|community.event_rsvp.event_rsvp_event_id_event_id_fkey",
+                "n|fk|community.event_rsvp.event_rsvp_event_id_event_id_fkey",
+                "e|fk|community.event_rsvp.event_rsvp_event_id_event_id_fkey",
+                "n|con|community.event_rsvp.event_rsvp_event_id_event_id_fkey"
+            ],
+            "reads": ["n|tbl|community.event_rsvp", "n|sch|community", "e|col|community.event_rsvp.event_id"]
+        },
+        {
+            "statementType": "drop_fk",
+            "statementTarget": ["table", "community", "rule_ack"],
+            "writes": [
+                "s|fk|community.rule_ack.rule_ack_rule_doc_id_rule_doc_id_fkey",
+                "n|fk|community.rule_ack.rule_ack_rule_doc_id_rule_doc_id_fkey",
+                "e|fk|community.rule_ack.rule_ack_rule_doc_id_rule_doc_id_fkey",
+                "n|con|community.rule_ack.rule_ack_rule_doc_id_rule_doc_id_fkey"
+            ],
+            "reads": ["n|tbl|community.rule_ack", "n|sch|community", "e|col|community.rule_ack.rule_doc_id"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "community", "ad"],
+            "writes": ["s|tbl|community.ad", "n|tbl|community.ad", "e|tbl|community.ad", "n|rel|community.ad", "n|type|community.ad"],
+            "reads": ["n|sch|community"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "community", "equipment"],
+            "writes": [
+                "s|tbl|community.equipment",
+                "n|tbl|community.equipment",
+                "e|tbl|community.equipment",
+                "n|rel|community.equipment",
+                "n|type|community.equipment"
+            ],
+            "reads": ["n|sch|community"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "community", "equipment_custody"],
+            "writes": [
+                "s|tbl|community.equipment_custody",
+                "n|tbl|community.equipment_custody",
+                "e|tbl|community.equipment_custody",
+                "n|rel|community.equipment_custody",
+                "n|type|community.equipment_custody"
+            ],
+            "reads": ["n|sch|community"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "community", "event"],
+            "writes": [
+                "s|tbl|community.event",
+                "n|tbl|community.event",
+                "e|tbl|community.event",
+                "n|rel|community.event",
+                "n|type|community.event"
+            ],
+            "reads": ["n|sch|community"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "community", "event_rsvp"],
+            "writes": [
+                "s|tbl|community.event_rsvp",
+                "n|tbl|community.event_rsvp",
+                "e|tbl|community.event_rsvp",
+                "n|rel|community.event_rsvp",
+                "n|type|community.event_rsvp"
+            ],
+            "reads": ["n|sch|community"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "community", "lost_item"],
+            "writes": [
+                "s|tbl|community.lost_item",
+                "n|tbl|community.lost_item",
+                "e|tbl|community.lost_item",
+                "n|rel|community.lost_item",
+                "n|type|community.lost_item"
+            ],
+            "reads": ["n|sch|community"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "community", "rule_ack"],
+            "writes": [
+                "s|tbl|community.rule_ack",
+                "n|tbl|community.rule_ack",
+                "e|tbl|community.rule_ack",
+                "n|rel|community.rule_ack",
+                "n|type|community.rule_ack"
+            ],
+            "reads": ["n|sch|community"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "community", "rule_doc"],
+            "writes": [
+                "s|tbl|community.rule_doc",
+                "n|tbl|community.rule_doc",
+                "e|tbl|community.rule_doc",
+                "n|rel|community.rule_doc",
+                "n|type|community.rule_doc"
+            ],
+            "reads": ["n|sch|community"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "feedback", "feedback"],
+            "writes": [
+                "s|tbl|feedback.feedback",
+                "n|tbl|feedback.feedback",
+                "e|tbl|feedback.feedback",
+                "n|rel|feedback.feedback",
+                "n|type|feedback.feedback"
+            ],
+            "reads": ["n|sch|feedback"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "feedback_private", "incident"],
+            "writes": [
+                "s|tbl|feedback_private.incident",
+                "n|tbl|feedback_private.incident",
+                "e|tbl|feedback_private.incident",
+                "n|rel|feedback_private.incident",
+                "n|type|feedback_private.incident"
+            ],
+            "reads": ["n|sch|feedback_private"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "feedback", "mvp_vote"],
+            "writes": [
+                "s|tbl|feedback.mvp_vote",
+                "n|tbl|feedback.mvp_vote",
+                "e|tbl|feedback.mvp_vote",
+                "n|rel|feedback.mvp_vote",
+                "n|type|feedback.mvp_vote"
+            ],
+            "reads": ["n|sch|feedback"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "feedback_private", "peer_rating"],
+            "writes": [
+                "s|tbl|feedback_private.peer_rating",
+                "n|tbl|feedback_private.peer_rating",
+                "e|tbl|feedback_private.peer_rating",
+                "n|rel|feedback_private.peer_rating",
+                "n|type|feedback_private.peer_rating"
+            ],
+            "reads": ["n|sch|feedback_private"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "finance", "payment"],
+            "writes": [
+                "s|tbl|finance.payment",
+                "n|tbl|finance.payment",
+                "e|tbl|finance.payment",
+                "n|rel|finance.payment",
+                "n|type|finance.payment"
+            ],
+            "reads": ["n|sch|finance"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "identity", "consent"],
+            "writes": [
+                "s|tbl|identity.consent",
+                "n|tbl|identity.consent",
+                "e|tbl|identity.consent",
+                "n|rel|identity.consent",
+                "n|type|identity.consent"
+            ],
+            "reads": ["n|sch|identity"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "league", "award"],
+            "writes": ["s|tbl|league.award", "n|tbl|league.award", "e|tbl|league.award", "n|rel|league.award", "n|type|league.award"],
+            "reads": ["n|sch|league"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "league", "fixture_availability"],
+            "writes": [
+                "s|tbl|league.fixture_availability",
+                "n|tbl|league.fixture_availability",
+                "e|tbl|league.fixture_availability",
+                "n|rel|league.fixture_availability",
+                "n|type|league.fixture_availability"
+            ],
+            "reads": ["n|sch|league"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "league", "fixture_event"],
+            "writes": [
+                "s|tbl|league.fixture_event",
+                "n|tbl|league.fixture_event",
+                "e|tbl|league.fixture_event",
+                "n|rel|league.fixture_event",
+                "n|type|league.fixture_event"
+            ],
+            "reads": ["n|sch|league"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "league", "squad_member"],
+            "writes": [
+                "s|tbl|league.squad_member",
+                "n|tbl|league.squad_member",
+                "e|tbl|league.squad_member",
+                "n|rel|league.squad_member",
+                "n|type|league.squad_member"
+            ],
+            "reads": ["n|sch|league"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "org", "activity_follow"],
+            "writes": [
+                "s|tbl|org.activity_follow",
+                "n|tbl|org.activity_follow",
+                "e|tbl|org.activity_follow",
+                "n|rel|org.activity_follow",
+                "n|type|org.activity_follow"
+            ],
+            "reads": ["n|sch|org"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "comms", "notification_pref"],
+            "writes": [
+                "s|tbl|comms.notification_pref",
+                "n|tbl|comms.notification_pref",
+                "e|tbl|comms.notification_pref",
+                "n|rel|comms.notification_pref",
+                "n|type|comms.notification_pref"
+            ],
+            "reads": ["n|sch|comms"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "comms", "outbox"],
+            "writes": ["s|tbl|comms.outbox", "n|tbl|comms.outbox", "e|tbl|comms.outbox", "n|rel|comms.outbox", "n|type|comms.outbox"],
+            "reads": ["n|sch|comms"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "play", "format_rule"],
+            "writes": [
+                "s|tbl|play.format_rule",
+                "n|tbl|play.format_rule",
+                "e|tbl|play.format_rule",
+                "n|rel|play.format_rule",
+                "n|type|play.format_rule"
+            ],
+            "reads": ["n|sch|play"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "play", "match_event"],
+            "writes": [
+                "s|tbl|play.match_event",
+                "n|tbl|play.match_event",
+                "e|tbl|play.match_event",
+                "n|rel|play.match_event",
+                "n|type|play.match_event"
+            ],
+            "reads": ["n|sch|play"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "scheduling", "checkpoint"],
+            "writes": [
+                "s|tbl|scheduling.checkpoint",
+                "n|tbl|scheduling.checkpoint",
+                "e|tbl|scheduling.checkpoint",
+                "n|rel|scheduling.checkpoint",
+                "n|type|scheduling.checkpoint"
+            ],
+            "reads": ["n|sch|scheduling"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "scheduling", "duty"],
+            "writes": [
+                "s|tbl|scheduling.duty",
+                "n|tbl|scheduling.duty",
+                "e|tbl|scheduling.duty",
+                "n|rel|scheduling.duty",
+                "n|type|scheduling.duty"
+            ],
+            "reads": ["n|sch|scheduling"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "scheduling", "holiday"],
+            "writes": [
+                "s|tbl|scheduling.holiday",
+                "n|tbl|scheduling.holiday",
+                "e|tbl|scheduling.holiday",
+                "n|rel|scheduling.holiday",
+                "n|type|scheduling.holiday"
+            ],
+            "reads": ["n|sch|scheduling"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "scheduling", "logistics"],
+            "writes": [
+                "s|tbl|scheduling.logistics",
+                "n|tbl|scheduling.logistics",
+                "e|tbl|scheduling.logistics",
+                "n|rel|scheduling.logistics",
+                "n|type|scheduling.logistics"
+            ],
+            "reads": ["n|sch|scheduling"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "scheduling", "session_field"],
+            "writes": [
+                "s|tbl|scheduling.session_field",
+                "n|tbl|scheduling.session_field",
+                "e|tbl|scheduling.session_field",
+                "n|rel|scheduling.session_field",
+                "n|type|scheduling.session_field"
+            ],
+            "reads": ["n|sch|scheduling"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "scheduling", "weather_snapshot"],
+            "writes": [
+                "s|tbl|scheduling.weather_snapshot",
+                "n|tbl|scheduling.weather_snapshot",
+                "e|tbl|scheduling.weather_snapshot",
+                "n|rel|scheduling.weather_snapshot",
+                "n|type|scheduling.weather_snapshot"
+            ],
+            "reads": ["n|sch|scheduling"]
+        },
+        {
+            "statementType": "drop_table",
+            "statementTarget": ["table", "venue", "venue_closure"],
+            "writes": [
+                "s|tbl|venue.venue_closure",
+                "n|tbl|venue.venue_closure",
+                "e|tbl|venue.venue_closure",
+                "n|rel|venue.venue_closure",
+                "n|type|venue.venue_closure"
+            ],
+            "reads": ["n|sch|venue"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "community", "ad_status"],
+            "writes": [
+                "s|enum|community.ad_status",
+                "n|enum|community.ad_status",
+                "e|enum|community.ad_status",
+                "n|type|community.ad_status"
+            ],
+            "reads": ["n|sch|community"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "community", "equipment_kind"],
+            "writes": [
+                "s|enum|community.equipment_kind",
+                "n|enum|community.equipment_kind",
+                "e|enum|community.equipment_kind",
+                "n|type|community.equipment_kind"
+            ],
+            "reads": ["n|sch|community"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "community", "event_kind"],
+            "writes": [
+                "s|enum|community.event_kind",
+                "n|enum|community.event_kind",
+                "e|enum|community.event_kind",
+                "n|type|community.event_kind"
+            ],
+            "reads": ["n|sch|community"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "community", "lost_item_status"],
+            "writes": [
+                "s|enum|community.lost_item_status",
+                "n|enum|community.lost_item_status",
+                "e|enum|community.lost_item_status",
+                "n|type|community.lost_item_status"
+            ],
+            "reads": ["n|sch|community"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "feedback", "incident_kind"],
+            "writes": [
+                "s|enum|feedback.incident_kind",
+                "n|enum|feedback.incident_kind",
+                "e|enum|feedback.incident_kind",
+                "n|type|feedback.incident_kind"
+            ],
+            "reads": ["n|sch|feedback"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "feedback", "incident_status"],
+            "writes": [
+                "s|enum|feedback.incident_status",
+                "n|enum|feedback.incident_status",
+                "e|enum|feedback.incident_status",
+                "n|type|feedback.incident_status"
+            ],
+            "reads": ["n|sch|feedback"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "finance", "payment_method"],
+            "writes": [
+                "s|enum|finance.payment_method",
+                "n|enum|finance.payment_method",
+                "e|enum|finance.payment_method",
+                "n|type|finance.payment_method"
+            ],
+            "reads": ["n|sch|finance"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "identity", "consent_purpose"],
+            "writes": [
+                "s|enum|identity.consent_purpose",
+                "n|enum|identity.consent_purpose",
+                "e|enum|identity.consent_purpose",
+                "n|type|identity.consent_purpose"
+            ],
+            "reads": ["n|sch|identity"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "league", "availability"],
+            "writes": [
+                "s|enum|league.availability",
+                "n|enum|league.availability",
+                "e|enum|league.availability",
+                "n|type|league.availability"
+            ],
+            "reads": ["n|sch|league"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "league", "award_kind"],
+            "writes": ["s|enum|league.award_kind", "n|enum|league.award_kind", "e|enum|league.award_kind", "n|type|league.award_kind"],
+            "reads": ["n|sch|league"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "league", "fixture_event_kind"],
+            "writes": [
+                "s|enum|league.fixture_event_kind",
+                "n|enum|league.fixture_event_kind",
+                "e|enum|league.fixture_event_kind",
+                "n|type|league.fixture_event_kind"
+            ],
+            "reads": ["n|sch|league"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "org", "notify_level"],
+            "writes": ["s|enum|org.notify_level", "n|enum|org.notify_level", "e|enum|org.notify_level", "n|type|org.notify_level"],
+            "reads": ["n|sch|org"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "comms", "channel"],
+            "writes": ["s|enum|comms.channel", "n|enum|comms.channel", "e|enum|comms.channel", "n|type|comms.channel"],
+            "reads": ["n|sch|comms"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "play", "match_event_kind"],
+            "writes": [
+                "s|enum|play.match_event_kind",
+                "n|enum|play.match_event_kind",
+                "e|enum|play.match_event_kind",
+                "n|type|play.match_event_kind"
+            ],
+            "reads": ["n|sch|play"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "scheduling", "checkpoint_kind"],
+            "writes": [
+                "s|enum|scheduling.checkpoint_kind",
+                "n|enum|scheduling.checkpoint_kind",
+                "e|enum|scheduling.checkpoint_kind",
+                "n|type|scheduling.checkpoint_kind"
+            ],
+            "reads": ["n|sch|scheduling"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "scheduling", "checkpoint_state"],
+            "writes": [
+                "s|enum|scheduling.checkpoint_state",
+                "n|enum|scheduling.checkpoint_state",
+                "e|enum|scheduling.checkpoint_state",
+                "n|type|scheduling.checkpoint_state"
+            ],
+            "reads": ["n|sch|scheduling"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "scheduling", "duty_kind"],
+            "writes": [
+                "s|enum|scheduling.duty_kind",
+                "n|enum|scheduling.duty_kind",
+                "e|enum|scheduling.duty_kind",
+                "n|type|scheduling.duty_kind"
+            ],
+            "reads": ["n|sch|scheduling"]
+        },
+        {
+            "statementType": "drop_enum",
+            "statementTarget": ["enum", "scheduling", "holiday_kind"],
+            "writes": [
+                "s|enum|scheduling.holiday_kind",
+                "n|enum|scheduling.holiday_kind",
+                "e|enum|scheduling.holiday_kind",
+                "n|type|scheduling.holiday_kind"
+            ],
+            "reads": ["n|sch|scheduling"]
+        },
+        {
+            "statementType": "drop_schema",
+            "statementTarget": ["schema", "community"],
+            "writes": ["s|sch|community", "n|sch|community", "e|sch|community"]
+        },
+        {
+            "statementType": "drop_schema",
+            "statementTarget": ["schema", "feedback_private"],
+            "writes": ["s|sch|feedback_private", "n|sch|feedback_private", "e|sch|feedback_private"]
+        },
+        {
+            "statementType": "drop_schema",
+            "statementTarget": ["schema", "feedback"],
+            "writes": ["s|sch|feedback", "n|sch|feedback", "e|sch|feedback"]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "drop",
+            "key": "schemas\u0000[\"community\"]"
+        },
+        {
+            "op": "drop",
+            "key": "schemas\u0000[\"feedback_private\"]"
+        },
+        {
+            "op": "drop",
+            "key": "schemas\u0000[\"feedback\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"community\",\"ad\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"community\",\"equipment\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"community\",\"equipment_custody\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"community\",\"event\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"community\",\"event_rsvp\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"community\",\"lost_item\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"community\",\"rule_ack\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"community\",\"rule_doc\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"feedback\",\"feedback\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"feedback_private\",\"incident\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"feedback\",\"mvp_vote\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"feedback_private\",\"peer_rating\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"finance\",\"payment\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"identity\",\"consent\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"league\",\"award\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"league\",\"fixture_availability\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"league\",\"fixture_event\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"league\",\"squad_member\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"org\",\"activity_follow\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"comms\",\"notification_pref\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"comms\",\"outbox\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"play\",\"format_rule\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"play\",\"match_event\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"scheduling\",\"checkpoint\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"scheduling\",\"duty\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"scheduling\",\"holiday\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"scheduling\",\"logistics\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"scheduling\",\"session_field\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"scheduling\",\"weather_snapshot\"]"
+        },
+        {
+            "op": "drop",
+            "key": "tables\u0000[\"venue\",\"venue_closure\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"community\",\"ad_status\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"community\",\"equipment_kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"community\",\"event_kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"community\",\"lost_item_status\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"feedback\",\"incident_kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"feedback\",\"incident_status\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"finance\",\"payment_method\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"identity\",\"consent_purpose\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"league\",\"availability\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"league\",\"award_kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"league\",\"fixture_event_kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"org\",\"notify_level\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"comms\",\"channel\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"play\",\"match_event_kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"scheduling\",\"checkpoint_kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"scheduling\",\"checkpoint_state\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"scheduling\",\"duty_kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "enums\u0000[\"scheduling\",\"holiday_kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"ad\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"ad\",\"community_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"ad\",\"author_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"ad\",\"body\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"ad\",\"status\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"ad\",\"fee_txn_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"ad\",\"created_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"equipment\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"equipment\",\"community_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"equipment\",\"kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"equipment\",\"label\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"equipment\",\"color_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"equipment\",\"quantity\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"equipment_custody\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"equipment_custody\",\"equipment_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"equipment_custody\",\"person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"equipment_custody\",\"during\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"event\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"event\",\"community_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"event\",\"kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"event\",\"title\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"event\",\"starts_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"event\",\"venue_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"event\",\"capacity\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"event\",\"created_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"event_rsvp\",\"event_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"event_rsvp\",\"person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"event_rsvp\",\"guests\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"event_rsvp\",\"kids\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"lost_item\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"lost_item\",\"community_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"lost_item\",\"session_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"lost_item\",\"description\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"lost_item\",\"photo_file_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"lost_item\",\"status\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"lost_item\",\"created_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"rule_ack\",\"rule_doc_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"rule_ack\",\"person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"rule_ack\",\"at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"rule_doc\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"rule_doc\",\"community_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"rule_doc\",\"topic\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"rule_doc\",\"version\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"rule_doc\",\"body_md\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"rule_doc\",\"effective_from\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"community\",\"rule_doc\",\"created_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback\",\"feedback\",\"session_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback\",\"feedback\",\"person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback\",\"feedback\",\"overall\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback\",\"feedback\",\"teams_fair\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback\",\"feedback\",\"venue_score\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback\",\"feedback\",\"comment\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback\",\"feedback\",\"created_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"incident\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"incident\",\"session_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"incident\",\"reporter_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"incident\",\"subject_person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"incident\",\"kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"incident\",\"body\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"incident\",\"status\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"incident\",\"created_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback\",\"mvp_vote\",\"session_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback\",\"mvp_vote\",\"voter_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback\",\"mvp_vote\",\"nominee_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback\",\"mvp_vote\",\"created_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"peer_rating\",\"session_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"peer_rating\",\"rater_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"peer_rating\",\"ratee_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"peer_rating\",\"activity_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"peer_rating\",\"level\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"feedback_private\",\"peer_rating\",\"created_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"finance\",\"payment\",\"txn_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"finance\",\"payment\",\"payer_person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"finance\",\"payment\",\"method\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"finance\",\"payment\",\"collected_by_person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"finance\",\"payment\",\"confirmed_by\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"finance\",\"payment\",\"confirmed_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"identity\",\"consent\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"identity\",\"consent\",\"person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"identity\",\"consent\",\"purpose\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"identity\",\"consent\",\"policy_version\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"identity\",\"consent\",\"granted_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"identity\",\"consent\",\"revoked_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"award\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"award\",\"community_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"award\",\"season\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"award\",\"kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"award\",\"person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"award\",\"note\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"award\",\"created_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"fixture_availability\",\"fixture_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"fixture_availability\",\"person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"fixture_availability\",\"status\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"fixture_availability\",\"called_up\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"fixture_event\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"fixture_event\",\"fixture_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"fixture_event\",\"kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"fixture_event\",\"person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"fixture_event\",\"minute\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"squad_member\",\"squad_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"squad_member\",\"person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"squad_member\",\"shirt_number\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"league\",\"squad_member\",\"valid\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"org\",\"activity_follow\",\"person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"org\",\"activity_follow\",\"activity_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"org\",\"activity_follow\",\"notify\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"comms\",\"notification_pref\",\"person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"comms\",\"notification_pref\",\"channel\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"comms\",\"notification_pref\",\"kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"comms\",\"notification_pref\",\"enabled\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"comms\",\"outbox\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"comms\",\"outbox\",\"aggregate_type\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"comms\",\"outbox\",\"aggregate_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"comms\",\"outbox\",\"event_type\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"comms\",\"outbox\",\"payload\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"comms\",\"outbox\",\"created_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"comms\",\"outbox\",\"dispatched_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"comms\",\"outbox\",\"attempts\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"play\",\"format_rule\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"play\",\"format_rule\",\"community_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"play\",\"format_rule\",\"name\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"play\",\"format_rule\",\"rules\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"play\",\"format_rule\",\"created_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"play\",\"match_event\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"play\",\"match_event\",\"match_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"play\",\"match_event\",\"kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"play\",\"match_event\",\"person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"play\",\"match_event\",\"team_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"play\",\"match_event\",\"at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"play\",\"match_event\",\"confirmed_by\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"checkpoint\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"checkpoint\",\"session_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"checkpoint\",\"kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"checkpoint\",\"due_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"checkpoint\",\"state\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"checkpoint\",\"recommendation\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"checkpoint\",\"decision\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"checkpoint\",\"decided_by\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"checkpoint\",\"decided_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"duty\",\"session_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"duty\",\"person_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"duty\",\"kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"holiday\",\"date\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"holiday\",\"region\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"holiday\",\"kind\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"holiday\",\"name\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"logistics\",\"session_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"logistics\",\"changing_room\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"logistics\",\"meeting_note\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"logistics\",\"updated_by\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"logistics\",\"updated_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"session_field\",\"session_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"session_field\",\"field_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"session_field\",\"booking_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"weather_snapshot\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"weather_snapshot\",\"session_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"weather_snapshot\",\"fetched_at\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"weather_snapshot\",\"provider\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"weather_snapshot\",\"for_time\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"weather_snapshot\",\"temp_c\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"weather_snapshot\",\"precip_mm\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"weather_snapshot\",\"precip_prob\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"weather_snapshot\",\"wind_kmh\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"weather_snapshot\",\"thunder_prob\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"scheduling\",\"weather_snapshot\",\"raw\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"venue\",\"venue_closure\",\"id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"venue\",\"venue_closure\",\"venue_id\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"venue\",\"venue_closure\",\"during\"]"
+        },
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"venue\",\"venue_closure\",\"reason\"]"
+        },
+        {
+            "op": "drop",
+            "key": "indexes\u0000[\"community\",\"event_community_idx\"]"
+        },
+        {
+            "op": "drop",
+            "key": "indexes\u0000[\"feedback_private\",\"incident_status_idx\"]"
+        },
+        {
+            "op": "drop",
+            "key": "indexes\u0000[\"identity\",\"consent_person_idx\"]"
+        },
+        {
+            "op": "drop",
+            "key": "indexes\u0000[\"league\",\"fixture_event_fixture_idx\"]"
+        },
+        {
+            "op": "drop",
+            "key": "indexes\u0000[\"comms\",\"outbox_pending_idx\"]"
+        },
+        {
+            "op": "drop",
+            "key": "indexes\u0000[\"play\",\"match_event_match_idx\"]"
+        },
+        {
+            "op": "drop",
+            "key": "indexes\u0000[\"scheduling\",\"checkpoint_due_idx\"]"
+        },
+        {
+            "op": "drop",
+            "key": "indexes\u0000[\"scheduling\",\"weather_session_idx\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"ad\",\"ad_community_id_community_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"ad\",\"ad_author_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"equipment\",\"equipment_community_id_community_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"equipment\",\"equipment_color_id_team_color_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"equipment_custody\",\"equipment_custody_equipment_id_equipment_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"equipment_custody\",\"equipment_custody_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"event\",\"event_community_id_community_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"event\",\"event_venue_id_venue_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"event_rsvp\",\"event_rsvp_event_id_event_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"event_rsvp\",\"event_rsvp_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"lost_item\",\"lost_item_community_id_community_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"lost_item\",\"lost_item_session_id_session_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"rule_ack\",\"rule_ack_rule_doc_id_rule_doc_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"rule_ack\",\"rule_ack_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"community\",\"rule_doc\",\"rule_doc_community_id_community_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"feedback\",\"feedback\",\"feedback_session_id_session_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"feedback\",\"feedback\",\"feedback_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"feedback_private\",\"incident\",\"incident_session_id_session_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"feedback_private\",\"incident\",\"incident_reporter_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"feedback_private\",\"incident\",\"incident_subject_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"feedback\",\"mvp_vote\",\"mvp_vote_session_id_session_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"feedback\",\"mvp_vote\",\"mvp_vote_voter_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"feedback\",\"mvp_vote\",\"mvp_vote_nominee_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"feedback_private\",\"peer_rating\",\"peer_rating_session_id_session_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"feedback_private\",\"peer_rating\",\"peer_rating_rater_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"feedback_private\",\"peer_rating\",\"peer_rating_ratee_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"feedback_private\",\"peer_rating\",\"peer_rating_activity_id_activity_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"finance\",\"payment\",\"payment_txn_id_ledger_txn_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"finance\",\"payment\",\"payment_payer_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"finance\",\"payment\",\"payment_collected_by_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"finance\",\"payment\",\"payment_confirmed_by_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"identity\",\"consent\",\"consent_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"league\",\"award\",\"award_community_id_community_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"league\",\"award\",\"award_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"league\",\"fixture_availability\",\"fixture_availability_fixture_id_fixture_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"league\",\"fixture_availability\",\"fixture_availability_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"league\",\"fixture_event\",\"fixture_event_fixture_id_fixture_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"league\",\"fixture_event\",\"fixture_event_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"league\",\"squad_member\",\"squad_member_squad_id_squad_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"league\",\"squad_member\",\"squad_member_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"org\",\"activity_follow\",\"activity_follow_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"org\",\"activity_follow\",\"activity_follow_activity_id_activity_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"comms\",\"notification_pref\",\"notification_pref_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"play\",\"format_rule\",\"format_rule_community_id_community_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"play\",\"match_event\",\"match_event_match_id_match_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"play\",\"match_event\",\"match_event_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"play\",\"match_event\",\"match_event_team_id_team_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"play\",\"match_event\",\"match_event_confirmed_by_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"scheduling\",\"checkpoint\",\"checkpoint_session_id_session_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"scheduling\",\"checkpoint\",\"checkpoint_decided_by_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"scheduling\",\"duty\",\"duty_session_id_session_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"scheduling\",\"duty\",\"duty_person_id_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"scheduling\",\"logistics\",\"logistics_session_id_session_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"scheduling\",\"logistics\",\"logistics_updated_by_person_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"scheduling\",\"session_field\",\"session_field_session_id_session_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"scheduling\",\"session_field\",\"session_field_field_id_field_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"scheduling\",\"session_field\",\"session_field_booking_id_booking_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"scheduling\",\"weather_snapshot\",\"weather_snapshot_session_id_session_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "fks\u0000[\"venue\",\"venue_closure\",\"venue_closure_venue_id_venue_id_fkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"community\",\"event_rsvp\",\"event_rsvp_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"community\",\"rule_ack\",\"rule_ack_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"feedback\",\"feedback\",\"feedback_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"feedback\",\"mvp_vote\",\"mvp_vote_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"feedback_private\",\"peer_rating\",\"peer_rating_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"league\",\"fixture_availability\",\"fixture_availability_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"league\",\"squad_member\",\"squad_member_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"org\",\"activity_follow\",\"activity_follow_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"comms\",\"notification_pref\",\"notification_pref_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"scheduling\",\"duty\",\"duty_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"scheduling\",\"holiday\",\"holiday_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"scheduling\",\"session_field\",\"session_field_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"community\",\"ad\",\"ad_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"community\",\"equipment\",\"equipment_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"community\",\"equipment_custody\",\"equipment_custody_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"community\",\"event\",\"event_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"community\",\"lost_item\",\"lost_item_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"community\",\"rule_doc\",\"rule_doc_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"feedback_private\",\"incident\",\"incident_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"finance\",\"payment\",\"payment_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"identity\",\"consent\",\"consent_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"league\",\"award\",\"award_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"league\",\"fixture_event\",\"fixture_event_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"comms\",\"outbox\",\"outbox_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"play\",\"format_rule\",\"format_rule_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"play\",\"match_event\",\"match_event_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"scheduling\",\"checkpoint\",\"checkpoint_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"scheduling\",\"logistics\",\"logistics_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"scheduling\",\"weather_snapshot\",\"weather_snapshot_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "pks\u0000[\"venue\",\"venue_closure\",\"venue_closure_pkey\"]"
+        },
+        {
+            "op": "drop",
+            "key": "checks\u0000[\"feedback\",\"feedback\",\"feedback_scores_ck\"]"
+        },
+        {
+            "op": "drop",
+            "key": "checks\u0000[\"feedback\",\"mvp_vote\",\"mvp_vote_self_ck\"]"
+        },
+        {
+            "op": "drop",
+            "key": "checks\u0000[\"feedback_private\",\"peer_rating\",\"peer_rating_level_ck\"]"
+        },
+        {
+            "op": "drop",
+            "key": "checks\u0000[\"feedback_private\",\"peer_rating\",\"peer_rating_self_ck\"]"
+        }
+    ]
+}
