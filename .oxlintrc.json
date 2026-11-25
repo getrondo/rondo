@@ -82,6 +82,7 @@
             }
         ],
         "func-style": "off",
+        "import/no-unassigned-import": ["error", { "allow": ["server-only"] }],
         "grouped-accessor-pairs": "error",
         "guard-for-in": "error",
         "id-denylist": "error",

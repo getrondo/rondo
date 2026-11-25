@@ -19,6 +19,9 @@ const migrateInTurn = Effect.gen(function* () {
     );
 });
 
+// Known before any effect runs: it decides which tests are skipped
+export const raceDatabaseUrl = process.env.RONDO_TEST_DATABASE_URL ?? '';
+
 export const localPostgresLayer = (databaseUrl: string) =>
     Layer.effectDiscard(assertLocal(databaseUrl).pipe(Effect.andThen(migrateInTurn))).pipe(
         Layer.provideMerge(Db.layer),

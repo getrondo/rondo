@@ -22,8 +22,10 @@ import * as Option from 'effect/Option';
 
 import { handleUpdate } from '../src/handle-update';
 
+import { groupPoll, keyboardOf } from './support/conversation';
+
 import type { Action } from '@rondo/core/actions/action.model';
-import type { Message, Poll, Update } from 'grammy/types';
+import type { Update } from 'grammy/types';
 
 const owner = { id: 42, is_bot: false, first_name: 'Alex', language_code: 'uk' };
 const player = { id: 77, is_bot: false, first_name: 'Ivan', language_code: 'ru' };
@@ -61,6 +63,8 @@ const model = new MockLanguageModelV4({
     }
 });
 
+type Incoming = NonNullable<Update['message']>;
+
 const recorder = makeRecorder();
 let updateId = 1;
 const nextUpdate = (body: Omit<Update, 'update_id'>): Update => {
@@ -68,11 +72,8 @@ const nextUpdate = (body: Omit<Update, 'update_id'>): Update => {
 
     return { update_id: updateId, ...body };
 };
-const message = (
-    from: typeof owner,
-    chat: { readonly id: number; readonly type: 'private' | 'supergroup'; readonly title?: string },
-    text: string
-) => nextUpdate({ message: { message_id: updateId, date: 1_764_500_000, chat: chat as never, from, text } });
+const message = (from: typeof owner, chat: Incoming['chat'], text: string) =>
+    nextUpdate({ message: { message_id: updateId, date: 1_764_500_000, chat, from, text } });
 
 const deliver = (update: Update) => handleUpdate(update).pipe(Effect.flatMap(Option.getOrElse(() => Effect.void)));
 const confirm = (data: string) =>
@@ -89,18 +90,18 @@ const confirm = (data: string) =>
     );
 const confirmAction = (communityId: string, action: Action) =>
     proposeAs(communityId, BigInt(owner.id), action).pipe(Effect.flatMap(actionId => confirm(`act:${actionId}:y`)));
-const groupUpdate = (from: typeof owner, chatId: number, body: Partial<Message>) =>
+const groupUpdate = (from: typeof owner, chatId: number, body: Partial<Omit<Incoming, 'chat'>>) =>
     nextUpdate({
         message: {
             message_id: updateId,
             date: 1_777_831_200,
-            chat: { id: chatId, type: 'supergroup', title: 'Forum' } as never,
+            chat: { id: chatId, type: 'supergroup', title: 'Forum' },
             from,
             ...body
-        } as NonNullable<Update['message']>
+        }
     });
 const organizerPoll = (question: string) => ({
-    poll: { question, options: ['+', '-'].map(option => ({ text: option, persistent_id: option, voter_count: 0 })) } as Poll
+    poll: groupPoll(`organizer-${question}`, question, ['+', '-'])
 });
 const inTopic = (topicId: number) => ({ message_thread_id: topicId, is_topic_message: true });
 const replyThread = { message_thread_id: 55 };
@@ -151,11 +152,15 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
 
             yield* handleUpdate(message(owner, groupChat, '/link e2e-fc'));
             yield* deliver(
-                message(owner, { id: owner.id, type: 'private' }, 'створи гру в пʼятницю 4 грудня о 19:30 на 14 людей і оголоси')
+                message(
+                    owner,
+                    { id: owner.id, type: 'private', first_name: owner.first_name },
+                    'створи гру в пʼятницю 4 грудня о 19:30 на 14 людей і оголоси'
+                )
             );
             const proposal = recorder.calls.find(call => call.method === 'sendMessage' && isDefined(call.payload.reply_markup));
-            const keyboard = proposal?.payload.reply_markup as { inline_keyboard: { callback_data: string }[][] } | undefined;
-            const confirmData = keyboard?.inline_keyboard[0]?.[0]?.callback_data ?? '';
+            const keyboard = keyboardOf(proposal?.payload.reply_markup);
+            const confirmData = keyboard[0]?.[0]?.callback_data ?? '';
 
             yield* confirm(confirmData);
             const [created] = yield* db.select().from(session).where(eq(session.communityId, communityId));
@@ -192,7 +197,7 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
         Effect.gen(function* () {
             const before = modelCalls;
 
-            yield* handleUpdate(message(player, { id: player.id, type: 'private' }, 'привет'));
+            yield* handleUpdate(message(player, { id: player.id, type: 'private', first_name: player.first_name }, 'привет'));
             const reply = recorder.calls.at(-1);
 
             expect(modelCalls).toBe(before);
@@ -228,7 +233,7 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
     it.effect('does not run an update that another attempt is still handling', () =>
         Effect.gen(function* () {
             const db = yield* Db;
-            const update = message(player, { id: player.id, type: 'private' }, 'привет');
+            const update = message(player, { id: player.id, type: 'private', first_name: player.first_name }, 'привет');
             const at = yield* DateTime.nowAsDate;
             yield* db.insert(processedUpdate).values({ updateId: update.update_id, at });
             const calls = recorder.calls.length;
@@ -261,8 +266,8 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
             yield* handleUpdate(message(owner, group, 'Сегодня отмена, дождь'));
             const proposal = recorder.calls.at(-1);
             const [open] = yield* db.select().from(session).where(eq(session.id, sessionId));
-            const keyboard = proposal?.payload.reply_markup as { inline_keyboard: { callback_data: string }[][] } | undefined;
-            yield* confirm(keyboard?.inline_keyboard[0]?.[0]?.callback_data ?? '');
+            const keyboard = keyboardOf(proposal?.payload.reply_markup);
+            yield* confirm(keyboard[0]?.[0]?.callback_data ?? '');
             const [done] = yield* db.select().from(session).where(eq(session.id, sessionId));
 
             expect(ignored).toBe(before);
@@ -305,8 +310,8 @@ layer(testLayer, { timeout: 60_000 })('telegram webhook updates', it => {
             const callsDuring = modelCalls - callsBefore;
             yield* Option.getOrElse(followUp, () => Effect.void);
             const proposal = recorder.calls.slice(beforeAdmin).find(call => call.method === 'sendMessage');
-            const keyboard = proposal?.payload.reply_markup as { inline_keyboard: { callback_data: string }[][] } | undefined;
-            yield* confirm(keyboard?.inline_keyboard[0]?.[0]?.callback_data ?? '');
+            const keyboard = keyboardOf(proposal?.payload.reply_markup);
+            yield* confirm(keyboard[0]?.[0]?.callback_data ?? '');
             place = 'Invented Arena';
             yield* deliver(pollOf(owner, 'Вторник, 5 мая, 19.00 Aspern. 18 чел'));
             const venues = yield* db.select().from(venue).where(eq(venue.communityId, communityId));

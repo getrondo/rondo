@@ -71,14 +71,14 @@ Links: [vision](docs/vision.md), [epics](docs/epics), [data model](docs/architec
 ## Critical rules
 
 1. **No `any`.** Everything is typed.
-2. **No type assertions.** Never `as Type`, `@ts-ignore`, `@ts-expect-error`. `as const` is allowed. Narrow with guards or decode with `Schema`.
-3. **No comments.** Self-documenting names. At most one single-line header per file.
-4. **Never disable lint rules** without explicit user approval.
+2. **No type assertions**, in tests too. Never `as Type`, `@ts-ignore`, `@ts-expect-error`. `as const` is allowed. Narrow with guards or decode with `Schema`.
+3. **No comments that say what the code does.** Self-documenting names. A single-line comment is allowed when it says why: a rule, an order or a risk the code cannot show.
+4. **Never disable lint rules** without explicit user approval. No `eslint-disable` lines: a real exception is configured in `.oxlintrc.json`, as narrow as possible.
 5. **No `console`.** Log through Effect (`Effect.logDebug`, `Effect.logError`), once, at the edge.
 6. **Brace every control-flow body.** `if`, `else`, `for`, `while`.
 7. **No abbreviated names.** `transaction` not `tx`, `message` not `msg`.
-8. **Interface fields are `readonly`.** Interfaces and type aliases live in `/interface` (`*.interface.ts`, `*.type.ts`), never inline above services or repositories.
-9. **Enums are `UPPER_CASE` members with `UPPER_CASE` string values.**
+8. **Interface fields are `readonly`.** A type used by one file stays in it; a type shared by several files lives in a `*.interface.ts` or `*.model.ts` file.
+9. **No enums.** Closed sets are `Schema.Literals` or tagged unions with `snake_case` values.
 10. **One utility per file** with the `.util.ts` suffix, in the module `utils/` folder. No single-consumer utilities, wrappers or single-field interfaces.
 11. **Never force-add ignored files.** Never commit raw Telegram exports, community configs (organizer names, squad tags) or personal data (`data/`, `exports/`, `ChatExport*/` are ignored); keep them outside the repo. Test fixtures are synthetic.
 
@@ -90,7 +90,7 @@ State-of-the-art Effect v4 is the default for every line of logic, not an option
 | --- | --- |
 | dependencies | `Context.Service` and `Layer`, composed once at the edge; tests swap layers, never mocks |
 | failures | typed errors (`Schema.TaggedError`) visible in the signature; `catchTag`, not `catchCause`, inside services; defects only for bugs |
-| outside data (Telegram updates, JSON columns, model output, env, files) | `Schema.decodeUnknownEffect` at the boundary, `Config` and `Redacted`; never a cast, never `process.env` |
+| outside data (Telegram updates, JSON columns, model output, env, files) | `Schema.decodeUnknownEffect` at the boundary, `Config` and `Redacted`; never a cast, never `process.env` (except `drizzle.config.ts`, and `raceDatabaseUrl`, which decides which tests are skipped before any effect runs) |
 | ids and units | branded `Schema` types, so ids of different things do not mix |
 | variants | tagged unions with exhaustive handling that fails to compile when a case is missing |
 | missing values | `Option` in domain code |
@@ -106,43 +106,30 @@ Not wanted without a real need: Stream, STM, Queue, PubSub, RPC, Cluster, Workfl
 All effectful logic runs on Effect v4 (`effect`, pinned exactly). Load the `effect` skill first. Third-party skills are advice: this file, `Critical rules` and the secrets rules win. The installed `node_modules/effect/dist/*.d.ts` is authoritative for API names.
 
 ```ts
-import * as Context from 'effect/Context';
+import { isDefined } from '@rnw-community/shared';
+import { person } from '@rondo/db/schema/identity.schema';
+import { Db } from '@rondo/db/service/db.service';
+import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
-import * as Layer from 'effect/Layer';
-import * as Schema from 'effect/Schema';
 
-export class PlayerNotFoundError extends Schema.TaggedError<PlayerNotFoundError>()('PlayerNotFoundError', {
-    playerId: Schema.String
-}) {}
+import { ActionFailedError } from '../error/action-failed.error';
 
-export class PlayerService extends Context.Service<PlayerService>()('@rondo/domain/PlayerService', {
-    make: Effect.gen(function* () {
-        const playerRepository = yield* PlayerRepository;
+export const requirePerson = Effect.fn('Core.requirePerson')(function* (personId: string) {
+    const db = yield* Db;
+    const [found] = yield* db.select().from(person).where(eq(person.id, personId));
 
-        return {
-            findById: Effect.fn('PlayerService.findById')(function* (playerId: string) {
-                const player = yield* playerRepository.findById(playerId);
-
-                if (player === null) {
-                    return yield* new PlayerNotFoundError({ playerId });
-                }
-
-                return player;
-            })
-        };
-    })
-}) {
-    static readonly layer = Layer.effect(PlayerService, PlayerService.make).pipe(Layer.provide(PlayerRepository.layer));
-}
+    return isDefined(found) ? found : yield* ActionFailedError.make({ failure: { code: 'person_not_found' } });
+});
 ```
 
-- **Services.** Every service and repository is a `Context.Service` class with a `make` recipe. The id is `@rondo/<workspace>/<ClassName>` (lint-enforced). No constructors, no `this`. Callers use only the tag (`yield* X`). Layers are `static readonly`.
+- **Functions.** Logic is exported `Effect.fn` functions, grouped by what they work on. What they need (`Db`, `Telegram`) is in their type, so no class or layer holds them.
+- **Services.** A `Context.Service` class exists only for a dependency that is swapped or configured at the edge: `Db`, `Telegram`, `AiGateway`, `Access`. The id is `@rondo/<workspace>/<ClassName>` (lint-enforced), layers are `static readonly`, callers use only the tag (`yield* X`). No constructors, no `this`.
 - **Imports by subpath.** `import * as Effect from 'effect/Effect'`, never the `effect` barrel (lint-enforced).
-- **Errors.** `Schema.TaggedError` classes in `/error/*.error.ts`, created only when a caller branches on them. Everything else is a defect. No `throw`, `try`, `new Promise` in `src/`. Wrap foreign Promise APIs with `Effect.tryPromise` at the boundary only.
-- **Tracing.** Every effectful service method is `m: Effect.fn('X.m')(function* (...) {...})`, named after the service and method.
+- **Errors.** `Schema.TaggedError` classes in `/error/*.error.ts`, created only when a caller branches on them. Everything else is a defect. A refused admin action is an `ActionFailedError` with a code and its parameters, never prose; the bot words every code in uk and ru (`failure-text.ts`). No `throw`, `try`, `new Promise` in `src/`. Wrap foreign Promise APIs with `Effect.tryPromise` at the boundary only.
+- **Tracing.** Every effectful function with more than one step is `Effect.fn('Workspace.name')(function* (...) {...})`; one that only builds or delegates to another effect may be a plain arrow.
 - **Running.** Only edges run effects (`apps/*` entry points, CLI mains, `it.effect` in tests). No `Effect.runPromise` or `runSync` inside services (lint-enforced).
 - **Validation.** Effect `Schema` at boundaries (`Schema.decodeUnknownEffect`). No zod.
-- **Database.** Drizzle over `drizzle-orm/effect-postgres` and `@effect/sql-pg`. Row types come from `typeof table.$inferSelect` and `$inferInsert`. Repositories return Effects, never builders.
+- **Database.** Drizzle over `drizzle-orm/effect-postgres` and `@effect/sql-pg`. Row types come from `typeof table.$inferSelect` and `$inferInsert`. Query functions return Effects, never builders.
 - **Concurrency and time.** `Schedule`, `Effect.retry`, `Effect.timeout`, `Semaphore`, `FiberMap`, `Effect.acquireRelease`. No `setTimeout` loops or `Promise.race`.
 - **Tests.** `@effect/vitest`: every test is `it.effect('...', () => Effect.gen(function* () {...}))`, `it.layer` for shared layers. DB tests run on PGlite provided as a layer from `@rondo/db/testing/test-db.layer`. No `async` bodies, no `runPromise`, no `vi.mock`. Time-dependent tests use `TestClock`.
 

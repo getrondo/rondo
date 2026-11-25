@@ -17,12 +17,11 @@ import { planLineup } from '../src/teams/lineup-plan';
 import { publishLineup } from '../src/teams/publish-lineup';
 import { changeDraft, openDraft } from '../src/teams/team-draft.service';
 import { claimNotice, claimProposal } from '../src/teams/team-schedule';
-import { localPostgresLayer } from '../src/testing/local-postgres.layer';
+import { localPostgresLayer, raceDatabaseUrl } from '../src/testing/local-postgres.layer';
 import { seedGame } from '../src/testing/seed-game';
 
 const racers = 8;
-const databaseUrl = process.env.RONDO_TEST_DATABASE_URL ?? '';
-const withoutPostgres = isEmptyString(databaseUrl);
+const withoutPostgres = isEmptyString(raceDatabaseUrl);
 const raceRecorder = makeRecorder();
 
 const gameWithPlayers = Effect.fn('test.gameWithPlayers')(function* (slug: string, base: number) {
@@ -37,7 +36,7 @@ const gameWithPlayers = Effect.fn('test.gameWithPlayers')(function* (slug: strin
     return { communityId, sessionId };
 });
 
-const postgresLayer = Layer.mergeAll(localPostgresLayer(databaseUrl), recordingTelegramLayer(raceRecorder), Access.layerFor([42n]));
+const postgresLayer = Layer.mergeAll(localPostgresLayer(raceDatabaseUrl), recordingTelegramLayer(raceRecorder), Access.layerFor([42n]));
 
 layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('team drafts on a real Postgres', it => {
     it.effect.skipIf(withoutPostgres)('lets one of two admins win a change of the same version and tells the other', () =>

@@ -1,16 +1,17 @@
-// eslint-disable-next-line import/no-unassigned-import -- server-only sentinel
 import 'server-only';
 import { timingSafeEqual } from 'node:crypto';
 
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
+import * as Option from 'effect/Option';
+import * as Redacted from 'effect/Redacted';
 
-export const hasBearerSecret = (header: string | null, secret: string | undefined): boolean => {
-    if (!isDefined(header) || !isNotEmptyString(secret)) {
+export const hasBearerSecret = (header: string | null, secret: Option.Option<Redacted.Redacted>): boolean => {
+    if (!isDefined(header) || Option.isNone(secret) || !isNotEmptyString(Redacted.value(secret.value))) {
         return false;
     }
 
     const received = Buffer.from(header);
-    const expected = Buffer.from(`Bearer ${secret}`);
+    const expected = Buffer.from(`Bearer ${Redacted.value(secret.value)}`);
 
     return received.length === expected.length && timingSafeEqual(received, expected);
 };

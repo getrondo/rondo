@@ -11,16 +11,16 @@ Every effectful line is Effect. No Promise/async logic, `try`/`throw`, `new Prom
 
 1. `node_modules/effect/AGENTS.md` and `node_modules/effect/ai-docs/src/**` (ships with the pinned version), then `node_modules/effect/dist/*.d.ts` and `node_modules/effect/src`.
 2. `https://github.com/Effect-TS/effect/blob/main/LLMS.md`.
-3. The repo's root `AGENTS.md` "## Effect" section and rules 22, 32, 35, 41, 57, 58, 60.
+3. The repo's root `AGENTS.md` "## Effect" section.
 4. Migrating leftover v3 code: the `effect-v3-to-v4` skill. Never write v3 APIs (`Effect.Service`, `Context.Tag`, `catchAll`); v4 is `Context.Service`, `Effect.catch`.
 
 ## Repo patterns
 
 - Imports by subpath only: `import * as Effect from 'effect/Effect'`, never the `effect` barrel.
-- Functions: service methods are `m: Effect.fn('X.m')(function* (...) {...})` in the object returned by `make`, named after the service; hot-loop helpers are `make` locals with `Effect.fnUntraced`. A method whose body is one call (a single query, or a delegation) is a plain arrow `m: (a: A) => dep.m(a)`, with no `Effect.fn`. Pass another service's method as a value only through an arrow (`(a) => repo.m(a)`).
-- Database: Drizzle over `drizzle-orm/effect-postgres` with `@effect/sql-pg`. Schemas live in `packages/db`, one folder per bounded context. Repositories are services returning Effects, never Drizzle builders. Atomic work runs in a single transaction effect.
+- Functions: logic is exported `Effect.fn('Workspace.name')(function* (...) {...})` functions that read what they need with `yield* Db`. A function whose body is one call is a plain arrow.
+- Database: Drizzle over `drizzle-orm/effect-postgres` with `@effect/sql-pg`. Schemas live in `packages/db`, one folder per bounded context. Query functions return Effects, never Drizzle builders. Atomic work runs in a single transaction effect.
 - Errors: typed channel only. `Schema.TaggedError` classes in `/error/*.error.ts`, created only when a caller branches on them; everything else is a defect. Wrap foreign Promise/SDK/native calls with `Effect.tryPromise`/`Effect.try` at that boundary only. Recover only at edges with `Effect.catchTag`/`catchTags`/`catch`. Log failures once at the edge.
-- Services: every service and repository is `class X extends Context.Service<X>()('@rondo/<pkg>/X', { make: Effect.gen(function* () { const dep = yield* Dep; ...; return { m } }) }) { static readonly layer = Layer.effect(X, X.make).pipe(Layer.provide([Dep.layer])) }` (`make: Effect.succeed({...})` without dependencies). No constructors, no `this`: dependencies resolve once at the top of `make`, helpers, constants and state are `make` locals, shared repository behaviour is a `make<X>Repository(...)` factory spread into the returned object. Callers use only the tag (`yield* X`, `Effect.flatMap(X, x => ...)`, never `X.use`). Ports (`Db`) are layer-less tags. Pure code stays plain with no tag. 
+- Services: a `Context.Service` class only for a dependency swapped or configured at the edge (`Db`, `Telegram`, `AiGateway`, `Access`), with `static readonly` layers. No constructors, no `this`. Callers use only the tag (`yield* X`, never `X.use`). Pure code stays plain with no tag.
 - Validation: Effect `Schema` at boundaries (`Schema.decodeUnknownEffect`, `Schema.toStandardSchemaV1` for forms). No zod, ky or drizzle-zod.
 - HTTP: `HttpClient` from `effect/http` with `Schedule` retries and `Effect.timeout`; the runtime provides `FetchHttpClient.layer`.
 - Concurrency and time: `Schedule`, `Effect.retry`/`repeat`, `Effect.timeout`, `Effect.sleep`, `Semaphore`, `FiberMap`/`FiberSet`, `Effect.acquireRelease`. No `Promise.race`, generation counters or boolean cancel flags.

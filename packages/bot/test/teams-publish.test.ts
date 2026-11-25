@@ -10,7 +10,7 @@ import { messageRef } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder, refusal } from '@rondo/telegram/testing/recording-telegram.layer';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Predicate from 'effect/Predicate';
 
@@ -174,10 +174,9 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* teamsGame('teams-post-handles', { groupChatId: -3203, adminId: 324, players: 8 });
-            const [row] = yield* db.select({ settings: community.settings }).from(community).where(eq(community.id, communityId));
             yield* db
                 .update(community)
-                .set({ settings: { ...(row?.settings as object), teams: { showHandles: true } } })
+                .set({ settings: sql`${community.settings} || ${JSON.stringify({ teams: { showHandles: true } })}::jsonb` })
                 .where(eq(community.id, communityId));
             yield* db.update(telegramAccount).set({ username: 'andriy_k' }).where(eq(telegramAccount.tgUserId, 32_400n));
             const admin = conversation(recorder, adminNumbered(324));

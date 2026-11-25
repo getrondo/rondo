@@ -10,7 +10,7 @@ import { makeRecorder, refusal } from '@rondo/telegram/testing/recording-telegra
 import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { conversation, labelsOf } from './support/conversation';
+import { conversation, keyboardOf, labelsOf } from './support/conversation';
 import { gamesOn, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
@@ -180,7 +180,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const preview = admin.screen().text;
             yield* admin.tap('✅ Надіслати');
             const poll = pollTo(-5007)?.payload;
-            const route = (poll?.reply_markup as { inline_keyboard: { url: string }[][] } | undefined)?.inline_keyboard[0]?.[0]?.url ?? '';
+            const route = keyboardOf(poll?.reply_markup)[0]?.[0]?.url ?? '';
 
             expect(preview).toContain(`<blockquote>${String(poll?.question)}\n\n`);
             expect(preview).toContain('▫️ ✅ Граю\n▫️ ❌ Не граю</blockquote>');

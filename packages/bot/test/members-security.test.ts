@@ -13,7 +13,7 @@ import * as Effect from 'effect/Effect';
 
 import { toShortId } from '../src/utils/to-short-id.util';
 
-import { conversation, deliver } from './support/conversation';
+import { conversation, deliver, lastPollId, pollsTo } from './support/conversation';
 import { advanceNow } from './support/fixed-clock';
 import { seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
@@ -159,8 +159,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('👥 22');
             yield* admin.type('1');
             yield* admin.tap('✅ Надіслати');
-            const poll = recorder.calls.findLast(call => call.method === 'sendPoll' && call.payload.chat_id === -8005);
-            const pollId = (poll?.result as { poll?: { id?: string } } | undefined)?.poll?.id ?? '';
+            const pollId = lastPollId(recorder, -8005);
             const vote = (id: number, name: string, optionIds: number[]) =>
                 deliver({
                     poll_answer: {
@@ -194,7 +193,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const posts = recorder.calls
                 .filter(call => call.method === 'sendMessage' && call.payload.chat_id === -8005)
                 .map(call => String(call.payload.text));
-            const texts = [String(poll?.payload.description), ...posts];
+            const texts = [String(pollsTo(recorder, -8005).at(-1)?.payload.description), ...posts];
 
             expect(texts.length).toBeGreaterThanOrEqual(4);
             expect(texts.every(text => !text.includes('<Arena>') && !text.includes('<b>Bob</b>') && !text.includes('Eve & Co'))).toBe(true);

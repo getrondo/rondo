@@ -1,22 +1,26 @@
 import { isDefined } from '@rnw-community/shared';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
+import * as Schema from 'effect/Schema';
 
 import { handleUpdate } from '../../src/handle-update';
 
 import type { TelegramRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import type { Update } from 'grammy/types';
 
-interface Button {
-    readonly text: string;
-    readonly callback_data?: string;
-    readonly url?: string;
-}
+const Button = Schema.Struct({
+    text: Schema.String,
+    callback_data: Schema.optionalKey(Schema.String),
+    url: Schema.optionalKey(Schema.String)
+});
+const decodeKeyboard = Schema.decodeUnknownOption(Schema.Struct({ inline_keyboard: Schema.Array(Schema.Array(Button)) }));
+const decodeSentPoll = Schema.decodeUnknownOption(Schema.Struct({ poll: Schema.Struct({ id: Schema.String }) }));
+const decodeSent = Schema.decodeUnknownOption(Schema.Struct({ message_id: Schema.Int }));
 
 interface ShownMessage {
     readonly id: number;
     readonly text: string;
-    readonly buttons: readonly (readonly Button[])[];
+    readonly buttons: readonly (readonly (typeof Button.Type)[])[];
 }
 
 export interface Person {
@@ -33,8 +37,11 @@ export const startUpdatesAt = (updateId: number) =>
         nextUpdateId = updateId;
     });
 
-const keyboardOf = (markup: unknown): readonly (readonly Button[])[] =>
-    (markup as { inline_keyboard?: Button[][] } | undefined)?.inline_keyboard ?? [];
+export const keyboardOf = (markup: unknown): readonly (readonly (typeof Button.Type)[])[] =>
+    decodeKeyboard(markup).pipe(
+        Option.map(decoded => decoded.inline_keyboard),
+        Option.getOrElse(() => [])
+    );
 
 export const deliver = (body: Omit<Update, 'update_id'> & { readonly update_id?: number }) => {
     nextUpdateId += 1;
@@ -49,8 +56,13 @@ export const conversation = (recorder: TelegramRecorder, user: Person) => {
         let last: number | null = null;
 
         for (const call of recorder.calls.filter(entry => entry.payload.chat_id === user.id && isDefined(entry.result))) {
-            const result = call.result as { message_id?: number } | true;
-            const id = call.method === 'sendMessage' && result !== true ? (result.message_id ?? 0) : Number(call.payload.message_id);
+            const id =
+                call.method === 'sendMessage'
+                    ? decodeSent(call.result).pipe(
+                          Option.map(sent => sent.message_id),
+                          Option.getOrElse(() => 0)
+                      )
+                    : Number(call.payload.message_id);
 
             if (call.method === 'sendMessage' || call.method === 'editMessageText') {
                 shown.set(id, { id, text: String(call.payload.text), buttons: keyboardOf(call.payload.reply_markup) });
@@ -121,11 +133,10 @@ export const labelsOf = (screen: { readonly buttons: readonly (readonly { readon
     screen.buttons.flat().map(button => button.text);
 
 export const lastPollId = (recorder: TelegramRecorder, chatId: number) =>
-    (
-        recorder.calls.findLast(call => call.method === 'sendPoll' && call.payload.chat_id === chatId)?.result as
-            | { poll?: { id?: string } }
-            | undefined
-    )?.poll?.id ?? '';
+    decodeSentPoll(recorder.calls.findLast(call => call.method === 'sendPoll' && call.payload.chat_id === chatId)?.result).pipe(
+        Option.map(sent => sent.poll.id),
+        Option.getOrElse(() => '')
+    );
 
 export const walkManual = (admin: ReturnType<typeof conversation>, labels: readonly string[]) =>
     Effect.all(
