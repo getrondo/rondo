@@ -153,6 +153,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             recorder.failures.delete('sendPoll');
             const unknown = admin.screen();
             yield* admin.tap('📣 Немає, надіслати в «Games»');
+            const confirmation = admin.screen();
             yield* admin.tap('✅ Надіслати в «Games»');
             const sent = admin.screen();
 
@@ -160,6 +161,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 '⚠️ Не знаю, чи дійшло опитування в «Games». Зазирни туди. Немає — натисни ✅ нижче. Є — спершу видали його там: я його не бачу й голоси не порахую.'
             );
             expect(labelsOf(unknown).filter(label => label.includes('Games'))).toEqual(['📣 Немає, надіслати в «Games»']);
+            expect(confirmation.text.split('\n')[0]).toBe('Так буде в «Games»:');
             expect(sent.text.split('\n')[0]).toBe('✅ Опитування в «Games».');
         })
     );

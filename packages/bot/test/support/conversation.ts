@@ -130,3 +130,6 @@ export const walkManual = (admin: ReturnType<typeof conversation>, labels: reado
 
 export const pollsTo = (recorder: TelegramRecorder, chatId: number) =>
     recorder.calls.filter(call => call.method === 'sendPoll' && call.payload.chat_id === chatId);
+
+export const forwardsTo = (recorder: TelegramRecorder, chatId: number) =>
+    recorder.calls.filter(call => call.method === 'forwardMessage' && call.payload.chat_id === chatId);

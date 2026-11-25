@@ -55,6 +55,19 @@ const menuGame = Effect.fn('test.menuGame')(function* (communityId: string, loca
 
     return Predicate.hasProperty(row?.result, 'sessionId') && Predicate.isString(row.result.sessionId) ? row.result.sessionId : '';
 });
+const forwardRace = Effect.fn('test.forwardRace')(function* (
+    sessionId: string,
+    target: { readonly chatId: bigint; readonly topicId: null },
+    resend: number | null
+) {
+    const outcomes = yield* Effect.all(
+        Array.from({ length: 8 }, () => forwardPoll(sessionId, target, resend).pipe(Effect.exit)),
+        { concurrency: 'unbounded' }
+    );
+    const forwards = raceRecorder.calls.filter(call => call.method === 'forwardMessage' && call.payload.chat_id === Number(target.chatId));
+
+    return { sent: outcomes.filter(outcome => outcome._tag === 'Success').length, forwards: forwards.length };
+});
 const unique = () => `${Math.floor(performance.now() * 1000)}-${Math.random().toString(36).slice(2, 8)}`;
 
 const postgresLayer = Layer.mergeAll(
@@ -191,16 +204,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
             const pollId = `race-forward-${unique()}`;
             const target = { chatId: -9_400_000n - BigInt(Math.floor(performance.now())), topicId: null };
             yield* db.insert(telegramPoll).values({ pollId, chatId: -1n, messageId: 1, sessionId, options: ['in', 'out'] });
-            const outcomes = yield* Effect.all(
-                Array.from({ length: 8 }, () => forwardPoll(sessionId, target, null).pipe(Effect.exit)),
-                { concurrency: 'unbounded' }
-            );
-            const forwards = raceRecorder.calls.filter(
-                call => call.method === 'forwardMessage' && call.payload.chat_id === Number(target.chatId)
-            );
-
-            expect(outcomes.filter(outcome => outcome._tag === 'Success')).toHaveLength(1);
-            expect(forwards).toHaveLength(1);
+            expect(yield* forwardRace(sessionId, target, null)).toEqual({ sent: 1, forwards: 1 });
         })
     );
 
@@ -259,16 +263,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
             const target = { chatId: -9_500_000n - BigInt(Math.floor(performance.now())), topicId: null };
             yield* db.insert(telegramPoll).values({ pollId, chatId: -1n, messageId: 1, sessionId, options: ['in', 'out'] });
             yield* db.insert(pollForward).values({ pollId, chatId: target.chatId, generation: 3 });
-            const outcomes = yield* Effect.all(
-                Array.from({ length: 8 }, () => forwardPoll(sessionId, target, 3).pipe(Effect.exit)),
-                { concurrency: 'unbounded' }
-            );
-            const forwards = raceRecorder.calls.filter(
-                call => call.method === 'forwardMessage' && call.payload.chat_id === Number(target.chatId)
-            );
-
-            expect(outcomes.filter(outcome => outcome._tag === 'Success')).toHaveLength(1);
-            expect(forwards).toHaveLength(1);
+            expect(yield* forwardRace(sessionId, target, 3)).toEqual({ sent: 1, forwards: 1 });
         })
     );
 });
