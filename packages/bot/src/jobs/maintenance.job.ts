@@ -6,7 +6,6 @@ import { assistantMessage, processedUpdate } from '@rondo/db/schema/platform.sch
 import { Db } from '@rondo/db/service/db.service';
 import { and, count, gt, gte, isNull, lt, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
-import * as Option from 'effect/Option';
 
 import { maxAttempts } from '../handle-update';
 import { tellExpired } from '../menu/groups/approval';
@@ -37,9 +36,9 @@ const isDone = <Value, Failure, Requirements>(name: string, step: Effect.Effect<
     );
 
 const closePolls = Effect.gen(function* () {
-    const left = yield* closeFinishedPolls().pipe(Effect.timeoutOption(closePollsMs));
+    const left = yield* closeFinishedPolls(closePollsMs);
 
-    for (const sessionId of Option.getOrElse(left, () => [])) {
+    for (const sessionId of left) {
         yield* offerClosure(sessionId, false);
     }
 });

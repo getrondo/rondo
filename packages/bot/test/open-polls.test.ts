@@ -11,6 +11,7 @@ import * as Effect from 'effect/Effect';
 import { runMaintenance } from '../src/jobs/maintenance.job';
 
 import { conversation, labelsOf } from './support/conversation';
+import { advanceNow } from './support/fixed-clock';
 import { linkGroup } from './support/groups';
 import { gamesOn, grantOrganizer, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
@@ -67,7 +68,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* runMaintenance(night);
             const count = approver.seen().length - before;
             yield* linkGroup(communityId, { chatId: -45_001, title: 'Games' });
-            const retried = yield* closeFinishedPolls();
+            const retried = yield* closeFinishedPolls(20_000);
             yield* switchOff(-45_001);
             yield* helper.press(told.buttons[0]?.[0]?.callback_data ?? '');
             const early = methodsTo(-45_001).length;
@@ -182,6 +183,93 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(kept).toHaveLength(1);
             expect(yield* gamesOn(communityId, '2026-11-27')).toEqual([]);
             expect(methodsTo(-45_051).slice(written)).toEqual(['stopPoll']);
+        })
+    );
+
+    it.effect('is offered once while that offer waits, and the deletion is offered until the day of the game ends', () =>
+        Effect.gen(function* () {
+            const { approver, helper, sessionId, communityId } = yield* posted('open-again', 4601, -46_001);
+            yield* switchOff(-46_001);
+            const remove = Effect.suspend(() =>
+                helper
+                    .type('/games')
+                    .pipe(
+                        Effect.andThen(Effect.suspend(() => helper.tap('Пт 27.11 19:00'))),
+                        Effect.andThen(Effect.suspend(() => helper.tap('🗑 Видалити'))),
+                        Effect.andThen(Effect.suspend(() => helper.tap('🗑 Видалити назавжди')))
+                    )
+            );
+            const before = approver.seen().length;
+            yield* remove;
+            const offered = approver.screen();
+            yield* remove;
+            const count = approver.seen().length - before;
+            yield* advanceNow(40 * 60 * 60_000);
+            yield* approver.tapOn(offered, '🗑 Закрити й видалити');
+            const fallback = approver.seen().at(-1) ?? offered;
+            yield* approver.tapOn(fallback, closeButton);
+
+            expect(count).toBe(1);
+            expect(labelsOf(fallback)).toEqual([closeButton]);
+            expect(yield* isPollClosed(sessionId)).toBe(true);
+            expect(yield* gamesOn(communityId, '2026-11-27')).toHaveLength(1);
+        })
+    );
+
+    it.effect(
+        'is offered again by the job when the approver was not reached, appears later or the group is linked, and after its time',
+        () =>
+            Effect.gen(function* () {
+                const db = yield* Db;
+                const { approver, sessionId, communityId } = yield* posted('open-later', 4611, -46_011);
+                const owner = conversation(recorder, adminNumbered(42));
+                yield* switchOff(-46_011);
+                yield* setStatus(sessionId, 'played');
+                yield* db.update(community).set({ approverTgUserId: null }).where(eq(community.id, communityId));
+                const before = owner.seen().length;
+                yield* runMaintenance(night);
+                yield* runMaintenance(night);
+                const ownersTold = owner.seen().length - before;
+                yield* db.update(community).set({ approverTgUserId: 4611n }).where(eq(community.id, communityId));
+                recorder.failures.set('sendMessage', refusal('sendMessage', 'Forbidden: bot was blocked by the user', 403));
+                yield* runMaintenance(night);
+                recorder.failures.delete('sendMessage');
+                yield* db.delete(telegramChat).where(eq(telegramChat.chatId, -46_011n));
+                yield* runMaintenance(night);
+                yield* linkGroup(communityId, { chatId: -46_011, title: 'Games', isPosting: false });
+                yield* runMaintenance(night);
+                const told = approver.screen();
+                const count = approver.seen().length;
+                yield* runMaintenance(night);
+                const same = approver.seen().length;
+                yield* advanceNow(31 * 24 * 60 * 60_000);
+                yield* approver.tapOn(told, closeButton);
+                const fresh = approver.seen().at(-1) ?? told;
+                yield* approver.tapOn(fresh, closeButton);
+
+                expect(ownersTold).toBe(1);
+                expect(labelsOf(told)).toEqual([closeButton]);
+                expect(same).toBe(count);
+                expect(fresh.id).not.toBe(told.id);
+                expect(yield* isPollClosed(sessionId)).toBe(true);
+            })
+    );
+
+    it.effect('that was found before the time of the job ran out is still offered', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { sessionId } = yield* posted('open-timeout', 4621, -46_021);
+            yield* switchOff(-46_021);
+            yield* setStatus(sessionId, 'played');
+            const { sessionId: slow } = yield* posted('open-slow', 4631, -46_031);
+            yield* setStatus(slow, 'cancelled');
+            yield* db.update(telegramPoll).set({ chatId: 4631n }).where(eq(telegramPoll.sessionId, slow));
+            yield* db.delete(messageRef).where(eq(messageRef.entityId, slow));
+            recorder.failures.set('stopPoll', refusal('stopPoll', 'Too Many Requests: retry after 2', 429, 2));
+            const left = yield* closeFinishedPolls(1500);
+            recorder.failures.delete('stopPoll');
+
+            expect(left).toContain(sessionId);
         })
     );
 

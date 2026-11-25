@@ -130,10 +130,13 @@ const decodeAction = Schema.decodeUnknownOption(ActionSchema);
 const offerAfter = Effect.fn('Bot.offerAfterOutcome')(function* (outcome: DecisionOutcome, payload: unknown) {
     const action = Option.getOrNull(decodeAction(payload));
     const code = outcome._tag === 'failed' ? outcome.failure.code : null;
+    const isUnanswered = isDefined(code) || outcome._tag === 'expired';
 
     if (action?._tag === 'delete_session' && code === 'poll_left_open') {
         yield* offerClosure(action.sessionId, true);
-    } else if (action?._tag === 'close_poll' && isDefined(code)) {
+    } else if (action?._tag === 'delete_session' && action.isClosure === true && isUnanswered) {
+        yield* offerClosure(action.sessionId, code !== 'not_deletable');
+    } else if (action?._tag === 'close_poll' && isUnanswered) {
         yield* offerClosure(action.sessionId, false);
     } else if (action?._tag === 'cancel_session' && outcome._tag === 'done' && isNotEmptyString(outcome.openIn)) {
         yield* offerClosure(action.sessionId, false);

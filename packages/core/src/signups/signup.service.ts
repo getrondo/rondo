@@ -1,6 +1,6 @@
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
-import { auditLog, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { pendingAction, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup, signupEvent } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, asc, count, eq, inArray, isNull, ne, notExists, sql } from 'drizzle-orm';
@@ -18,8 +18,6 @@ import { isSettledPoll } from '../utils/is-settled-poll.util';
 
 import { closureApproval } from './closure-approval';
 import { openPollOf, pollChatsOf, titlesOfChats } from './poll-chats';
-
-export const leftOpenAudit = 'poll.left_open';
 
 type PollChoice = 'in' | 'gk' | 'out';
 
@@ -301,25 +299,34 @@ export const requirePollClosed = Effect.fn('Core.requirePollClosed')(function* (
     return sessionId;
 });
 
-// The games whose poll the gate kept open. Once told, only a tap closes it
-export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function* () {
+// The games whose poll the gate kept open, as far as the time reached. Once the approver has the button, only a tap closes it
+export const closeFinishedPolls = Effect.fn('Core.closeFinishedPolls')(function* (budgetMs: number) {
     const db = yield* Db;
     const told = db
-        .select({ id: auditLog.id })
-        .from(auditLog)
-        .where(and(eq(auditLog.action, leftOpenAudit), sql`${auditLog.entityId} = ${session.id}::text`));
+        .select({ id: pendingAction.id })
+        .from(pendingAction)
+        .where(
+            and(
+                eq(pendingAction.kind, 'close_poll'),
+                ne(pendingAction.status, 'failed'),
+                sql`${pendingAction.payload} ->> 'sessionId' = ${session.id}::text`
+            )
+        );
     const games = yield* db
         .selectDistinct({ sessionId: telegramPoll.sessionId })
         .from(telegramPoll)
         .innerJoin(session, eq(session.id, telegramPoll.sessionId))
-        .where(and(isNull(telegramPoll.closedAt), inArray(session.status, closedStatuses), notExists(told)));
+        .where(and(isNull(telegramPoll.closedAt), inArray(session.status, closedStatuses), notExists(told)))
+        .orderBy(asc(telegramPoll.sessionId));
     const left: string[] = [];
 
-    for (const { sessionId } of games) {
-        const approval = yield* closureApproval(sessionId);
-        const kept = yield* closePollsOf(sessionId, approval);
-        left.push(...(isNotEmptyString(kept) ? [sessionId] : []));
-    }
+    yield* Effect.gen(function* () {
+        for (const { sessionId } of games) {
+            const approval = yield* closureApproval(sessionId);
+            const kept = yield* closePollsOf(sessionId, approval);
+            left.push(...(isNotEmptyString(kept) ? [sessionId] : []));
+        }
+    }).pipe(Effect.timeoutOption(budgetMs));
 
     return left;
 });

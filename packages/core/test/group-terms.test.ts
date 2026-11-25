@@ -87,7 +87,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the terms of a closure', it
             recorder.failures.delete('stopPoll');
             const tried = sentTo(-9211, 'stopPoll');
             yield* copyIn(sessionId, -9212);
-            yield* closeFinishedPolls();
+            yield* closeFinishedPolls(20_000);
 
             expect(row?.payload).toMatchObject({ closes: { chatIds: ['-9211'] } });
             expect(row?.summary).toContain('в пересланих копіях: «Main»');
@@ -106,7 +106,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the terms of a closure', it
             yield* db.update(telegramPoll).set({ closedAt: new Date() }).where(eq(telegramPoll.sessionId, sessionId));
             yield* db.insert(telegramPoll).values({ pollId: 'terms-other', chatId: -9221n, messageId: 99, sessionId, options: ['in'] });
             yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
-            yield* closeFinishedPolls();
+            yield* closeFinishedPolls(20_000);
 
             expect(sentTo(-9221, 'stopPoll')).toBe(0);
         })
