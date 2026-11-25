@@ -70,6 +70,12 @@ export const teamAt = (locale: Locale, view: Pick<EditorView, 'row'>, team: numb
 export const nameOf = (view: Pick<EditorView, 'inputs'>, personId: string): string =>
     view.inputs.members.find(member => member.personId === personId)?.displayName ?? '?';
 
+const fixedColourName = (locale: Locale, view: EditorView, personId: string): string | null => {
+    const badge = badgeOfColour(view.inputs.affinities.get(personId)?.fixed);
+
+    return isDefined(badge) ? teamName(locale, badge.badge, 0) : null;
+};
+
 type Destination = Pick<PlannedDelivery, 'chatId' | 'title'>;
 
 export const isUnsure = (delivery: PlannedDelivery): boolean => delivery.stored === 'claimed' || delivery.stored === 'uncertain';
@@ -165,8 +171,12 @@ const titleRow = (user: MenuUser, view: EditorView, base: TeamsBase): MenuButton
     return visibleTeams(view).map(team => {
         const title = `${badgeAt(view, team)} ${teamAt(user.locale, view, team)} · ${teams[team]?.length ?? 0}`;
 
-        if (!isDefined(view.selected) || team === selectedTeam) {
-            return { text: title, callback_data: teamsData(base, isDefined(view.selected) ? 'd' : 'e') };
+        if (!isDefined(view.selected)) {
+            return { text: title, callback_data: teamsData(base, 'c', [team]) };
+        }
+
+        if (team === selectedTeam) {
+            return { text: title, callback_data: teamsData(base, 'd') };
         }
 
         return { text: towardsTeam(user.locale, badgeAt(view, team)), callback_data: teamsData(base, 'm', [selectedIndex, team]) };
@@ -193,17 +203,16 @@ const selectedRows = (user: MenuUser, view: EditorView, base: TeamsBase): MenuBu
         text: teamsText(user.locale, key, values),
         callback_data: teamsData(base, op, [index])
     });
-    const member = view.inputs.members.find(entry => entry.personId === selected);
+    const isGuest = view.inputs.members.some(entry => entry.personId === selected && entry.isGuest);
+    const colour = fixedColourName(user.locale, view, selected) ?? teamsText(user.locale, 'autoColour');
 
     return [
         [
             button(view.row.state.keepers.includes(selected) ? 'keeperOff' : 'keeperOn', 'k'),
             button(view.row.state.locks.includes(selected) ? 'lockOff' : 'lockOn', 'l')
         ],
-        [
-            button('out', 'r'),
-            ...(member?.isGuest === true ? [] : [button('guestOf', 'G', { name: initialsOf(nameOf(view, selected), 1) })])
-        ],
+        [button('out', 'r'), ...(isGuest ? [] : [button('guestOf', 'G', { name: initialsOf(nameOf(view, selected), 1) })])],
+        ...(isGuest ? [] : [[button('playerColour', 'z', { colour })]]),
         [{ text: teamsText(user.locale, 'deselect'), callback_data: teamsData(base, 'd') }]
     ];
 };

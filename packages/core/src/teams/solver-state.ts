@@ -1,5 +1,3 @@
-import { isDefined } from '@rnw-community/shared';
-
 import { hardWeight, type SolverModel } from './solver-model';
 
 export interface SolverState {
@@ -103,11 +101,7 @@ const teamCost = (model: SolverModel, state: SolverState): number => {
     );
 };
 
-const anchorCost = (model: SolverModel, player: number, team: number): number => {
-    const anchored = model.anchor[player];
-
-    return isDefined(anchored) && anchored !== team ? model.weights.move : 0;
-};
+const seatCost = (model: SolverModel, player: number, team: number): number => model.seat[player * model.teamCount + team] ?? 0;
 
 const linkOf = (model: SolverModel, state: SolverState, player: number, team: number): number =>
     state.link[player * model.teamCount + team] ?? 0;
@@ -124,8 +118,8 @@ export const moveDelta = (model: SolverModel, state: SolverState, player: number
         before +
         linkOf(model, state, player, to) -
         linkOf(model, state, player, from) +
-        anchorCost(model, player, to) -
-        anchorCost(model, player, from)
+        seatCost(model, player, to) -
+        seatCost(model, player, from)
     );
 };
 
@@ -148,10 +142,10 @@ export const swapDelta = (model: SolverModel, state: SolverState, first: number,
         linkOf(model, state, second, left) -
         linkOf(model, state, second, right) -
         2 * between +
-        anchorCost(model, first, right) -
-        anchorCost(model, first, left) +
-        anchorCost(model, second, left) -
-        anchorCost(model, second, right)
+        seatCost(model, first, right) -
+        seatCost(model, first, left) +
+        seatCost(model, second, left) -
+        seatCost(model, second, right)
     );
 };
 
@@ -160,8 +154,7 @@ export const totalCost = (model: SolverModel, state: SolverState): number => {
 
     for (let player = 0; player < model.size; player += 1) {
         pairs += state.link[player * model.teamCount + (state.team[player] ?? 0)] ?? 0;
-        const anchored = model.anchor[player];
-        pairs += isDefined(anchored) && anchored !== state.team[player] ? 2 * model.weights.move : 0;
+        pairs += 2 * seatCost(model, player, state.team[player] ?? 0);
     }
 
     return teamCost(model, state) + pairs / 2;

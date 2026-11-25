@@ -47,10 +47,11 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.press(buttonData(admin.screen(), '🧤 Воротар'));
             const marked = admin.screen();
 
-            expect(labelsOf(selected).slice(-4)).toEqual([
+            expect(labelsOf(selected).slice(-5)).toEqual([
                 ['🧤 Воротар', '🔒 Не чіпати'],
                 ['🚫 Не грає'],
                 [`➕ Гість від ${first}`],
+                ['🎽 Колір: Авто'],
                 ['✖️ Скасувати вибір']
             ]);
             expect(labelsOf(selected)[0]).toEqual(['🔴 Червоні · 7', '➡️ до Синіх']);
@@ -73,30 +74,106 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         })
     );
 
-    it.effect('picks colours in the settings, keeps two teams apart in colour and shows four teams two at a time', () =>
-        Effect.gen(function* () {
-            const { sessionId } = yield* teamsGame('teams-colours', { groupChatId: -3002, adminId: 302, players: 26, keepers: 4 });
-            const admin = conversation(recorder, adminNumbered(302, 'ru'));
-            yield* openEditor(admin);
-            const four = admin.screen();
-            yield* admin.press(buttonData(four, '⚙️ Уровни и цвета'));
-            const settings = admin.screen();
-            yield* admin.press(buttonData(settings, '🎨 🔵 Синие'));
-            const palette = admin.screen();
-            yield* admin.press(buttonData(palette, '🔴 Красные'));
-            const { row } = yield* draftTeams(sessionId);
-            yield* admin.press(buttonData(admin.screen(), '⬅️ К составам'));
-            yield* admin.press(buttonData(admin.screen(), 'Другие две команды ▶'));
-            const second = admin.screen();
+    it.effect(
+        'picks colours in the settings or on a title, swaps them with the other team, undoes it and shows four teams two at a time',
+        () =>
+            Effect.gen(function* () {
+                const { sessionId } = yield* teamsGame('teams-colours', { groupChatId: -3002, adminId: 302, players: 26, keepers: 4 });
+                const admin = conversation(recorder, adminNumbered(302, 'ru'));
+                yield* openEditor(admin);
+                const four = admin.screen();
+                yield* admin.press(buttonData(four, '⚙️ Уровни и цвета'));
+                const settings = admin.screen();
+                yield* admin.press(buttonData(settings, '🎨 🔵 Синие'));
+                const palette = admin.screen();
+                yield* admin.press(buttonData(palette, '🔴 Красные'));
+                const { row } = yield* draftTeams(sessionId);
+                yield* admin.press(titleData(admin.screen(), 0));
+                const fromTitle = admin.screen();
+                yield* admin.press(buttonData(fromTitle, '🔵 Синие ✓'));
+                const same = yield* draftTeams(sessionId);
+                yield* admin.press(titleData(admin.screen(), 0));
+                yield* admin.press(buttonData(admin.screen(), '🔴 Красные'));
+                const back = yield* draftTeams(sessionId);
+                yield* admin.press(buttonData(admin.screen(), '↩️ Отменить последнее'));
+                const undone = yield* draftTeams(sessionId);
+                yield* admin.press(buttonData(admin.screen(), 'Другие две команды ▶'));
+                const second = admin.screen();
 
-            expect(labelsOf(four)[0]).toEqual(['🔴 Красные · 7', '🔵 Синие · 7']);
-            expect(labelsOf(four)[1]).toHaveLength(2);
-            expect(labelsOf(four).flat()).toContain('🟢🟡 Другие две команды ▶');
-            expect(palette.text).toContain('🎨 Цвет для 🔵 Синие:');
-            expect(labelsOf(palette)[0]).toEqual(['🔴 Красные', '✓🔵 Синие']);
-            expect(row.state.colours.slice(0, 2)).toEqual(['blue', 'red']);
-            expect(labelsOf(second)[0]).toEqual(['🟢 Зелёные · 6', '🟡 Жёлтые · 6']);
-            expect(labelsOf(second).flat()).toContain('🔵🔴 Другие две команды ▶');
+                expect(labelsOf(four)[0]).toEqual(['🔴 Красные · 7', '🔵 Синие · 7']);
+                expect(labelsOf(four)[1]).toHaveLength(2);
+                expect(labelsOf(four).flat()).toContain('🟢🟡 Другие две команды ▶');
+                expect(palette.text).toContain('🎨 Цвет для 🔵 Синие:');
+                expect(labelsOf(palette)).toEqual([
+                    ['🔴 Красные'],
+                    ['🔵 Синие ✓'],
+                    ['🟢 Зелёные'],
+                    ['🟡 Жёлтые'],
+                    ['⚪ Белые'],
+                    ['🟠 Оранжевые'],
+                    ['⬅️ К составам']
+                ]);
+                expect(fromTitle.text).toContain('🎨 Цвет для 🔵 Синие:');
+                expect(same.row.version).toBe(row.version);
+                expect(back.row.state.colours.slice(0, 2)).toEqual(['red', 'blue']);
+                expect(back.row.state.teams).toEqual(row.state.teams);
+                expect(undone.row.state.colours).toEqual(row.state.colours);
+                expect(row.state.colours.slice(0, 2)).toEqual(['blue', 'red']);
+                expect(labelsOf(second)[0]).toEqual(['🟢 Зелёные · 6', '🟡 Жёлтые · 6']);
+                expect(labelsOf(second).flat()).toContain('🔵🔴 Другие две команды ▶');
+                expect(admin.tidy()).toEqual({ unanswered: [], oversized: [] });
+            })
+    );
+
+    it.effect('fixes the home colour of a player or returns it to automatic, shows it only here and follows it when shuffling', () =>
+        Effect.gen(function* () {
+            const { sessionId, people } = yield* teamsGame('teams-home-colour', { groupChatId: -3008, adminId: 309, players: 14 });
+            const admin = conversation(recorder, adminNumbered(309));
+            yield* openEditor(admin);
+            const { row, teams } = yield* draftTeams(sessionId);
+            const name = teams[0]?.[0] ?? '';
+            yield* admin.press(playerData(admin.screen(), name));
+            yield* admin.tap('🎽 Колір: Авто');
+            const list = admin.screen();
+            yield* admin.tap('🔵 Сині');
+            const fixed = admin.screen();
+            yield* admin.press(buttonData(admin.screen(), '✖️ Скасувати вибір'));
+            yield* admin.tap('🔀 Перемішати');
+            const shuffled = yield* draftTeams(sessionId);
+            yield* admin.press(buttonData(admin.screen(), '👌 Готово'));
+            const post = admin.screen().text;
+            yield* openEditor(admin);
+            yield* admin.press(playerData(admin.screen(), name));
+            yield* admin.tap('🎽 Колір: Сині');
+            const chosen = admin.screen();
+            yield* admin.tap('Авто');
+            const again = admin.screen();
+            yield* admin.press(buttonData(admin.screen(), '➕ Гість від'));
+            yield* admin.press(buttonData(admin.screen(), '+1'));
+            yield* admin.press(playerData(admin.screen(), `${name} +1`));
+            const guest = admin.screen();
+
+            expect(people).toContain(row.state.teams[0]?.[0]);
+            expect(labelsOf(list)).toEqual([
+                ['🔴 Червоні'],
+                ['🔵 Сині'],
+                ['🟢 Зелені'],
+                ['🟡 Жовті'],
+                ['⚪ Білі'],
+                ['🟠 Помаранчеві'],
+                ['Авто ✓'],
+                ['⬅️ Назад']
+            ]);
+            expect(labelsOf(fixed).flat()).toContain('🎽 Колір: Сині');
+            expect(fixed.text).toContain(`Вибрано: <b>${name}</b>`);
+            expect(shuffled.row.state.colours).toEqual(['red', 'blue']);
+            expect(shuffled.teams[1]).toContain(name);
+            expect(post).not.toContain('🎽');
+            expect(labelsOf(chosen)[1]).toEqual(['🔵 Сині ✓']);
+            expect(labelsOf(chosen)[6]).toEqual(['Авто']);
+            expect(labelsOf(again).flat()).toContain('🎽 Колір: Авто');
+            expect(labelsOf(guest).flat()).toContain('🚫 Не грає');
+            expect(labelsOf(guest).flat().join(' ')).not.toContain('🎽');
             expect(admin.tidy()).toEqual({ unanswered: [], oversized: [] });
         })
     );

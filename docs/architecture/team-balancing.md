@@ -43,6 +43,35 @@ their team sizes) over the weighted games (W):
 
     habit = ln((O + 1) / (W − O + 1)) − ln((E + 1) / (W − E + 1))
 
+## Home colours (#80)
+
+`home-colours.ts` is pure. The same history query also brings the colour of each squad (both chats, 💷 and 🔴 are one red).
+Per player it takes the last 20 squads with a colour; the share of a colour is `games / (squads + 1)`. A home colour is one
+worn in at least 80% of at least 8 squads; guests have none. An admin may fix one in the editor («🎽 Колір: …») or return to
+«Авто»; it is stored per person and activity in `play_private.home_colour`, as confidential as the level.
+
+- **Colours of the evening:** the most frequent set worn by that many teams in the last 50 such games of the community, else
+  the most worn colours. Colours in the draft, the admin's among them, stay for the same number of teams.
+- **Who wears which:** the order of the teams with the greatest total share (all permutations, 720 at six teams), except with
+  locks or a placed line-up, where a player must keep his team.
+- **Solver:** a home colour costs 30 in any other team (60 when fixed), below a strength difference of one point (100) and
+  the cost of moving a placed player (250); habits do not count for a pair with a home colour. A late joiner follows it too.
+
+The benchmark (12 players) keeps its gap to the optimum with a home colour for everyone. Over 40 synthetic games the mean
+strength spread stayed 2.10 with tiers and 0.00 without levels, and went from 0.15 to 0.29 (at most 0.78, «Сили рівні» up to 1.5)
+with learned ratings; home colours were met for 90%, 95% and 62% (31%, 30% and 38% before). Median time of three proposals on a busy machine:
+
+| Players / teams | without homes | a home for everyone |
+| --------------- | ------------- | ------------------- |
+| 14 / 2          | 2 ms          | 2 ms                |
+| 20 / 3          | 15 ms         | 17 ms               |
+| 26 / 4          | 34 ms         | 50 ms               |
+| 30 / 4          | 62 ms         | 40 ms               |
+| 36 / 6          | 82 ms         | 78 ms               |
+
+For an offline check call `affinitiesOf(rows, players)`, `coloursFor(rows, teamCount)` and
+`solveColoured(input, { colours, affinities })` with rows earlier than the game only; the teams come in the order of the colours.
+
 ## Offline evaluation
 
 `evaluateTeams(rows, last = 65)`, a test helper in `packages/core/test/support/evaluate-teams.ts`, replays a history: for each of the last games it learns habits from

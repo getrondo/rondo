@@ -15,9 +15,9 @@ import { storedTeams } from '../src/teams/lineup-of-draft';
 import { planLineup } from '../src/teams/lineup-plan';
 import { publishLineup } from '../src/teams/publish-lineup';
 import { changeDraft, loadDraft, openDraft, rebalanced } from '../src/teams/team-draft.service';
-import { membersOf } from '../src/teams/team-inputs';
+import { loadTeamInputs, membersOf } from '../src/teams/team-inputs';
 import { recordResult } from '../src/teams/team-result';
-import { setTier } from '../src/teams/team.service';
+import { setHomeColour, setTier } from '../src/teams/team.service';
 import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer';
 import { seedGame } from '../src/testing/seed-game';
 
@@ -185,6 +185,87 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
             expect(row.state.teams[1]).toEqual(expect.arrayContaining(stored[1] ?? []));
             expect(row.state.teams.flat()).toContain(people[8]);
         })
+    );
+
+    it.effect(
+        'learns home colours from earlier squads, wears the usual colours and lets the colour an admin fixed win, also for a newcomer',
+        () =>
+            Effect.gen(function* () {
+                const db = yield* Db;
+                const { communityId, sessionId, people } = yield* playedGame('draft-home-colours', 12, 90_500);
+                const [game] = yield* db.select().from(session).where(eq(session.id, sessionId));
+                const colours = yield* db
+                    .insert(teamColor)
+                    .values([
+                        { communityId, name: 'red', emoji: '💷' },
+                        { communityId, name: 'green', emoji: '💵' }
+                    ])
+                    .returning({ id: teamColor.id });
+                // The squad of the game's own day is not history yet
+                const squads = Array.from({ length: 9 }, (_, index) => ({
+                    localDate: index === 8 ? (game?.localDate ?? '') : `2026-11-${String(10 + index)}`,
+                    wearing: index === 8 ? colours.toReversed() : colours
+                }));
+
+                for (const { localDate, wearing } of squads) {
+                    const [past] = yield* db
+                        .insert(session)
+                        .values({
+                            communityId,
+                            activityId: game?.activityId ?? '',
+                            localDate,
+                            startsAt: new Date(`${localDate}T18:00:00Z`),
+                            status: 'played'
+                        })
+                        .returning({ id: session.id });
+                    const teams = yield* db
+                        .insert(team)
+                        .values(wearing.map(({ id }, index) => ({ sessionId: past?.id ?? '', ordinal: index + 1, colorId: id })))
+                        .returning({ id: team.id });
+                    yield* db.insert(teamMember).values(
+                        people.slice(0, 8).map((personId, index) => ({
+                            teamId: teams[index % 2]?.id ?? '',
+                            sessionId: past?.id ?? '',
+                            personId
+                        }))
+                    );
+                }
+
+                const fixed = people[2] ?? '';
+                yield* setHomeColour({ communityId, personId: fixed, colour: 'blue', actorPersonId: null });
+                yield* setHomeColour({ communityId, personId: fixed, colour: 'green', actorPersonId: null });
+                const { row, inputs } = yield* openDraft(communityId, sessionId, null);
+                const teamOf = (personId: string | undefined) => row.state.teams.findIndex(members => members.includes(personId ?? ''));
+                const late = yield* syncMember(communityId, { id: 90_599n, firstName: 'Late' }, 'active');
+                yield* db.insert(signup).values({ sessionId, personId: late, status: 'in' });
+                yield* setHomeColour({ communityId, personId: late, colour: 'green', actorPersonId: null });
+                const reopened = yield* openDraft(communityId, sessionId, null);
+                const placed = rebalanced(reopened.inputs, reopened.row.state);
+                yield* setHomeColour({ communityId, personId: fixed, colour: null, actorPersonId: null });
+                const automatic = yield* loadTeamInputs(communityId, sessionId);
+                const [audit] = yield* db
+                    .select({ diff: auditLog.diff })
+                    .from(auditLog)
+                    .where(and(eq(auditLog.entityId, fixed), eq(auditLog.action, 'player.home_colour')));
+
+                expect(row.state.colours).toEqual(['red', 'green']);
+                expect(people.slice(0, 9).map(personId => inputs.affinities.get(personId)?.home)).toEqual([
+                    'red',
+                    'green',
+                    'green',
+                    'green',
+                    'red',
+                    'green',
+                    'red',
+                    'green',
+                    null
+                ]);
+                expect([0, 4, 6].map(index => teamOf(people[index]))).toEqual([0, 0, 0]);
+                expect([1, 2, 3, 5, 7].map(index => teamOf(people[index]))).toEqual([1, 1, 1, 1, 1]);
+                expect(placed.teams[1]).toContain(late);
+                expect(automatic.affinities.get(fixed)).toMatchObject({ home: 'red', fixed: null });
+                expect(audit?.diff).toBeNull();
+            })
     );
 
     it.effect('gives every team a colour of its own even when the stored draft has fewer colours than teams', () =>

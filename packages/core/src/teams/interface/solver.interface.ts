@@ -14,6 +14,8 @@ export interface SolverInput {
     readonly locks: ReadonlyMap<string, number>;
     readonly habits: ReadonlyMap<string, number>;
     readonly recent: ReadonlyMap<string, number>;
+    // The team of each player's home colour, where one an admin fixed goes first
+    readonly homes?: ReadonlyMap<string, { readonly team: number; readonly isFixed: boolean }>;
     readonly anchor?: readonly (readonly string[])[];
     readonly proposals?: number;
 }

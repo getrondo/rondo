@@ -16,6 +16,7 @@ export interface Weights {
     readonly variety: number;
     readonly host: number;
     readonly move: number;
+    readonly home: number;
     readonly diversity: number;
 }
 
@@ -28,6 +29,7 @@ export const baseWeights: Weights = {
     variety: 8,
     host: 30,
     move: 250,
+    home: 30,
     diversity: 0
 };
 
@@ -43,6 +45,8 @@ export interface SolverModel {
     readonly roleCount: number;
     readonly locked: readonly (number | null)[];
     readonly anchor: readonly (number | null)[];
+    // What a player costs in each team: leaving the team he was placed in, or a team of another colour than his
+    readonly seat: Float64Array;
     readonly pair: Float64Array;
     readonly gkTotal: number;
     readonly meanStrength: number;
@@ -76,7 +80,9 @@ export const buildModel = (input: SolverInput, weights: Weights, previous: reado
     for (let first = 0; first < size; first += 1) {
         for (let second = first + 1; second < size; second += 1) {
             const key = pairKey(ids[first] ?? '', ids[second] ?? '');
-            add(first, second, -weights.habit * (input.habits.get(key) ?? 0) + weights.variety * (input.recent.get(key) ?? 0));
+            // A home colour already says whom a player usually plays with, and one an admin fixed must outweigh that
+            const habit = [first, second].some(index => input.homes?.has(ids[index] ?? '')) ? 0 : (input.habits.get(key) ?? 0);
+            add(first, second, -weights.habit * habit + weights.variety * (input.recent.get(key) ?? 0));
         }
     }
 
@@ -101,6 +107,7 @@ export const buildModel = (input: SolverInput, weights: Weights, previous: reado
     }
 
     const teamCount = Math.max(1, input.teamCount);
+    const anchor = anchorOf(input, ids);
 
     return {
         size,
@@ -117,7 +124,19 @@ export const buildModel = (input: SolverInput, weights: Weights, previous: reado
 
             return isDefined(team) && team >= 0 && team < teamCount ? team : null;
         }),
-        anchor: anchorOf(input, ids),
+        anchor,
+        seat: Float64Array.from(
+            ids.flatMap((id, player) => {
+                const home = input.homes?.get(id);
+
+                return Array.from(
+                    { length: teamCount },
+                    (_, team) =>
+                        (isDefined(anchor[player]) && anchor[player] !== team ? weights.move : 0) +
+                        (isDefined(home) && home.team !== team ? weights.home * (home.isFixed ? 2 : 1) : 0)
+                );
+            })
+        ),
         pair,
         gkTotal: players.filter(player => player.isGk).length,
         meanStrength: size > 0 ? players.reduce((sum, player) => sum + player.strength, 0) / size : 0,

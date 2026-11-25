@@ -6,10 +6,10 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 
-import { badgeOfRow, defaultColours, paddedColours } from './badges';
+import { badgeOfRow, paddedColours } from './badges';
 import { DraftStateSchema, initialState, playersOf, syncRoster, teamIndexOf, withChange, type DraftState } from './draft-state';
+import { coloursFor, solveColoured } from './home-colours';
 import { squadOf } from './lineup-of-draft';
-import { solveTeams } from './solve-teams';
 import { loadTeamInputs } from './team-inputs';
 
 import type { SolverInput, SolverPlayer } from './interface/solver.interface';
@@ -91,11 +91,14 @@ export const solverInputFor = (inputs: TeamInputs, state: DraftState, extra: Par
     };
 };
 
+const solve = (inputs: TeamInputs, state: DraftState, extra: Partial<SolverInput> = {}) =>
+    solveColoured(solverInputFor(inputs, state, extra), { colours: state.colours, affinities: inputs.affinities });
+
 export const freshState = (inputs: TeamInputs, teamCount: number, base: DraftState | null = null): DraftState => {
     const keepers = base?.keepers ?? inputs.members.filter(member => member.isGk).map(member => member.personId);
-    const empty = initialState({ variants: [], reasons: [], colours: [], keepers });
-    const proposals = solveTeams(solverInputFor(inputs, base ?? empty, { teamCount }));
-    const colours = base?.colours.length === teamCount ? base.colours : defaultColours(teamCount, inputs.lastColours);
+    const colours = base?.colours.length === teamCount ? base.colours : coloursFor(inputs.history, teamCount);
+    const start = base ?? initialState({ variants: [], reasons: [], colours, keepers });
+    const proposals = solve(inputs, { ...start, colours }, { teamCount });
     const variants = proposals.map(proposal => proposal.teams);
     const reasons = proposals.map(proposal => proposal.reason);
 
@@ -107,14 +110,14 @@ export const freshState = (inputs: TeamInputs, teamCount: number, base: DraftSta
 };
 
 export const rebalanced = (inputs: TeamInputs, state: DraftState): DraftState => {
-    const [best] = solveTeams(solverInputFor(inputs, state, { anchor: state.teams, proposals: 1 }));
+    const [best] = solve(inputs, state, { anchor: state.teams, proposals: 1 });
 
     return isDefined(best) ? withChange(state, { teams: best.teams, pending: [] }) : state;
 };
 
 export const shuffled = (inputs: TeamInputs, state: DraftState): DraftState => {
     const current = new Set(state.teams.map(members => members.toSorted().join(',')));
-    const proposals = solveTeams(solverInputFor(inputs, state));
+    const proposals = solve(inputs, state);
     const differing = (teams: readonly (readonly string[])[]) => teams.filter(members => !current.has(members.toSorted().join(','))).length;
     const [best] = proposals.toSorted((left, right) => differing(right.teams) - differing(left.teams));
 

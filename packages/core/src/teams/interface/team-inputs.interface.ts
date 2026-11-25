@@ -1,5 +1,5 @@
 import type { SessionView } from '../../sessions/session.model';
-import type { BadgeColour } from './badge.interface';
+import type { Affinity, ColouredRow } from './home-colour.interface';
 import type { SolverPlayer } from './solver.interface';
 
 export type Tier = 'strong' | 'normal' | 'new';
@@ -27,6 +27,7 @@ export interface TeamInputs {
     readonly habits: ReadonlyMap<string, number>;
     readonly recent: ReadonlyMap<string, number>;
     readonly hasLevels: boolean;
-    readonly lastColours: readonly BadgeColour[];
+    readonly history: readonly ColouredRow[];
+    readonly affinities: ReadonlyMap<string, Affinity>;
     readonly settings: TeamSettings;
 }

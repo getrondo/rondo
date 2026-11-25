@@ -140,6 +140,17 @@ export const rating = playPrivate.table(
     t => [primaryKey({ columns: [t.personId, t.activityId, t.model] })]
 );
 
+export const homeColour = playPrivate.table(
+    'home_colour',
+    {
+        personId: requiredRef('person_id', () => person.id),
+        activityId: requiredRef('activity_id', () => activity.id),
+        colour: text('colour').notNull(),
+        updatedAt: updatedAt()
+    },
+    t => [primaryKey({ columns: [t.personId, t.activityId] })]
+);
+
 export const ratingEvent = playPrivate.table(
     'rating_event',
     {
