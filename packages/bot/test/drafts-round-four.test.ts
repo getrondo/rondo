@@ -2,7 +2,7 @@ import { expect, layer } from '@effect/vitest';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import * as Effect from 'effect/Effect';
 
-import { conversation, labelsOf, walkManual } from './support/conversation';
+import { conversation, labelsOf, unknownCardPoll } from './support/conversation';
 import { seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
@@ -79,11 +79,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* seedSeason('r5-retry-draft', { groupChatId: -32_005, adminId: 3205 });
             const admin = conversation(recorder, adminNumbered(3205));
             yield* admin.type('/newgame');
-            yield* walkManual(admin, ['🛠 З нуля', 'Сб 28.11', 'Park Field', '18:30', '👥 18', '💾 Зберегти без опитування']);
-            yield* admin.tap('📣 Надіслати в «Games»');
-            recorder.failures.set('sendPoll', new Error('socket hang up'));
-            yield* admin.tap('✅ Надіслати в «Games»');
-            recorder.failures.delete('sendPoll');
+            yield* unknownCardPoll(recorder, admin);
             const card = admin.screen();
             yield* admin.type('/newgame');
             const draft = admin.screen();

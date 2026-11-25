@@ -6,7 +6,7 @@ import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { conversation, deliver, labelsOf, lastPollId, walkManual } from './support/conversation';
+import { conversation, deliver, labelsOf, lastPollId, unknownCardPoll, walkManual } from './support/conversation';
 import { advanceNow, setNow } from './support/fixed-clock';
 import { grantOrganizer, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
@@ -146,11 +146,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* seedSeason('r3-unknown-card', { groupChatId: -29_006, adminId: 2906 });
             const admin = conversation(recorder, adminNumbered(2906));
             yield* admin.type('/newgame');
-            yield* walkManual(admin, ['🛠 З нуля', 'Сб 28.11', 'Park Field', '18:30', '👥 18', '💾 Зберегти без опитування']);
-            yield* admin.tap('📣 Надіслати в «Games»');
-            recorder.failures.set('sendPoll', new Error('socket hang up'));
-            yield* admin.tap('✅ Надіслати в «Games»');
-            recorder.failures.delete('sendPoll');
+            yield* unknownCardPoll(recorder, admin);
             const unknown = admin.screen();
             yield* admin.tap('📣 Немає, надіслати в «Games»');
             const confirmation = admin.screen();

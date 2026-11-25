@@ -11,6 +11,16 @@ import { grantOrganizer, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
+const changeTimeLoudly = (admin: ReturnType<typeof conversation>) =>
+    Effect.gen(function* () {
+        yield* admin.tap('🕖 Час');
+        yield* admin.type('20:15');
+        const confirmation = admin.screen();
+        yield* admin.tap('✅ Змінити й написати');
+        const [receipt] = admin.screen().text.split('\n');
+
+        return { confirmation, receipt };
+    });
 const noticesTo = (chatId: number) =>
     recorder.calls.filter(
         call => call.method === 'sendMessage' && call.payload.chat_id === chatId && String(call.payload.text).startsWith('<b>📢')
@@ -69,11 +79,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 }
             });
             yield* admin.tap('✏️ Змінити');
-            yield* admin.tap('🕖 Час');
-            yield* admin.type('20:15');
-            const confirmation = admin.screen();
-            yield* admin.tap('✅ Змінити й написати');
-            const [receipt] = admin.screen().text.split('\n');
+            const { confirmation, receipt } = yield* changeTimeLoudly(admin);
 
             expect(confirmation.text.split('\n')[0]).toBe('Так буде в «Copies» і в тебе:');
             expect(receipt).toBe('✅ Змінено, у «Copies» і тобі написано.');
@@ -95,11 +101,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* other.tap('✅ Надіслати опитування ще раз');
             yield* admin.type('/games');
             yield* admin.tap('Пт 27.11 19:00');
-            yield* admin.tap('🕖 Час');
-            yield* admin.type('20:15');
-            const confirmation = admin.screen();
-            yield* admin.tap('✅ Змінити й написати');
-            const [receipt] = admin.screen().text.split('\n');
+            const { confirmation, receipt } = yield* changeTimeLoudly(admin);
 
             expect(confirmation.text.split('\n')[0]).toBe('Так буде у Admin 2914 і в тебе:');
             expect(labelsOf(confirmation)[0]?.startsWith('✅ Змінити й написати у Admin')).toBe(true);

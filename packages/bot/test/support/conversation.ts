@@ -133,3 +133,12 @@ export const pollsTo = (recorder: TelegramRecorder, chatId: number) =>
 
 export const forwardsTo = (recorder: TelegramRecorder, chatId: number) =>
     recorder.calls.filter(call => call.method === 'forwardMessage' && call.payload.chat_id === chatId);
+
+export const unknownCardPoll = (recorder: TelegramRecorder, admin: ReturnType<typeof conversation>) =>
+    Effect.gen(function* () {
+        yield* walkManual(admin, ['🛠 З нуля', 'Сб 28.11', 'Park Field', '18:30', '👥 18', '💾 Зберегти без опитування']);
+        yield* admin.tap('📣 Надіслати в «Games»');
+        recorder.failures.set('sendPoll', new Error('socket hang up'));
+        yield* admin.tap('✅ Надіслати в «Games»');
+        recorder.failures.delete('sendPoll');
+    });

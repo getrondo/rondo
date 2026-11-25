@@ -6,7 +6,7 @@ import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { conversation, forwardsTo, pollsTo, walkManual } from './support/conversation';
+import { conversation, forwardsTo, pollsTo, unknownCardPoll, walkManual } from './support/conversation';
 import { seedSecondGroup, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
@@ -84,11 +84,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const { communityId } = yield* seedSeason('r5-retry-topic', { groupChatId: -28_041, adminId: 2805 });
             const admin = conversation(recorder, adminNumbered(2805));
             yield* admin.type('/newgame');
-            yield* walkManual(admin, saveManual);
-            yield* admin.tap('📣 Надіслати в «Games»');
-            recorder.failures.set('sendPoll', new Error('socket hang up'));
-            yield* admin.tap('✅ Надіслати в «Games»');
-            recorder.failures.delete('sendPoll');
+            yield* unknownCardPoll(recorder, admin);
             yield* bindChat({ communityId, chatId: -28_041n, topicId: 8, kind: 'supergroup', title: 'Games' });
             yield* admin.tap('📣 Немає, надіслати в «Games»');
             yield* admin.tap('✅ Надіслати в «Games»');

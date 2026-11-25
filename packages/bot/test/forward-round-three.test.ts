@@ -1,9 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { bindChat } from '@rondo/core/community/community.repository';
-import { telegramChat } from '@rondo/db/schema/org.schema';
-import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
-import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { conversation, deliver, forwardsTo, labelsOf, lastPollId } from './support/conversation';
@@ -11,15 +8,6 @@ import { seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
-const linkedCommunityOf = (chatId: number) =>
-    Effect.gen(function* () {
-        const db = yield* Db;
-
-        return yield* db
-            .select({ communityId: telegramChat.communityId })
-            .from(telegramChat)
-            .where(eq(telegramChat.chatId, BigInt(chatId)));
-    });
 const unknownForward = (slug: string, chats: { readonly main: number; readonly second: number; readonly admin: number }) =>
     Effect.gen(function* () {
         const { communityId } = yield* seedSeason(slug, { groupChatId: chats.main, adminId: chats.admin });
@@ -33,7 +21,7 @@ const unknownForward = (slug: string, chats: { readonly main: number; readonly s
         recorder.failures.set('forwardMessage', new Error('socket hang up'));
         yield* admin.tap('✅ Надіслати в «Second»');
 
-        return admin;
+        return Object.assign(admin, { communityId });
     });
 
 layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('forwards after the council', it => {
@@ -115,8 +103,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         Effect.gen(function* () {
             const admin = yield* unknownForward('r5-forward-topic', { main: -24_031, second: -24_032, admin: 2431 });
             recorder.failures.delete('forwardMessage');
-            const [{ communityId } = { communityId: '' }] = yield* linkedCommunityOf(-24_031);
-            yield* bindChat({ communityId, chatId: -24_032n, topicId: 5, kind: 'supergroup', title: 'Second' });
+            yield* bindChat({ communityId: admin.communityId, chatId: -24_032n, topicId: 5, kind: 'supergroup', title: 'Second' });
             yield* admin.type('/games');
             yield* admin.tap('Пт 27.11 19:00');
             yield* admin.tap('✅ Немає, надіслати в «Second»');
