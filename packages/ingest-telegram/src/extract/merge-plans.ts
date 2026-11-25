@@ -1,4 +1,5 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { separateGamesMinutes } from '@rondo/core/sessions/local-time';
 
 import type { ImportPlan, PlannedSession } from './assemble-plan';
 import type { ForwardedPost } from './extract-other-chat';
@@ -29,8 +30,6 @@ const mergeAccounts = (accounts: readonly AccountFact[]): AccountFact[] => {
     return [...merged.values()];
 };
 
-const minutesApart = 90;
-
 const minutesOf = (time: string): number => {
     const [hour = 0, minute = 0] = time.split(':').map(Number);
 
@@ -42,7 +41,7 @@ type Timed = Pick<PlannedSession, 'statedTimes'>;
 export const isOtherGame = (main: Timed, other: Timed): boolean =>
     isNotEmptyArray(main.statedTimes) &&
     isNotEmptyArray(other.statedTimes) &&
-    main.statedTimes.every(left => other.statedTimes.every(right => Math.abs(minutesOf(left) - minutesOf(right)) >= minutesApart));
+    main.statedTimes.every(left => other.statedTimes.every(right => Math.abs(minutesOf(left) - minutesOf(right)) >= separateGamesMinutes));
 
 interface OtherPlan {
     readonly plan: ImportPlan;

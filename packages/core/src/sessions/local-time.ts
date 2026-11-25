@@ -1,5 +1,10 @@
 import { zonedToInstant } from '../extract/zoned-time';
 
+export const gameDurationMinutes = 90;
+
+// Games of one day at least this far apart are two games
+export const separateGamesMinutes = 90;
+
 export const localTimeOf = (instant: Date, timeZone: string): string =>
     new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(instant);
 

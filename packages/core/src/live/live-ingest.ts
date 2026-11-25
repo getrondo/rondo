@@ -13,7 +13,7 @@ import { chatRules } from '../extract/chat-rules';
 import { extractLineup } from '../extract/extract-lineup';
 import { extractPoll, makeVenueMatcher } from '../extract/extract-poll';
 import { extractCancellation } from '../extract/extract-signals';
-import { todayIn } from '../sessions/local-time';
+import { separateGamesMinutes, todayIn } from '../sessions/local-time';
 import { createSession, getSession, listSessions } from '../sessions/session.service';
 import { badgeOfEmoji, badgeOfRow } from '../teams/badges';
 import { findVenueByName, withKnownVenues } from '../venues/venue.service';
@@ -83,8 +83,6 @@ const venueIdFor = Effect.fn('Core.venueIdFor')(function* (communityId: string, 
     return found?.status === 'active' ? found.id : null;
 });
 
-const gameMinutes = 90;
-
 const minutesOf = (time: string): number => {
     const [hour = 0, minute = 0] = time.split(':').map(Number);
 
@@ -117,7 +115,7 @@ const ensureSession = Effect.fn('Core.ensureSession')(function* (
         Number(isDefined(venueId) && isDefined(game.venueId) && venueId !== game.venueId) +
         Number(isDefined(fact.localTime) && fact.localTime !== game.localTime);
     const isOtherGame = (game: SessionView): boolean =>
-        countConflicts(game) > 1 || (isDefined(fact.localTime) && minutesApart(fact.localTime, game.localTime) >= gameMinutes);
+        countConflicts(game) > 1 || (isDefined(fact.localTime) && minutesApart(fact.localTime, game.localTime) >= separateGamesMinutes);
     const possible = games.filter(game => !isOtherGame(game));
     const exact = possible.filter(game => countConflicts(game) === 0);
     const [match, ...others] = isNotEmptyArray(exact) ? exact : possible;

@@ -2,6 +2,7 @@ import { isDefined } from '@rnw-community/shared';
 import { markShared } from '@rondo/core/identity/mark-shared';
 import { entriesOf } from '@rondo/core/roster/entries-of';
 import { syncSessionRoster } from '@rondo/core/roster/sync-session-roster';
+import { gameDurationMinutes } from '@rondo/core/sessions/local-time';
 import { chunks } from '@rondo/core/utils/chunks.util';
 import { insertMany } from '@rondo/core/utils/insert-many.util';
 import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
@@ -17,7 +18,7 @@ import { deleteStaleSessions } from './delete-stale-sessions';
 import { liveMessages } from './live-messages';
 import { mainChatId } from './main-chat-id';
 import { existingSessions, matchOf, matchSessions } from './match-sessions';
-import { sessionMillis, startOf } from './start-of';
+import { startOf } from './start-of';
 
 import type { LoadContext, ReferenceIds, SessionLoadResult } from '../interface/load-context.interface';
 import type { LineupFact } from '@rondo/core/extract/fact.model';
@@ -59,7 +60,7 @@ const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function
                 venueId: lookupId(reference.venueIdByKey, item.venueKey) ?? null,
                 localDate: item.localDate,
                 startsAt,
-                endsAt: new Date(startsAt.getTime() + sessionMillis),
+                endsAt: new Date(startsAt.getTime() + gameDurationMinutes * 60_000),
                 status: item.status,
                 capacityMax: item.capacityMax,
                 fieldsPlanned: item.fieldsPlanned,

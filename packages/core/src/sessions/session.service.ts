@@ -12,11 +12,9 @@ import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 import { addMillis } from '../utils/add-millis.util';
 
-import { instantOf, localTimeOf } from './local-time';
+import { gameDurationMinutes, instantOf, localTimeOf } from './local-time';
 
 import type { CancelReason, SessionPatch, SessionView } from './session.model';
-
-const sessionMinutes = 90;
 
 const selection = {
     id: session.id,
@@ -141,7 +139,7 @@ export const createSession = Effect.fn('Core.createSession')(function* (input: C
             venueId: input.venueId,
             localDate: input.localDate,
             startsAt,
-            endsAt: addMillis(startsAt, sessionMinutes * 60_000),
+            endsAt: addMillis(startsAt, gameDurationMinutes * 60_000),
             status: 'open',
             capacityMax: input.capacityMax,
             fieldsPlanned: input.fieldsPlanned,
@@ -178,7 +176,7 @@ export const updateSession = Effect.fn('Core.updateSession')(function* (
         .set({
             localDate,
             startsAt,
-            endsAt: addMillis(startsAt, sessionMinutes * 60_000),
+            endsAt: addMillis(startsAt, gameDurationMinutes * 60_000),
             ...(Predicate.isNotUndefined(patch.venueId) ? { venueId: patch.venueId } : {}),
             ...(Predicate.isNotUndefined(patch.capacityMax) ? { capacityMax: patch.capacityMax } : {}),
             ...(Predicate.isNotUndefined(patch.fieldsPlanned) ? { fieldsPlanned: patch.fieldsPlanned } : {})

@@ -66,7 +66,7 @@ const mergeSnapshots = (main: TelegramSnapshot, other: TelegramSnapshot, isOrigi
     };
 };
 
-// A copy in the main chat of a game 90 minutes from the main one only refers to it
+// A copy in the main chat of a game separateGamesMinutes from the main one only refers to it
 const separateCopies = (facts: ExtractedFacts, asOf: string, isCopy: (poll: PollFact) => boolean) => {
     const own = assemblePlan({ ...facts, polls: facts.polls.filter(poll => !isCopy(poll)) }, asOf);
     const apart = facts.polls.filter(poll => {
