@@ -14,6 +14,7 @@ import * as Effect from 'effect/Effect';
 import { handleUpdate } from '../src/handle-update';
 
 import { conversation, deliver, labelsOf, pollsTo } from './support/conversation';
+import { advanceNow } from './support/fixed-clock';
 import { botIs, chatRow, groupOf, knownChat, seedGroups } from './support/groups';
 import { grantOrganizer, seedSeason } from './support/season';
 import { teamsGame } from './support/teams-game';
@@ -275,6 +276,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
     it.effect('raises no alarm when the membership of the new supergroup comes before the move, and asks about it then', () =>
         Effect.gen(function* () {
             const { admin } = yield* season('groups-migrate-late', 4172, [knownChat(-4172)]);
+            // The notices of the unknown groups above no longer count, so an alarm would go out
+            yield* advanceNow(25 * 60 * 60_000);
             const owner = conversation(recorder, adminNumbered(42));
             const before = owner.seen().length;
             yield* botIs(-41_072, 'left', 'administrator', full);

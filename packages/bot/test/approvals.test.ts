@@ -3,7 +3,7 @@ import { describeAction } from '@rondo/core/actions/describe-action';
 import { proposeAction } from '@rondo/core/actions/pending-action.service';
 import { linkGroup } from '@rondo/core/testing/link-group';
 import { community, telegramChat } from '@rondo/db/schema/org.schema';
-import { auditLog, pendingAction } from '@rondo/db/schema/platform.schema';
+import { pendingAction } from '@rondo/db/schema/platform.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { defaultReply, makeRecorder, refusal } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -203,7 +203,6 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         Effect.gen(function* () {
             const db = yield* Db;
             const { helper, communityId } = yield* twoAdmins('approve-unheard', 4261, -42_061);
-            yield* db.delete(auditLog).where(eq(auditLog.action, 'ownerNoApprover'));
             yield* helper.type('/newgame');
             const form = helper.screen();
             recorder.failures.set('sendMessage', refusal('sendMessage', 'Forbidden: bot can not initiate conversation', 403));

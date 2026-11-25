@@ -174,6 +174,10 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('closing a poll', it => {
             yield* decide(copied, 42n);
             recorder.failures.delete('stopPoll');
             const tried = sentTo(9031, 'stopPoll');
+            yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
+            yield* closeFinishedPolls();
+            const restored = sentTo(9031, 'stopPoll');
+            yield* db.update(session).set({ status: 'cancelled' }).where(eq(session.id, sessionId));
             yield* closeFinishedPolls();
 
             expect(awaiting).toMatchObject({ _tag: 'awaiting', request: { groups: ['Main'] } });
@@ -182,6 +186,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('closing a poll', it => {
             expect(sentTo(9032, 'stopPoll')).toBe(1);
             expect(unapproved).toBe(0);
             expect(tried).toBe(1);
+            expect(restored).toBe(1);
             expect(sentTo(9031, 'stopPoll')).toBe(2);
         })
     );
