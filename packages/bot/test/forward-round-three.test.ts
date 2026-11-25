@@ -3,7 +3,7 @@ import { bindChat } from '@rondo/core/community/community.repository';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import * as Effect from 'effect/Effect';
 
-import { conversation, labelsOf } from './support/conversation';
+import { conversation, deliver, labelsOf, lastPollId } from './support/conversation';
 import { seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
@@ -68,6 +68,48 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(forwardsTo(-24_012)).toHaveLength(3);
             expect(latest.text.split('\n')[0]).toContain('Не знаю, чи дійшло опитування в «Second»');
             expect(admin.screen().text.split('\n')[0]).toBe('✅ Опитування тепер і в «Second».');
+        })
+    );
+
+    it.effect('drops the unknown-forward warning once the copy is known to be in the group', () =>
+        Effect.gen(function* () {
+            const { communityId } = yield* seedSeason('r4-forward-arrived', { groupChatId: -24_021, adminId: 2421 });
+            const admin = conversation(recorder, adminNumbered(2421));
+            yield* admin.type('/newgame');
+            yield* admin.tap('✅ Надіслати');
+            yield* bindChat({ communityId, chatId: -24_022n, topicId: null, kind: 'supergroup', title: 'Second' });
+            yield* admin.type('/games');
+            yield* admin.tap('Пт 27.11 19:00');
+            yield* admin.tap('📣 Надіслати ще в «Second»');
+            recorder.failures.set('forwardMessage', new Error('socket hang up'));
+            yield* admin.tap('✅ Надіслати в «Second»');
+            recorder.failures.delete('forwardMessage');
+            yield* deliver({
+                message: {
+                    message_id: 501,
+                    date: 1_795_680_000,
+                    chat: { id: -24_022, type: 'supergroup', title: 'Second' },
+                    from: { id: 2421, is_bot: false, first_name: 'Admin 2421' },
+                    poll: {
+                        id: lastPollId(recorder, -24_021),
+                        question: 'game',
+                        options: [],
+                        total_voter_count: 0,
+                        is_closed: false,
+                        is_anonymous: false,
+                        type: 'regular',
+                        allows_multiple_answers: false,
+                        allows_revoting: true,
+                        members_only: false
+                    }
+                }
+            });
+            yield* admin.type('/games');
+            yield* admin.tap('Пт 27.11 19:00');
+            const card = admin.screen();
+
+            expect(card.text).not.toContain('Не знаю');
+            expect(labelsOf(card).some(label => label.includes('Second'))).toBe(false);
         })
     );
 });

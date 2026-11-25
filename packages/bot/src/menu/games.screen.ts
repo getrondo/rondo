@@ -227,7 +227,7 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
         unknownTo: isOpen
             ? chats.flatMap(chat =>
                   unknown
-                      .filter(claim => claim.chatId === chat.chatId)
+                      .filter(claim => claim.chatId === chat.chatId && !audience.includes(chat.chatId))
                       .map(claim => ({ chatId: chat.chatId, title: chat.title, topicId: chat.topicId, generation: claim.generation }))
               )
             : [],
