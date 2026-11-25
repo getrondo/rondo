@@ -125,6 +125,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
                 Effect.succeed(swapPlayers(state, first0, first1))
             );
             const refusedEdit = yield* publishPlanned(game);
+            const kept = yield* statusesOf(game);
             blocked.delete(-7201);
             const retriedEdit = yield* publishPlanned(game);
 
@@ -133,6 +134,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             expect(unchanged.deliveries.map(delivery => delivery.status)).toEqual(['unchanged', 'unchanged']);
             expect(edited.deliveries.map(delivery => delivery.status)).toEqual(['edited', 'edited']);
             expect(refusedEdit.deliveries.map(delivery => delivery.status)).toEqual(['refused', 'edited']);
+            expect(kept.get(-7201)).toBe('sent');
             expect(retriedEdit.deliveries.map(delivery => delivery.status)).toEqual(['edited', 'unchanged']);
             expect(sendsTo(-7201).filter(method => method === 'sendMessage')).toHaveLength(1);
         })

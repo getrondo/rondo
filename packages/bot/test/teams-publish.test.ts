@@ -74,7 +74,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(edited[1]?.payload.message_id).toBe(
                 Predicate.hasProperty(posted[0]?.result, 'message_id') ? posted[0].result.message_id : 0
             );
-            expect(refused.text).toContain('⚠️ Не надіслано в «Games»: Bad Request: message to edit not found');
+            expect(refused.text).toContain('⚠️ Склади в «Games» видалили. Натисни ✅ — надішлю нові.');
+            expect(refused.text).not.toContain('Bad Request');
             expect(sentTo(-3201).filter(call => call.method === 'sendMessage')).toHaveLength(1);
             expect(members).toHaveLength(10);
         })
@@ -244,7 +245,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(changed.text).toContain('🔄 Дані змінилися, нічого не надіслано. Ось як буде тепер:');
             expect(changed.text).toContain('Andriy K');
             expect(quiet).toBe(0);
-            expect(unknown.text).toContain('⚠️ Не знаю, чи дійшли склади в «Games». Зазирни туди.');
+            expect(unknown.text.split('⚠️ Не знаю, чи дійшли склади в «Games». Зазирни туди.')).toHaveLength(2);
             expect(labelsOf(unknown).flat()).not.toContain('✅ Надіслати в «Games»');
             expect(confirm.text).toContain('Так буде в «Games»:');
             expect(done.text).toContain('✅ Склади в «Games».');

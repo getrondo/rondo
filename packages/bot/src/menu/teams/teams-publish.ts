@@ -16,8 +16,6 @@ import type { MenuUser, Screen } from '../screen.interface';
 import type { EditorView } from './teams-view.interface';
 import type { DeliveryOutcome } from '@rondo/core/teams/interface/publish.interface';
 
-const telegramPrefix = /^Call to '\w+' failed! \(\d+: (?<detail>.*)\)$/u;
-
 export const previewScreen = (user: MenuUser, view: EditorView, notes: readonly string[] = []): Screen => {
     const { plan } = view;
     const due = plan.deliveries.filter(delivery => delivery.isDue);
@@ -60,17 +58,23 @@ export const retryPreview = Effect.fn('Bot.teamsRetryPreview')(function* (user: 
     return previewScreen(user, { ...view, plan: yield* planOf(user, view, ticket) });
 });
 
+const notFound = /message to edit not found/iu;
+
+const refusedKey = (outcome: DeliveryOutcome) => {
+    if (notFound.test(outcome.reason ?? '')) {
+        return 'refusedGone' as const;
+    }
+
+    return outcome.isEdit ? ('refusedEdit' as const) : ('refusedSend' as const);
+};
+
 const outcomeNote = (user: MenuUser, outcome: DeliveryOutcome): string | null => {
     const where = escapeHtml(whereOf(user.locale, [outcome], 'at'));
     const notes: Readonly<Record<DeliveryOutcome['status'], () => string | null>> = {
         sent: () => (outcome.chatId > 0n ? teamsText(user.locale, 'hint') : teamsText(user.locale, 'doneGroup', { where })),
         edited: () => teamsText(user.locale, 'editedGroup', { where }),
-        refused: () =>
-            teamsText(user.locale, 'refusedGroup', {
-                where,
-                reason: escapeHtml(telegramPrefix.exec(outcome.reason ?? '')?.groups?.detail ?? outcome.reason ?? '')
-            }),
-        uncertain: () => teamsText(user.locale, 'uncertain', { where }),
+        refused: () => teamsText(user.locale, refusedKey(outcome), { where }),
+        uncertain: () => null,
         busy: () => teamsText(user.locale, 'busy', { where }),
         unchanged: () => null
     };

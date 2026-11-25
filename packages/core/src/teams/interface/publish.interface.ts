@@ -29,6 +29,7 @@ export interface DeliveryOutcome {
     readonly title: string | null;
     readonly status: DeliveryStatus;
     readonly reason: string | null;
+    readonly isEdit: boolean;
 }
 
 export interface PublishOutcome {

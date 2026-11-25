@@ -128,7 +128,8 @@ const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: strin
         chatId: delivery.chatId,
         title: delivery.title,
         status,
-        reason
+        reason,
+        isEdit: isDefined(delivery.messageId)
     });
     const receipt = sendOne(delivery).pipe(
         Effect.flatMap(done =>
@@ -148,11 +149,12 @@ const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: strin
             }
 
             const status = error.isUncertain ? 'uncertain' : 'refused';
-            const messageId = notFound.test(error.description) ? null : delivery.messageId;
+            const isGone = notFound.test(error.description);
+            const isKept = status === 'refused' && isDefined(delivery.messageId) && !isGone;
 
             return db
                 .update(lineupDelivery)
-                .set({ status, messageId })
+                .set({ status: isKept ? 'sent' : status, messageId: isGone ? null : delivery.messageId })
                 .where(where)
                 .pipe(Effect.as(outcome(status, error.description)));
         })
@@ -190,7 +192,7 @@ const startPublish = Effect.fn('Core.startPublish')(function* (
 const waitingOutcome = (delivery: PlannedDelivery): DeliveryOutcome => {
     const quiet = delivery.stored === 'claimed' || delivery.stored === 'uncertain' ? 'uncertain' : 'unchanged';
 
-    return { chatId: delivery.chatId, title: delivery.title, status: delivery.isDue ? 'busy' : quiet, reason: null };
+    return { chatId: delivery.chatId, title: delivery.title, status: delivery.isDue ? 'busy' : quiet, reason: null, isEdit: false };
 };
 
 const finishPublish = Effect.fn('Core.finishPublish')(function* (
