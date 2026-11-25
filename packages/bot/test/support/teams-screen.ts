@@ -3,6 +3,9 @@ import { loadDraft } from '@rondo/core/teams/team-draft.service';
 import { person } from '@rondo/db/schema/identity.schema';
 import { Db } from '@rondo/db/service/db.service';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
+import * as Predicate from 'effect/Predicate';
+import * as Schema from 'effect/Schema';
 
 import type { conversation } from './conversation';
 
@@ -63,3 +66,17 @@ export const openEditor = (admin: ReturnType<typeof conversation>) =>
                 .find(button => /Склад|Состав/u.test(button.text))?.callback_data ?? 'm:gone'
         );
     });
+
+const SentSchema = Schema.Struct({
+    text: Schema.String,
+    reply_markup: Schema.Struct({
+        inline_keyboard: Schema.Array(Schema.Array(Schema.Struct({ text: Schema.String, callback_data: Schema.String })))
+    })
+});
+const decodeSent = Schema.decodeUnknownOption(SentSchema);
+
+export const sentMessage = (call: { readonly payload: unknown; readonly result?: unknown } | undefined) => ({
+    id: Predicate.hasProperty(call?.result, 'message_id') && Predicate.isNumber(call.result.message_id) ? call.result.message_id : 0,
+    text: Option.match(decodeSent(call?.payload), { onNone: () => '', onSome: value => value.text }),
+    buttons: Option.match(decodeSent(call?.payload), { onNone: () => [], onSome: value => value.reply_markup.inline_keyboard })
+});

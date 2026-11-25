@@ -1,6 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { cancelSession, getSession } from '@rondo/core/sessions/session.service';
-import { telegramPoll } from '@rondo/db/schema/platform.schema';
+import { adminState, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { rating, team } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -15,7 +15,7 @@ import { conversation, deliver } from './support/conversation';
 import { setNow } from './support/fixed-clock';
 import { grantOrganizer } from './support/season';
 import { teamsGame } from './support/teams-game';
-import { buttonData, draftTeams, labelsOf } from './support/teams-screen';
+import { buttonData, draftTeams, labelsOf, sentMessage } from './support/teams-screen';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
@@ -180,6 +180,22 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect(String(privateTo(361).at(-1)?.payload.text)).toContain('Составы на Пт 27.11 19:00 · North Arena готовы');
             expect(String(privateTo(362).at(-1)?.payload.text)).toContain('Склади на Пт 27.11 19:00 · North Arena готові');
+        })
+    );
+
+    it.effect('leaves a game being created on another message alone when the admin taps the team proposal', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            yield* teamsGame('teams-other-flow', { groupChatId: -3341, adminId: 371, players: 10 });
+            yield* runTeamsTick(at('17:05'));
+            const proposal = privateTo(371).at(-1);
+            const admin = conversation(recorder, adminNumbered(371));
+            yield* admin.type('/newgame');
+            const creating = admin.screen();
+            yield* admin.tapOn(sentMessage(proposal), '🔀');
+            const [state] = yield* db.select({ messageId: adminState.messageId }).from(adminState).where(eq(adminState.tgUserId, 371n));
+
+            expect(state?.messageId).toBe(creating.id);
         })
     );
 });
