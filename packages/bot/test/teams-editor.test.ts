@@ -170,4 +170,21 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 expect(third.screen().text).not.toContain('Хочеш');
             })
     );
+
+    it.effect('says plainly when the keepers are no longer spread over the teams', () =>
+        Effect.gen(function* () {
+            const { sessionId } = yield* teamsGame('teams-keepers', { groupChatId: -3007, adminId: 308, players: 12, keepers: 2 });
+            const admin = conversation(recorder, adminNumbered(308));
+            yield* openEditor(admin);
+            const { row, teams } = yield* draftTeams(sessionId);
+            const keeperTeams = row.state.keepers.map(personId => row.state.teams.findIndex(members => members.includes(personId)));
+            const moving =
+                teams[keeperTeams[1] ?? 0]?.[row.state.teams[keeperTeams[1] ?? 0]?.indexOf(row.state.keepers[1] ?? '') ?? 0] ?? '';
+            yield* admin.press(playerData(admin.screen(), moving));
+            yield* admin.press(titleData(admin.screen(), keeperTeams[0] ?? 0));
+
+            expect(keeperTeams.toSorted((left, right) => left - right)).toEqual([0, 1]);
+            expect(admin.screen().text).toMatch(/⚠️ 🧤 Воротарі нерівно: \S+ 2 · \S+ 0/u);
+        })
+    );
 });

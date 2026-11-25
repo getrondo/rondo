@@ -160,6 +160,17 @@ const selectedRow = (user: MenuUser, view: EditorView, base: TeamsBase): MenuBut
     ];
 };
 
+const keepersLine = (user: MenuUser, view: EditorView): string[] => {
+    const { teams, keepers } = view.row.state;
+    const counts = teams.map(members => members.filter(personId => keepers.includes(personId)).length);
+    const total = counts.reduce((sum, count) => sum + count, 0);
+    const isSpread = counts.every(count => count >= Math.floor(total / teams.length) && count <= Math.ceil(total / teams.length));
+
+    return isSpread
+        ? []
+        : [teamsText(user.locale, 'keepersUneven', { counts: counts.map((count, team) => `${badgeAt(view, team)} ${count}`).join(' · ') })];
+};
+
 const textOf = (user: MenuUser, view: EditorView, uneven: string | null): string => {
     const { state } = view.row;
     const reason = state.reasons[state.variant] ?? '';
@@ -191,6 +202,7 @@ const textOf = (user: MenuUser, view: EditorView, uneven: string | null): string
         ...(view.offerLevels ? [teamsText(user.locale, 'nudge')] : []),
         prompt,
         ...(isDefined(uneven) ? [teamsText(user.locale, 'uneven')] : []),
+        ...keepersLine(user, view),
         ...unsure.map(delivery => teamsText(user.locale, 'uncertain', { where: escapeHtml(whereOf(user.locale, [delivery], 'at')) })),
         isNotEmptyArray(sent)
             ? teamsText(user.locale, 'sent', { where: escapeHtml(whereOf(user.locale, sent, 'at')) })
