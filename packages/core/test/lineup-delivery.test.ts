@@ -26,9 +26,11 @@ import { confirmAsOwner, teamsActionAsOwner } from '../src/testing/confirm-actio
 import { seedGame } from '../src/testing/seed-game';
 
 const blocked = new Map<number, Error>();
+const afterSend = new Map<number, () => void>();
 let messageId = 50_000;
 const recorder = makeRecorder((method, payload) => {
     const failure = blocked.get(Number(payload.chat_id));
+    afterSend.get(Number(payload.chat_id))?.();
 
     if (isDefined(failure)) {
         throw failure;
@@ -237,8 +239,64 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             const ranks = yield* db.select({ rank: team.rank }).from(team).where(eq(team.sessionId, game.sessionId)).orderBy(team.ordinal);
             const events = yield* db.select().from(ratingEvent).where(eq(ratingEvent.sessionId, game.sessionId));
 
+            yield* publishPlanned(game);
+            const cleared = yield* db.select({ rank: team.rank }).from(team).where(eq(team.sessionId, game.sessionId));
+            const left = yield* db.select().from(ratingEvent).where(eq(ratingEvent.sessionId, game.sessionId));
+
             expect(ranks.map(entry => entry.rank)).toEqual([1, 2]);
             expect(events).toHaveLength(8);
+            expect(cleared.map(entry => entry.rank)).toEqual([null, null]);
+            expect(left).toEqual([]);
+        })
+    );
+
+    it.effect('stops a publish that a newer one took over and never stores its squad over the newer one', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-taken-over', [-7901, -7902], 79_000);
+            const newer = '00000000-0000-4000-8000-000000000002';
+            const run = Effect.runPromiseWith(yield* Effect.context());
+            const writes: Promise<unknown>[] = [];
+            afterSend.set(-7901, () => {
+                writes.push(
+                    run(
+                        db
+                            .update(teamDraft)
+                            .set({ publishToken: newer, publishAt: new Date(0) })
+                            .where(eq(teamDraft.sessionId, game.sessionId))
+                    )
+                );
+            });
+            const published = yield* publishPlanned(game);
+            afterSend.delete(-7901);
+            yield* Effect.promise(() => Promise.all(writes));
+            const [draft] = yield* db.select().from(teamDraft).where(eq(teamDraft.sessionId, game.sessionId));
+            const members = yield* db.select().from(teamMember).where(eq(teamMember.sessionId, game.sessionId));
+
+            expect(published.deliveries.map(delivery => delivery.status)).toEqual(['sent', 'busy']);
+            expect(sendsTo(-7902)).toEqual([]);
+            expect(draft?.publishToken).toBe(newer);
+            expect(draft?.publishedAt).toBeNull();
+            expect(members).toEqual([]);
+        })
+    );
+
+    it.effect('sends nothing more once the game is cancelled between two sends', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-cancelled-midway', [-7911, -7912], 79_100);
+            const run = Effect.runPromiseWith(yield* Effect.context());
+            const writes: Promise<unknown>[] = [];
+            afterSend.set(-7911, () => {
+                writes.push(run(db.update(session).set({ status: 'cancelled' }).where(eq(session.id, game.sessionId))));
+            });
+            const published = yield* publishPlanned(game);
+            afterSend.delete(-7911);
+            yield* Effect.promise(() => Promise.all(writes));
+
+            expect(published.deliveries.map(delivery => delivery.status)).toEqual(['sent', 'refused']);
+            expect(published.deliveries[1]?.reason).toBe('the game is already over or cancelled');
+            expect(sendsTo(-7912)).toEqual([]);
         })
     );
 

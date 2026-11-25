@@ -99,8 +99,9 @@ export const squadOf = Effect.fn('Core.squadOf')(function* (sessionId: string) {
     const imported = yield* db
         .select({ ordinal: lineupEntry.teamOrdinal, personId: lineupEntry.personId, isGk: lineupEntry.isGk })
         .from(lineupEntry)
-        .where(and(eq(lineupEntry.sessionId, sessionId), gt(lineupEntry.teamOrdinal, 0), eq(lineupEntry.isGuest, false)));
+        .where(and(eq(lineupEntry.sessionId, sessionId), gt(lineupEntry.teamOrdinal, 0)));
 
+    // A guest entry never has a person (lineup_entry_player_ck), so only players are left
     return imported.flatMap(row => (isDefined(row.personId) ? [{ ...row, personId: row.personId, isGuest: false }] : []));
 });
 

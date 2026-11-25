@@ -1,9 +1,10 @@
 import { expect, layer } from '@effect/vitest';
 import { isEmptyString } from '@rnw-community/shared';
 import { adminState } from '@rondo/db/schema/platform.schema';
+import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Predicate from 'effect/Predicate';
 import * as Random from 'effect/Random';
@@ -35,6 +36,31 @@ layer(raceMenuLayer(recorder), { timeout: 120_000, excludeTestServices: true })(
             const paste = Predicate.hasProperty(row?.draft, 'paste') ? row.draft.paste : null;
 
             expect(Predicate.hasProperty(paste, 'revision') ? paste.revision : null).toBe(1);
+        })
+    );
+
+    it.effect.skipIf(withoutPostgres)('adds the unknown names as guests once when the answer is tapped three times at once', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const adminId = yield* Random.nextIntBetween(100_000, 900_000);
+            yield* startUpdatesAt(adminId * 1000);
+            const { sessionId } = yield* teamsGame(`teams-race-unknown-${performance.now()}`, {
+                groupChatId: -adminId,
+                adminId,
+                players: 10
+            });
+            const admin = conversation(recorder, adminNumbered(adminId));
+            yield* openEditor(admin);
+            yield* admin.type('🔴 Andriy, Bohdan, Stranger\n🔵 Hryhoriy, Dmytro, Yevhen');
+            const add = buttonData(admin.screen(), '➕ Додати як гостей');
+            yield* Effect.all([admin.press(add), admin.press(add), admin.press(add)], { concurrency: 'unbounded' });
+            const guests = yield* db
+                .select({ id: signup.personId })
+                .from(signup)
+                .where(and(eq(signup.sessionId, sessionId), eq(signup.isGuest, true)));
+
+            expect(add).not.toBe('m:gone');
+            expect(guests).toHaveLength(1);
         })
     );
 });

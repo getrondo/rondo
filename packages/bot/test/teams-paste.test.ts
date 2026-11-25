@@ -199,4 +199,17 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(teams[0]).toContain('Friend Mark');
         })
     );
+
+    it.effect('places a guest described twice by his host only in the first team', () =>
+        Effect.gen(function* () {
+            const { sessionId } = yield* teamsGame('teams-paste-friend-twice', { groupChatId: -3308, adminId: 338, players: 8 });
+            const admin = conversation(recorder, adminNumbered(338));
+            yield* openEditor(admin);
+            yield* admin.type('🔴 Andriy +1, Bohdan, Vasyl, Hryhoriy\n🔵 Friend Andriy, Dmytro, Yevhen, Zakhar, Ivan');
+            const { row } = yield* draftTeams(sessionId);
+            const placed = row.state.teams.flat();
+
+            expect(placed).toHaveLength(new Set(placed).size);
+        })
+    );
 });

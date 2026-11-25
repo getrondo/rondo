@@ -137,6 +137,10 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                     .select()
                     .from(messageRef)
                     .where(and(eq(messageRef.chatId, -3202n), eq(messageRef.messageId, 9001)));
+                const other = yield* db
+                    .select()
+                    .from(messageRef)
+                    .where(and(eq(messageRef.chatId, -3202n), eq(messageRef.messageId, 9002)));
 
                 expect(clean).toHaveLength(1);
                 expect(newest).toBe(clean[0]);
@@ -156,6 +160,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 expect(teams.every(entry => isDefined(entry.colorId))).toBe(true);
                 expect(entries).toEqual([]);
                 expect(seen.map(ref => [ref.purpose, ref.entityId])).toEqual([['lineup', sessionId]]);
+                expect(other).toEqual([]);
             })
     );
 
