@@ -15,7 +15,7 @@ import {
     uuid
 } from 'drizzle-orm/pg-core';
 
-import { createdAt, id, instant, ref, updatedAt, requiredRef } from './columns';
+import { id, instant, ref, updatedAt, requiredRef } from './columns';
 import { person, personAlias, telegramAccount } from './identity.schema';
 import { activity, community } from './org.schema';
 import { session } from './scheduling.schema';
@@ -34,7 +34,6 @@ export const matchStageEnum = play.enum('match_stage', [
     'final',
     'friendly'
 ]);
-export const matchEventKindEnum = play.enum('match_event_kind', ['goal', 'own_goal', 'assist', 'yellow', 'timeout_2min', 'red', 'injury']);
 export const ratingModelEnum = playPrivate.enum('rating_model', ['openskill_pl', 'organizer_seed']);
 export const lineupDeliveryStatusEnum = play.enum('lineup_delivery_status', ['claimed', 'sent', 'uncertain', 'refused']);
 
@@ -109,14 +108,6 @@ export const lineupEntry = play.table(
     ]
 );
 
-export const formatRule = play.table('format_rule', {
-    id: id(),
-    communityId: requiredRef('community_id', () => community.id),
-    name: text('name').notNull(),
-    rules: jsonb('rules').notNull(),
-    createdAt: createdAt()
-});
-
 export const match = play.table(
     'match',
     {
@@ -133,20 +124,6 @@ export const match = play.table(
         endedAt: instant('ended_at')
     },
     t => [uniqueIndex('match_session_seq_uq').on(t.sessionId, t.seq), check('match_distinct_teams_ck', sql`${t.teamAId} <> ${t.teamBId}`)]
-);
-
-export const matchEvent = play.table(
-    'match_event',
-    {
-        id: id(),
-        matchId: requiredRef('match_id', () => match.id),
-        kind: matchEventKindEnum('kind').notNull(),
-        personId: ref('person_id').references(() => person.id, { onDelete: 'set null' }),
-        teamId: requiredRef('team_id', () => team.id),
-        at: instant('at'),
-        confirmedBy: ref('confirmed_by').references(() => person.id, { onDelete: 'set null' })
-    },
-    t => [index('match_event_match_idx').on(t.matchId)]
 );
 
 export const rating = playPrivate.table(

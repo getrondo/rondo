@@ -97,10 +97,3 @@ export const booking = venueSchema.table(
     },
     t => [index('booking_field_idx').on(t.fieldId)]
 );
-
-export const venueClosure = venueSchema.table('venue_closure', {
-    id: id(),
-    venueId: requiredRef('venue_id', () => venue.id),
-    during: tstzrange('during').notNull(),
-    reason: text('reason')
-});

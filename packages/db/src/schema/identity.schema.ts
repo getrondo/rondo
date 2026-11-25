@@ -10,7 +10,6 @@ export const aliasKindEnum = identity.enum('alias_kind', ['nickname', 'first_nam
 export const aliasResolutionEnum = identity.enum('alias_resolution', ['unresolved', 'suggested', 'confirmed', 'guest', 'ignored', 'vote']);
 export const aliasLinkMethodEnum = identity.enum('alias_link_method', ['admin', 'owner_list']);
 export const aliasLinkStatusEnum = identity.enum('alias_link_status', ['approved', 'rejected']);
-export const consentPurposeEnum = identity.enum('consent_purpose', ['processing', 'birthday', 'stats_public', 'dm_notifications']);
 export const recordSourceEnum = identity.enum('record_source', ['bot', 'import', 'manual']);
 
 export const person = identity.table('person', {
@@ -95,17 +94,4 @@ export const aliasLink = identity.table(
         decidedAt: instant('decided_at')
     },
     t => [index('alias_link_alias_idx').on(t.aliasId), index('alias_link_person_idx').on(t.personId)]
-);
-
-export const consent = identity.table(
-    'consent',
-    {
-        id: id(),
-        personId: requiredRef('person_id', () => person.id),
-        purpose: consentPurposeEnum('purpose').notNull(),
-        policyVersion: text('policy_version').notNull(),
-        grantedAt: instant('granted_at').notNull().defaultNow(),
-        revokedAt: instant('revoked_at')
-    },
-    t => [index('consent_person_idx').on(t.personId, t.purpose)]
 );

@@ -35,7 +35,7 @@ so most players have an id, but a line-up token rarely does.
 | Guests | "+N" makes N entries with `is_guest` and `guest_of_person_id`, never a person. Chat messages "+N" count only as a reply to a game poll of a game without a line-up (team ordinal 0) |
 | Sign-ups from history | A yes vote means signed up, not attended. Games without a line-up have unknown attendance. With more than two answers the wording decides (`yes`, `no` or `other`). The latest vote of a person for a game counts. Reserve polls are not linked |
 | Shown name | Admin rename, then the most frequent linked nickname as written (shared nicknames excluded), then the Telegram name |
-| Merge | `identity.merge_person` accepts several accounts and refuses on any conflict instead of deleting. Only the membership of one community and notification preferences are combined |
+| Merge | `identity.merge_person` accepts several accounts and refuses on any conflict instead of deleting. Only the membership of one community is combined |
 | Privacy | Link and merge audit entries hold ids, not names |
 
 ## Consequences
