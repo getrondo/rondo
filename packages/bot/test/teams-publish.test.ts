@@ -59,7 +59,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const refused = admin.screen();
             const members = yield* db.select().from(teamMember).where(eq(teamMember.sessionId, sessionId));
 
-            expect(editor.text).toContain('Поки нічого не надіслано.');
+            expect(editor.text.split('\n')).toContain('Поки нічого не надіслано.');
             expect(preview.text).toContain('Так виглядатиме:');
             expect(posted).toHaveLength(1);
             expect(String(posted[0]?.payload.text)).toMatch(
