@@ -2,7 +2,7 @@ import { isDefined } from '@rnw-community/shared';
 import { erasedKey, isErasedKey, maskLineups } from '@rondo/core/identity/mask-erased';
 import { person, telegramAccount, telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import type { ImportPlan } from '../extract/assemble-plan';
@@ -30,6 +30,18 @@ export const maskErased = Effect.fn('IngestTelegram.maskErased')(function* (
     const lineupOf = new Map(lineups.map(lineup => [lineup.messageId, lineup]));
     const ids = new Set(accounts.map(({ tgUserId }) => Number(tgUserId)));
     const names = new Set(plan.facts.accounts.filter(({ userId }) => ids.has(userId)).map(({ displayName }) => displayName));
+
+    // An earlier name of an erased account, stored by an import without ids
+    yield* db
+        .delete(telegramAuthor)
+        .where(
+            and(
+                eq(telegramAuthor.communityId, communityId),
+                isNull(telegramAuthor.tgUserId),
+                isNull(telegramAuthor.personId),
+                inArray(telegramAuthor.displayName, [...names])
+            )
+        );
     const keys = new Set(authors.map(({ key }) => key));
 
     return {

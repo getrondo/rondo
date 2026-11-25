@@ -1,23 +1,23 @@
 import { expect, layer } from '@effect/vitest';
-import { person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
-import { community } from '@rondo/db/schema/org.schema';
-import { adminState, auditLog, pendingAction, pollVote } from '@rondo/db/schema/platform.schema';
-import { lineupDelivery, lineupEntry } from '@rondo/db/schema/play.schema';
-import { attendance, session } from '@rondo/db/schema/scheduling.schema';
-import { Db } from '@rondo/db/service/db.service';
-import { loadApprovals } from '../src/approvals/load-approvals';
 import { refreshNames } from '@rondo/core/identity/refresh-names';
-import { importMessages } from '../src/ingest.effect';
-import { and, eq, ne, sql } from 'drizzle-orm';
-import * as Effect from 'effect/Effect';
-import * as Option from 'effect/Option';
-
 import { personIdOfTelegramUser, syncMember, upsertTelegramUser } from '@rondo/core/identity/telegram-user';
 import { ingestGroupMessage } from '@rondo/core/live/live-ingest';
 import { linkAlias, linkEntry } from '@rondo/core/people/alias-links.service';
 import { erasePerson, previewErasure } from '@rondo/core/people/erase-person';
 import { recordedTelegramDbLayer } from '@rondo/core/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
+import { person, personAlias, telegramAccount, telegramAuthor } from '@rondo/db/schema/identity.schema';
+import { community } from '@rondo/db/schema/org.schema';
+import { adminState, auditLog, pendingAction, pollVote } from '@rondo/db/schema/platform.schema';
+import { lineupDelivery, lineupEntry } from '@rondo/db/schema/play.schema';
+import { attendance, session } from '@rondo/db/schema/scheduling.schema';
+import { Db } from '@rondo/db/service/db.service';
+import { and, eq, ne, sql } from 'drizzle-orm';
+import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
+
+import { loadApprovals } from '../src/approvals/load-approvals';
+import { importMessages } from '../src/ingest.effect';
 
 import type { TelegramMessage } from '@rondo/core/model/telegram-message.model';
 
@@ -202,6 +202,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('erasing a person', it => {
             const raws = yield* rawsOf(communityId);
             yield* importAll(slug, { author: 'Секрет Дон Диего' });
             expect(yield* rawsOf(communityId)).toEqual(raws);
+            yield* db
+                .insert(telegramAuthor)
+                .values({ communityId, displayName: 'Секрет', firstSeenAt: new Date(0), lastSeenAt: new Date(0) });
             yield* importAll(slug, { author: 'Секрет', authorId: goneId });
             yield* loadApprovals({
                 slug,

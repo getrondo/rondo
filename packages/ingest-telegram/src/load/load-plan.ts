@@ -14,10 +14,10 @@ import { loadAccounts } from './load-accounts';
 import { assertUniqueVenueNames, purgePreviousImport, upsertCommunity, upsertReference } from './load-community';
 import { insertMoneyAndLeague } from './load-league';
 import { insertPeople } from './load-people';
-import { maskErased } from './mask-plan';
 import { recordProvenance } from './load-provenance';
 import { loadSessions } from './load-sessions';
 import { insertVotes } from './load-votes';
+import { maskErased } from './mask-plan';
 import { removeUnusedNicknames } from './remove-unused-nicknames';
 
 import type { ImportPlan } from '../extract/assemble-plan';

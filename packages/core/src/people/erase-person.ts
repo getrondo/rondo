@@ -177,8 +177,7 @@ const eraseInLock = Effect.fn('Core.eraseInLock')(function* ({ communityId, pers
     const people = yield* db
         .select({ id: person.id, displayName: person.displayName })
         .from(person)
-        .where(sql`${person.id} in ${mergedInto(personId)}`)
-        .for('no key update');
+        .where(sql`${person.id} in ${mergedInto(personId)}`);
     const personIds = people.map(({ id }) => id);
     const tgUserIds = accounts.map(({ tgUserId }) => tgUserId);
     const usernames = accounts.flatMap(({ username }) => (isNotEmptyString(username) ? [username] : []));
