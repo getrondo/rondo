@@ -1,4 +1,17 @@
-import { bigint, boolean, index, integer, jsonb, numeric, pgSchema, primaryKey, smallint, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+    bigint,
+    boolean,
+    index,
+    integer,
+    jsonb,
+    numeric,
+    pgSchema,
+    primaryKey,
+    smallint,
+    text,
+    uniqueIndex,
+    uuid
+} from 'drizzle-orm/pg-core';
 
 import { createdAt, id, instant, ref, requiredRef } from './columns';
 import { person, telegramAccount } from './identity.schema';
@@ -79,7 +92,8 @@ export const pollForward = comms.table(
             .references(() => telegramPoll.pollId, { onDelete: 'cascade' }),
         chatId: bigint('chat_id', { mode: 'bigint' }).notNull(),
         messageId: bigint('message_id', { mode: 'number' }),
-        generation: integer('generation').notNull().default(1),
+        topicId: bigint('topic_id', { mode: 'number' }),
+        token: uuid('token').notNull().defaultRandom(),
         claimedAt: instant('claimed_at').notNull().defaultNow()
     },
     t => [primaryKey({ columns: [t.pollId, t.chatId] })]

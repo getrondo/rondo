@@ -139,8 +139,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 entityId: ref?.entityId ?? ''
             });
             yield* db.insert(pollForward).values([
-                { pollId, chatId: -26_005n, messageId: 11, generation: 2, claimedAt: new Date('2026-11-26T09:05:00Z') },
-                { pollId, chatId: moved, messageId: null, generation: 1, claimedAt: new Date('2026-11-26T09:01:00Z') }
+                { pollId, chatId: -26_005n, messageId: 11, claimedAt: new Date('2026-11-26T09:05:00Z') },
+                { pollId, chatId: moved, messageId: null, claimedAt: new Date('2026-11-26T09:01:00Z') }
             ]);
             yield* deliver({
                 message: {

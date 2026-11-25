@@ -1,6 +1,9 @@
 import { expect, layer } from '@effect/vitest';
 import { bindChat } from '@rondo/core/community/community.repository';
+import { telegramChat } from '@rondo/db/schema/org.schema';
+import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
+import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { conversation, deliver, forwardsTo, labelsOf, lastPollId } from './support/conversation';
@@ -8,6 +11,15 @@ import { seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
+const linkedCommunityOf = (chatId: number) =>
+    Effect.gen(function* () {
+        const db = yield* Db;
+
+        return yield* db
+            .select({ communityId: telegramChat.communityId })
+            .from(telegramChat)
+            .where(eq(telegramChat.chatId, BigInt(chatId)));
+    });
 const unknownForward = (slug: string, chats: { readonly main: number; readonly second: number; readonly admin: number }) =>
     Effect.gen(function* () {
         const { communityId } = yield* seedSeason(slug, { groupChatId: chats.main, adminId: chats.admin });
@@ -96,6 +108,25 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect(card.text).not.toContain('Не знаю');
             expect(labelsOf(card).some(label => label.includes('Second'))).toBe(false);
+        })
+    );
+
+    it.effect('retries a forward only to the topic of the first attempt and shows a fresh confirmation after a move', () =>
+        Effect.gen(function* () {
+            const admin = yield* unknownForward('r5-forward-topic', { main: -24_031, second: -24_032, admin: 2431 });
+            recorder.failures.delete('forwardMessage');
+            const [{ communityId } = { communityId: '' }] = yield* linkedCommunityOf(-24_031);
+            yield* bindChat({ communityId, chatId: -24_032n, topicId: 5, kind: 'supergroup', title: 'Second' });
+            yield* admin.type('/games');
+            yield* admin.tap('Пт 27.11 19:00');
+            yield* admin.tap('✅ Немає, надіслати в «Second»');
+            const fresh = admin.screen();
+            const afterMove = forwardsTo(recorder, -24_032).length;
+            yield* admin.tap('✅ Надіслати в «Second»');
+
+            expect(afterMove).toBe(1);
+            expect(fresh.text.split('\n')[0]).toBe('⚠️ Дані змінилися, нічого не надіслано. Переглянь ще раз і натисни ✅.');
+            expect(forwardsTo(recorder, -24_032).map(call => call.payload.message_thread_id)).toEqual([undefined, 5]);
         })
     );
 });

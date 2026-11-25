@@ -90,13 +90,8 @@ interface CardState {
     readonly signed: number;
     readonly chats: readonly { readonly chatId: bigint; readonly title: string }[];
     readonly closedTo: readonly { readonly chatId: bigint; readonly title: string }[];
-    readonly unknownTo: readonly {
-        readonly chatId: bigint;
-        readonly title: string;
-        readonly topicId: number | null;
-        readonly generation: number;
-    }[];
-    readonly retry: 'group' | 'me' | null;
+    readonly unknownTo: readonly { readonly chatId: bigint; readonly title: string; readonly token: string }[];
+    readonly retry: RetryTarget | null;
     readonly page: number;
 }
 
@@ -106,17 +101,18 @@ const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuBu
     const id = toShortId(game.id);
     const button = (key: MenuKey, op: string): MenuButton => ({ text: menuText(user.locale, key), callback_data: `c:${op}:${id}` });
     const [firstChat] = state.chats;
-    const retryRows =
-        state.retry === 'me'
-            ? [[button('retryCardMe', 'pam')]]
-            : [
-                  [
-                      {
-                          text: menuText(user.locale, 'retryCard', { where: `«${fitLabel(firstChat?.title ?? '', retryRoom(user))}»` }),
-                          callback_data: `c:pa:${id}`
-                      }
-                  ]
-              ];
+    const retryChat = isDefined(state.retry) && state.retry !== 'me' ? state.retry : null;
+    const retryTitle = state.chats.find(chat => String(chat.chatId) === retryChat?.chatId)?.title ?? '';
+    const retryRows = isDefined(retryChat)
+        ? [
+              [
+                  {
+                      text: menuText(user.locale, 'retryCard', { where: `«${fitLabel(retryTitle, retryRoom(user))}»` }),
+                      callback_data: `c:pa:${id}:${retryChat.chatId}:${retryChat.topicId ?? ''}`
+                  }
+              ]
+          ]
+        : [[button('retryCardMe', 'pam')]];
     const offerRows = [
         ...(isDefined(firstChat)
             ? [
@@ -138,7 +134,7 @@ const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuBu
             text: menuText(user.locale, 'resendTo', {
                 where: `«${fitLabel(chat.title, retryRoom(user))}»`
             }),
-            callback_data: `c:fr:${id}:${chat.chatId}:${chat.generation}:${chat.topicId ?? ''}`
+            callback_data: `c:fr:${id}:${toShortId(chat.token)}`
         }
     ]);
     const openRows = state.closedTo.map(chat => [
@@ -178,10 +174,12 @@ const pollLine = (user: MenuUser, state: CardState, audience: readonly bigint[])
     return state.hasPoll ? [] : [menuText(user.locale, 'pollNone')];
 };
 
+export type RetryTarget = 'me' | { readonly chatId: string; readonly topicId: number | null };
+
 export interface CardHeader {
     readonly text: string;
     readonly saysPoll: boolean;
-    readonly retry?: 'group' | 'me';
+    readonly retry?: RetryTarget;
 }
 
 const countLine = (user: MenuUser, game: SessionView, signedLine: string, signed: number): string => {
@@ -228,7 +226,7 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
             ? chats.flatMap(chat =>
                   unknown
                       .filter(claim => claim.chatId === chat.chatId && !audience.includes(chat.chatId))
-                      .map(claim => ({ chatId: chat.chatId, title: chat.title, topicId: chat.topicId, generation: claim.generation }))
+                      .map(claim => ({ chatId: chat.chatId, title: chat.title, token: claim.token }))
               )
             : [],
         retry: header?.retry ?? null,

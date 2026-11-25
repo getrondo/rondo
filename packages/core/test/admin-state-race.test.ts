@@ -29,6 +29,7 @@ const databaseUrl = process.env.RONDO_TEST_DATABASE_URL ?? '';
 const now = new Date('2026-11-25T08:00:00Z');
 const racers = 8;
 const rounds = 12;
+const retryToken = '00000000-0000-4000-8000-000000000003';
 const withoutPostgres = isEmptyString(databaseUrl);
 const raceRecorder = makeRecorder();
 const withoutGroup = (id: string) =>
@@ -58,7 +59,7 @@ const menuGame = Effect.fn('test.menuGame')(function* (communityId: string, loca
 const forwardRace = Effect.fn('test.forwardRace')(function* (
     sessionId: string,
     target: { readonly chatId: bigint; readonly topicId: null },
-    resend: number | null
+    resend: string | null
 ) {
     const outcomes = yield* Effect.all(
         Array.from({ length: 8 }, () => forwardPoll(sessionId, target, resend).pipe(Effect.exit)),
@@ -262,8 +263,8 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
             const pollId = `race-resend-${unique()}`;
             const target = { chatId: -9_500_000n - BigInt(Math.floor(performance.now())), topicId: null };
             yield* db.insert(telegramPoll).values({ pollId, chatId: -1n, messageId: 1, sessionId, options: ['in', 'out'] });
-            yield* db.insert(pollForward).values({ pollId, chatId: target.chatId, generation: 3 });
-            expect(yield* forwardRace(sessionId, target, 3)).toEqual({ sent: 1, forwards: 1 });
+            yield* db.insert(pollForward).values({ pollId, chatId: target.chatId, token: retryToken });
+            expect(yield* forwardRace(sessionId, target, retryToken)).toEqual({ sent: 1, forwards: 1 });
         })
     );
 });

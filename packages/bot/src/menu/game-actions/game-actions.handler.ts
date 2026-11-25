@@ -3,6 +3,7 @@ import { ActionSchema, type Action } from '@rondo/core/actions/action.model';
 import { consumeAdminState, loadAdminState } from '@rondo/core/menu/admin-state.repository';
 import { isNoticeAction } from '@rondo/core/notify/notice-preview';
 import { requireSession } from '@rondo/core/sessions/session.service';
+import { claimOfToken } from '@rondo/core/signups/forward-poll';
 import { proposeTeams } from '@rondo/core/teams/team.service';
 import { requireVenue } from '@rondo/core/venues/venue.service';
 import { escapeHtml } from '@rondo/telegram/format/html';
@@ -11,7 +12,7 @@ import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 
 import { fromShortId } from '../../utils/from-short-id.util';
-import { gameCardScreen, gamesScreen } from '../games.screen';
+import { gameCardScreen, gamesScreen, type RetryTarget } from '../games.screen';
 import { menuText } from '../menu-text';
 import { loadNewGameData } from '../new-game/new-game.data';
 import { showSelfReceipt } from '../new-game/self-receipt';
@@ -114,6 +115,26 @@ const afterDone = Effect.fn('Bot.afterGameDone')(function* (user: MenuUser, acti
     yield* showScreen(user.chatId, messageId, card);
 });
 
+const withoutTopic = (action: Action): Action => {
+    if (action._tag === 'forward_poll') {
+        return {
+            _tag: 'forward_poll',
+            sessionId: action.sessionId,
+            chatId: action.chatId,
+            ...(isDefined(action.resend) ? { resend: action.resend } : {})
+        };
+    }
+
+    if (action._tag === 'announce_session') {
+        return { _tag: 'announce_session', sessionId: action.sessionId, ...(isDefined(action.chatId) ? { chatId: action.chatId } : {}) };
+    }
+
+    return action;
+};
+
+const retryOf = (user: MenuUser, action: Extract<Action, { _tag: 'announce_session' }>): RetryTarget =>
+    isToMe(user, action) ? 'me' : { chatId: action.chatId ?? '', topicId: action.topicId ?? null };
+
 const runGameAction = Effect.fn('Bot.runGameAction')(function* (
     user: MenuUser,
     action: Action,
@@ -147,16 +168,13 @@ const runGameAction = Effect.fn('Bot.runGameAction')(function* (
     const previewed = isNoticeAction(action) || action._tag === 'announce_session' || action._tag === 'forward_poll';
 
     if (/changed after the preview|link changed/u.test(outcome.reason) && previewed) {
-        yield* showConfirm(user, action, { messageId: tap.messageId, expected: tap.expected }, outcome.text);
+        yield* showConfirm(user, withoutTopic(action), { messageId: tap.messageId, expected: tap.expected }, outcome.text);
 
         return Option.none<string>();
     }
 
     const unknownForward = action._tag === 'forward_poll' && /forward result is uncertain/u.test(outcome.reason);
-    const retry =
-        action._tag === 'announce_session' && outcome.uncertain
-            ? { retry: isToMe(user, action) ? ('me' as const) : ('group' as const) }
-            : {};
+    const retry = action._tag === 'announce_session' && outcome.uncertain ? { retry: retryOf(user, action) } : {};
     const card = yield* gameCardScreen(user, sessionOf(action), unknownForward ? null : { text: outcome.text, saysPoll: false, ...retry });
     yield* showScreen(user.chatId, tap.messageId, card);
 
@@ -219,8 +237,33 @@ const listTap = Effect.fn('Bot.gameListTap')(function* (
     return true;
 });
 
+const resendForward = Effect.fn('Bot.resendForward')(function* (
+    user: MenuUser,
+    game: SessionView,
+    { arg, messageId }: { readonly arg: string; readonly messageId: number }
+) {
+    const token = fromShortId(arg);
+    const claim = isDefined(token) ? yield* claimOfToken(game.id, token) : Option.none();
+
+    if (Option.isNone(claim) || !isDefined(token)) {
+        return Option.some(menuText(user.locale, 'stale'));
+    }
+
+    return yield* runGameAction(
+        user,
+        {
+            _tag: 'forward_poll',
+            sessionId: game.id,
+            chatId: String(claim.value.chatId),
+            topicId: claim.value.topicId,
+            resend: token
+        },
+        { messageId, revision: '', expected: null }
+    );
+});
+
 export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: MenuUser, parts: readonly string[], messageId: number) {
-    const [, op = '', id = '', arg = '', generation = '', topic = ''] = parts;
+    const [, op = '', id = '', arg = '', topic = ''] = parts;
 
     if (op === 'ok') {
         return yield* confirmTap(user, id, arg === '1', messageId);
@@ -237,21 +280,19 @@ export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: Men
         return Option.none<string>();
     }
 
-    if (op === 'fr' && /^-\d+$/u.test(arg) && /^\d+$/u.test(generation)) {
-        const topicId = /^\d+$/u.test(topic) ? Number(topic) : null;
-
-        return yield* runGameAction(
-            user,
-            { _tag: 'forward_poll', sessionId: game.value.id, chatId: arg, topicId, resend: Number(generation) },
-            { messageId, revision: '', expected: null }
-        );
+    if (op === 'fr') {
+        return yield* resendForward(user, game.value, { arg, messageId });
     }
 
     if (op === 'pa' || op === 'pam') {
         const chosen: Action =
             op === 'pam'
                 ? { _tag: 'announce_session', sessionId: game.value.id, chatId: String(user.tgUserId) }
-                : { _tag: 'announce_session', sessionId: game.value.id };
+                : {
+                      _tag: 'announce_session',
+                      sessionId: game.value.id,
+                      ...(/^-\d+$/u.test(arg) ? { chatId: arg, topicId: /^\d+$/u.test(topic) ? Number(topic) : null } : {})
+                  };
 
         yield* showConfirm(user, chosen, { messageId, expected: null });
 

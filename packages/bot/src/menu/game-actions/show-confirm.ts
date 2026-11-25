@@ -6,6 +6,7 @@ import { moveAdminMessage } from '@rondo/core/menu/admin-state.repository';
 import { isNoticeAction, noticeOf } from '@rondo/core/notify/notice-preview';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
+import * as Predicate from 'effect/Predicate';
 import * as Schema from 'effect/Schema';
 
 import { actionContextFor } from '../../context/action-context';
@@ -54,7 +55,11 @@ const withDestination = Effect.fn('Bot.withDestination')(function* (
     const chats = yield* linkedChatsOf(user.communityId);
     const chat = isDefined(action.chatId) ? chats.find(entry => String(entry.chatId) === action.chatId) : chats[0];
 
-    return isDefined(chat) ? { ...action, chatId: String(chat.chatId), topicId: chat.topicId } : action;
+    if (!isDefined(chat)) {
+        return action;
+    }
+
+    return { ...action, chatId: String(chat.chatId), topicId: Predicate.isUndefined(action.topicId) ? chat.topicId : action.topicId };
 });
 
 const withPreview = Effect.fn('Bot.withPreview')(function* (user: MenuUser, action: Action) {

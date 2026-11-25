@@ -2,7 +2,7 @@
     "type": "diff",
     "version": "10",
     "dialect": "postgres",
-    "id": "15552e92-82e2-4f7f-9198-2e1eb472a776",
+    "id": "0d3fc089-69ba-48a9-8598-1b00e39f30d7",
     "prevIds": ["e4e67498-39c2-4d8c-abdb-27c0ee7b1c88"],
     "footprints": [
         {
@@ -101,12 +101,28 @@
             "row": {
                 "schema": "comms",
                 "table": "poll_forward",
-                "name": "generation",
-                "type": "integer",
+                "name": "topic_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_forward",
+                "name": "token",
+                "type": "uuid",
                 "typeSchema": null,
                 "notNull": true,
                 "dimensions": 0,
-                "default": "1",
+                "default": "gen_random_uuid()",
                 "generated": null,
                 "identity": null,
                 "entityType": "columns"

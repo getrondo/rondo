@@ -2,9 +2,10 @@ import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { messageRef, pollForward, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 
 import { ActionFailedError } from '../error/action-failed.error';
 import { topicOptions } from '../utils/topic-options.util';
@@ -15,12 +16,30 @@ import type { GroupTarget } from '../interface/group-target.interface';
 
 const uncertainForward = 'the forward result is uncertain, check the chat';
 
-const claimForward = Effect.fn('Core.claimForward')(function* (pollId: string, chatId: bigint, resend: number | null) {
+const claimForward = Effect.fn('Core.claimForward')(function* (pollId: string, target: GroupTarget, resend: string | null) {
     const db = yield* Db;
     const claimedAt = yield* DateTime.nowAsDate;
+
+    if (isDefined(resend)) {
+        const retaken = yield* db
+            .update(pollForward)
+            .set({ claimedAt, token: sql`gen_random_uuid()` })
+            .where(
+                and(
+                    eq(pollForward.pollId, pollId),
+                    eq(pollForward.chatId, target.chatId),
+                    isNull(pollForward.messageId),
+                    eq(pollForward.token, resend)
+                )
+            )
+            .returning({ pollId: pollForward.pollId });
+
+        return isNotEmptyArray(retaken) ? pollId : yield* ActionFailedError.make({ reason: uncertainForward });
+    }
+
     const claimed = yield* db
         .insert(pollForward)
-        .values({ pollId, chatId, claimedAt })
+        .values({ pollId, chatId: target.chatId, topicId: target.topicId, claimedAt })
         .onConflictDoNothing()
         .returning({ pollId: pollForward.pollId });
 
@@ -31,38 +50,28 @@ const claimForward = Effect.fn('Core.claimForward')(function* (pollId: string, c
     const [existing] = yield* db
         .select({ messageId: pollForward.messageId })
         .from(pollForward)
-        .where(and(eq(pollForward.pollId, pollId), eq(pollForward.chatId, chatId)));
+        .where(and(eq(pollForward.pollId, pollId), eq(pollForward.chatId, target.chatId)));
 
-    if (isDefined(existing?.messageId)) {
-        return yield* ActionFailedError.make({ reason: 'the poll is already in this chat' });
-    }
+    return yield* ActionFailedError.make({
+        reason: isDefined(existing?.messageId) ? 'the poll is already in this chat' : uncertainForward
+    });
+});
 
-    const retaken = isDefined(resend)
-        ? yield* db
-              .update(pollForward)
-              .set({ claimedAt, generation: resend + 1 })
-              .where(
-                  and(
-                      eq(pollForward.pollId, pollId),
-                      eq(pollForward.chatId, chatId),
-                      isNull(pollForward.messageId),
-                      eq(pollForward.generation, resend)
-                  )
-              )
-              .returning({ pollId: pollForward.pollId })
-        : [];
+export const claimOfToken = Effect.fn('Core.claimOfToken')(function* (sessionId: string, token: string) {
+    const db = yield* Db;
+    const [claim] = yield* db
+        .select({ chatId: pollForward.chatId, topicId: pollForward.topicId })
+        .from(pollForward)
+        .innerJoin(telegramPoll, eq(telegramPoll.pollId, pollForward.pollId))
+        .where(and(eq(telegramPoll.sessionId, sessionId), eq(pollForward.token, token), isNull(pollForward.messageId)));
 
-    if (!isNotEmptyArray(retaken)) {
-        return yield* ActionFailedError.make({ reason: uncertainForward });
-    }
-
-    return pollId;
+    return Option.fromNullishOr(claim);
 });
 
 export const unknownForwardsOf = Effect.fn('Core.unknownForwardsOf')(function* (sessionId: string) {
     const db = yield* Db;
     const rows = yield* db
-        .select({ chatId: pollForward.chatId, generation: pollForward.generation })
+        .select({ chatId: pollForward.chatId, token: pollForward.token })
         .from(pollForward)
         .innerJoin(telegramPoll, eq(telegramPoll.pollId, pollForward.pollId))
         .where(and(eq(telegramPoll.sessionId, sessionId), isNull(telegramPoll.closedAt), isNull(pollForward.messageId)));
@@ -70,7 +79,7 @@ export const unknownForwardsOf = Effect.fn('Core.unknownForwardsOf')(function* (
     return rows;
 });
 
-export const forwardPoll = Effect.fn('Core.forwardPoll')(function* (sessionId: string, target: GroupTarget, resend: number | null) {
+export const forwardPoll = Effect.fn('Core.forwardPoll')(function* (sessionId: string, target: GroupTarget, resend: string | null) {
     const db = yield* Db;
     const telegram = yield* Telegram;
     const [poll] = yield* db
@@ -91,7 +100,7 @@ export const forwardPoll = Effect.fn('Core.forwardPoll')(function* (sessionId: s
     const claim = and(eq(pollForward.pollId, poll.pollId), eq(pollForward.chatId, target.chatId));
 
     if (target.chatId < 0n) {
-        yield* claimForward(poll.pollId, target.chatId, resend);
+        yield* claimForward(poll.pollId, target, resend);
     }
 
     const sent = yield* telegram

@@ -78,4 +78,27 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(fresh.text).toContain('30');
         })
     );
+
+    it.effect('retries an unknown card poll only to the chat and topic of the first attempt', () =>
+        Effect.gen(function* () {
+            const { communityId } = yield* seedSeason('r5-retry-topic', { groupChatId: -28_041, adminId: 2805 });
+            const admin = conversation(recorder, adminNumbered(2805));
+            yield* admin.type('/newgame');
+            yield* walkManual(admin, saveManual);
+            yield* admin.tap('📣 Надіслати в «Games»');
+            recorder.failures.set('sendPoll', new Error('socket hang up'));
+            yield* admin.tap('✅ Надіслати в «Games»');
+            recorder.failures.delete('sendPoll');
+            yield* bindChat({ communityId, chatId: -28_041n, topicId: 8, kind: 'supergroup', title: 'Games' });
+            yield* admin.tap('📣 Немає, надіслати в «Games»');
+            yield* admin.tap('✅ Надіслати в «Games»');
+            const fresh = admin.screen();
+            const afterFirst = pollsTo(recorder, -28_041).length;
+            yield* admin.tap('✅ Надіслати в «Games»');
+
+            expect(afterFirst).toBe(1);
+            expect(fresh.text.split('\n')[0]).toBe(changed);
+            expect(pollsTo(recorder, -28_041).map(call => call.payload.message_thread_id)).toEqual([undefined, 8]);
+        })
+    );
 });

@@ -2,7 +2,8 @@ CREATE TABLE "comms"."poll_forward" (
 	"poll_id" text,
 	"chat_id" bigint,
 	"message_id" bigint,
-	"generation" integer DEFAULT 1 NOT NULL,
+	"topic_id" bigint,
+	"token" uuid DEFAULT gen_random_uuid() NOT NULL,
 	"claimed_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "poll_forward_pkey" PRIMARY KEY("poll_id","chat_id")
 );
