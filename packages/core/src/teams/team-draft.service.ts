@@ -161,10 +161,12 @@ export const openDraft = Effect.fn('Core.openDraft')(function* (communityId: str
     return { row: current, inputs };
 });
 
-export const changeDraft = Effect.fn('Core.changeDraft')(function* <Failure, Requirements>(
+const lockedChange = Effect.fn('Core.changeDraft')(function* <Failure, Requirements>(
     tap: { readonly sessionId: string; readonly version: number; readonly key: string; readonly actorPersonId: string | null },
     transform: (state: DraftState) => Effect.Effect<DraftState, Failure, Requirements>
 ) {
+    const db = yield* Db;
+    yield* db.select({ version: teamDraft.version }).from(teamDraft).where(eq(teamDraft.sessionId, tap.sessionId)).for('update');
     const row = yield* requireDraft(tap.sessionId);
 
     if (row.version !== tap.version) {
@@ -188,6 +190,11 @@ export const changeDraft = Effect.fn('Core.changeDraft')(function* <Failure, Req
               row: yield* requireDraft(tap.sessionId)
           } satisfies DraftChange);
 });
+
+export const changeDraft = <Failure, Requirements>(
+    tap: { readonly sessionId: string; readonly version: number; readonly key: string; readonly actorPersonId: string | null },
+    transform: (state: DraftState) => Effect.Effect<DraftState, Failure, Requirements>
+) => Db.use(db => db.transaction(() => lockedChange(tap, transform)));
 
 export const prepareProposal = Effect.fn('Core.prepareProposal')(function* (inputs: TeamInputs, row: DraftRow) {
     const synced = syncRoster(

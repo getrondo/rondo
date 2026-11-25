@@ -55,15 +55,15 @@ const swapOrPlace = (state: DraftState, first: string, second: string): DraftSta
 
 const afterRoster = (context: ChangeContext, state: DraftState, place: (synced: DraftState, inputs: TeamInputs) => DraftState) =>
     loadTeamInputs(context.user.communityId, context.tap.sessionId).pipe(
-        Effect.map(inputs =>
-            place(
+        Effect.map(inputs => ({
+            ...place(
                 syncByAdmin(
                     state,
                     inputs.members.map(member => member.personId)
                 ),
                 inputs
             )
-        )
+        }))
     );
 
 const rosterChange = (context: ChangeContext) => ({

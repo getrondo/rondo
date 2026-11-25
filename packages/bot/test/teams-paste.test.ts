@@ -109,4 +109,26 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(guest?.hostId).toBe(people[9]);
         })
     );
+
+    it.effect('adds one waiting guest when the place button of a full game is tapped twice', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { sessionId } = yield* teamsGame('teams-guest-full', { groupChatId: -3306, adminId: 336, players: 22 });
+            const admin = conversation(recorder, adminNumbered(336));
+            yield* openEditor(admin);
+            yield* admin.tap('➕');
+            yield* admin.tap('Lev');
+            yield* admin.tap('+1');
+            const place = admin.screen();
+            const button = place.buttons.flat().find(entry => entry.text.includes('до Lev'))?.callback_data ?? '';
+            yield* admin.press(button);
+            yield* admin.press(button);
+            const guests = yield* db
+                .select({ status: signup.status })
+                .from(signup)
+                .where(and(eq(signup.sessionId, sessionId), eq(signup.isGuest, true)));
+
+            expect(guests.map(guest => guest.status)).toEqual(['waitlisted']);
+        })
+    );
 });

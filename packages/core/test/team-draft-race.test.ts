@@ -11,6 +11,7 @@ import * as Option from 'effect/Option';
 
 import { Access } from '../src/access/admin-access';
 import { syncMember } from '../src/identity/telegram-user';
+import { removeFromGame } from '../src/signups/roster.service';
 import { swapPlayers } from '../src/teams/draft-state';
 import { planLineup } from '../src/teams/lineup-plan';
 import { publishLineup } from '../src/teams/publish-lineup';
@@ -118,5 +119,32 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('team draf
                 expect(proposals.filter(Boolean)).toHaveLength(1);
                 expect(notices.filter(Boolean)).toHaveLength(1);
             })
+    );
+
+    it.effect.skipIf(withoutPostgres)('commits a roster change only together with the draft change that won', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* gameWithPlayers('race-roster', Math.floor(performance.now()) * 100 + 70);
+            const { row } = yield* openDraft(communityId, sessionId, null);
+            const players = row.state.teams.flat();
+            const changes = yield* Effect.all(
+                Array.from({ length: racers }, (_entry, admin) =>
+                    changeDraft({ sessionId, version: row.version, key: `${admin}:R`, actorPersonId: null }, state =>
+                        removeFromGame(
+                            { communityId, sessionId, actorPersonId: null },
+                            { personId: players[admin] ?? '', withGuests: false, isNoShow: false }
+                        ).pipe(Effect.as({ ...state }))
+                    )
+                ),
+                { concurrency: 'unbounded' }
+            );
+            const out = yield* db
+                .select({ personId: signup.personId })
+                .from(signup)
+                .where(and(eq(signup.sessionId, sessionId), eq(signup.status, 'out')));
+
+            expect(changes.filter(change => change._tag === 'changed')).toHaveLength(1);
+            expect(out).toHaveLength(1);
+        })
     );
 });
