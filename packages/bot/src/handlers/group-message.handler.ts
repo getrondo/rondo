@@ -164,7 +164,12 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
     }
 
     if (result.poll || result.lineup || isDefined(result.cancellation)) {
-        yield* Effect.logInfo('[group] extracted', result);
+        yield* Effect.logInfo('[group] extracted', {
+            poll: result.poll,
+            lineup: result.lineup,
+            cancellation: isDefined(result.cancellation),
+            unknownPlace: isDefined(result.unknownPlace)
+        });
     }
 
     const followUp: FollowUp = Option.fromNullishOr(result.unknownPlace).pipe(

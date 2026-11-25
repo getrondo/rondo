@@ -4,6 +4,7 @@ import { findVenueByName } from '@rondo/core/venues/venue.service';
 import * as Effect from 'effect/Effect';
 
 import { proposeToAdmin } from '../context/propose-to-admin';
+import { causeCodes } from '../utils/cause-codes.util';
 
 import type { TelegramUser } from '@rondo/core/identity/telegram-user';
 
@@ -33,6 +34,6 @@ export const proposeUnknownPlace = (
     place: { readonly sessionId: string; readonly text: string }
 ) =>
     propose(communityId, admin, place).pipe(
-        Effect.tapCause(cause => Effect.logError('[group] venue not proposed', cause)),
+        Effect.tapCause(cause => Effect.logError('[group] venue not proposed', causeCodes(cause))),
         Effect.ignore
     );

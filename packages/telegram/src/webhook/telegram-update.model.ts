@@ -11,7 +11,7 @@ const TelegramUserSchema = Schema.Struct({
 
 const ChatSchema = Schema.Struct({
     id: Schema.Int,
-    type: Schema.Literals(['private', 'group', 'supergroup', 'channel']),
+    type: Schema.String,
     title: Schema.optionalKey(Schema.String)
 });
 
@@ -48,7 +48,7 @@ const PollAnswerSchema = Schema.Struct({
 });
 
 const ChatMemberSchema = Schema.Struct({
-    status: Schema.Literals(['creator', 'administrator', 'member', 'restricted', 'left', 'kicked']),
+    status: Schema.String,
     user: TelegramUserSchema,
     is_member: Schema.optionalKey(Schema.Boolean)
 });
