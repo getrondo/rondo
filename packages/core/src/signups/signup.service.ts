@@ -81,7 +81,7 @@ const promoteWaitlisted = Effect.fn('Core.promoteWaitlisted')(function* (session
         return [];
     }
 
-    const account = primaryAccount(db);
+    const account = primaryAccount(db, sessionId);
     const waiting = yield* db
         .select({ id: signup.id, personId: signup.personId, displayName: person.displayName, tgUserId: account.tgUserId })
         .from(signup)

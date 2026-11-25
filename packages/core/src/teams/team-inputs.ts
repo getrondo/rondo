@@ -75,7 +75,7 @@ export const ratingsOf = Effect.fn('Core.ratingsOf')(function* (activityId: stri
 
 export const membersOf = Effect.fn('Core.membersOf')(function* (sessionId: string, activityId: string) {
     const db = yield* Db;
-    const account = primaryAccount(db);
+    const account = primaryAccount(db, sessionId);
     const rows = yield* db
         .select({
             personId: signup.personId,

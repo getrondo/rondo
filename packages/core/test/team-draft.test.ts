@@ -1,4 +1,5 @@
 import { expect, layer } from '@effect/vitest';
+import { telegramAccount, telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { auditLog } from '@rondo/db/schema/platform.schema';
 import { rating, ratingEvent, team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
@@ -12,6 +13,7 @@ import { playersOf, swapPlayers, undo } from '../src/teams/draft-state';
 import { planLineup } from '../src/teams/lineup-plan';
 import { publishLineup } from '../src/teams/publish-lineup';
 import { changeDraft, loadDraft, openDraft, rebalanced } from '../src/teams/team-draft.service';
+import { membersOf } from '../src/teams/team-inputs';
 import { recordResult } from '../src/teams/team-result';
 import { setTier } from '../src/teams/team.service';
 import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer';
@@ -239,5 +241,35 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
                 expect(games?.games).toBe(31);
                 expect(learned).toEqual([]);
             })
+    );
+
+    it.effect('mentions the account seen in the community chat, else the only account, else nobody', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId, people } = yield* playedGame('draft-mentions', 3, 88_000);
+            const [game] = yield* db.select({ activityId: session.activityId }).from(session).where(eq(session.id, sessionId));
+            yield* db.insert(telegramAccount).values([
+                { tgUserId: 88_100n, personId: people[0], firstName: 'Second', lastSeenAt: new Date('2026-12-01T00:00:00Z') },
+                { tgUserId: 88_101n, personId: people[1], firstName: 'Second', lastSeenAt: new Date('2026-12-01T00:00:00Z') }
+            ]);
+            yield* db
+                .update(telegramAccount)
+                .set({ lastSeenAt: new Date('2026-11-01T00:00:00Z') })
+                .where(eq(telegramAccount.tgUserId, 88_000n));
+            yield* db.insert(telegramAuthor).values({
+                communityId,
+                displayName: 'Draft0',
+                tgUserId: 88_000n,
+                personId: people[0],
+                firstSeenAt: new Date('2026-10-01T00:00:00Z'),
+                lastSeenAt: new Date('2026-11-01T00:00:00Z')
+            });
+            const { members } = yield* membersOf(sessionId, game?.activityId ?? '');
+            const accountOf = (personId: string | undefined) => members.find(member => member.personId === personId)?.tgUserId ?? null;
+
+            expect(accountOf(people[0])).toBe(88_000n);
+            expect(accountOf(people[1])).toBeNull();
+            expect(accountOf(people[2])).toBe(88_002n);
+        })
     );
 });

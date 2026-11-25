@@ -19,7 +19,7 @@ import type { PromotedPlayer } from '../signups/signup.service';
 
 const mentionsOf = Effect.fn('Core.mentionsOf')(function* (sessionId: string) {
     const db = yield* Db;
-    const account = primaryAccount(db);
+    const account = primaryAccount(db, sessionId);
     const rows = yield* db
         .select({ tgUserId: account.tgUserId, name: person.displayName })
         .from(signup)
