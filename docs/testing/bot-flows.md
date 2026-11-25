@@ -172,8 +172,9 @@ without the bot still arrive as poll answers with public voters.
 | 159 | SEND SAFETY | Card send keeps a newer draft | Draft open on a newer message; ✅ resend on an older card | Poll to me | The draft still takes +1 | Draft kept | update | `keeps a live draft on a newer message when a card button on an older message sends` |
 | 160 | CREATE | New game from an older menu | Draft open on a newer message; ➕ on an older menu | — | «Есть незаконченная новая игра…» with ▶️ Продолжить / 🔄 Начать заново | Draft moved or replaced only after the choice | update | `asks before a new game from an older menu replaces a draft on a newer message` |
 | 161 | AUDIENCE | Unknown forward that did arrive | Forward times out, then the copy shows up in the group | — | No warning and no resend button on the card | Copy recorded | update | `drops the unknown-forward warning once the copy is known to be in the group` |
-| 162 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 163 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 164 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 165 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 166 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 162 | CREATE | Poll too long | 📝 Рядок / 📝 Строка with 280 characters | — | «⚠️ Опитування задовге: N символів із 300. Скороти рядок.» and the ru twin; no ✅ | Draft | update | `says how long the poll is when a poll line makes it too long, in Ukrainian and Russian` |
+| 163 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 164 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 165 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 166 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 167 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |

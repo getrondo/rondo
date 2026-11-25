@@ -53,4 +53,24 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(labelsOf(restarted)).toContain('👥 22');
         })
     );
+
+    it.effect('says how long the poll is when a poll line makes it too long, in Ukrainian and Russian', () =>
+        Effect.gen(function* () {
+            yield* seedSeason('r4-too-long', { groupChatId: -32_003, adminId: 3203 });
+            const uk = conversation(recorder, adminNumbered(3203));
+            yield* uk.type('/newgame');
+            yield* uk.tap('📝 Рядок');
+            yield* uk.type('x'.repeat(280));
+            const long = uk.screen();
+            yield* seedSeason('r4-too-long-ru', { groupChatId: -32_004, adminId: 3204 });
+            const ru = conversation(recorder, adminNumbered(3204, 'ru'));
+            yield* ru.type('/newgame');
+            yield* ru.tap('📝 Строка');
+            yield* ru.type('x'.repeat(280));
+
+            expect(long.text.split('\n').at(-1)).toMatch(/^⚠️ Опитування задовге: \d{3} символів із 300\. Скороти рядок\.$/u);
+            expect(labelsOf(long).some(label => label.startsWith('✅'))).toBe(false);
+            expect(ru.screen().text.split('\n').at(-1)).toMatch(/^⚠️ Опрос слишком длинный: \d{3} символов из 300\. Сократи строку\.$/u);
+        })
+    );
 });

@@ -1,3 +1,5 @@
+import { isDefined } from '@rnw-community/shared';
+
 import { menuText } from './menu-text';
 
 import type { Locale } from '@rondo/core/i18n/locale';
@@ -25,7 +27,13 @@ export const failureText = (locale: Locale, reason: string, target: FailureTarge
         return { text, uncertain: true };
     }
 
-    const known: [RegExp, () => string][] = [
+    const known: [RegExp, (found: readonly string[]) => string][] = [
+        [
+            /the poll question has (\d+) characters, 1 to (\d+)/u,
+            ([, count = '', limit = '']) => menuText(locale, 'reasonTooLong', { count, limit })
+        ],
+        [/a poll answer is longer than (\d+)/u, ([, limit = '']) => menuText(locale, 'reasonAnswerLong', { limit })],
+        [/poll template in the community settings is not valid/u, () => menuText(locale, 'reasonTemplate')],
         [/no group is linked/u, () => menuText(locale, 'reasonNoGroup')],
         [/already has an open poll/u, () => menuText(locale, 'reasonOpenPoll')],
         [refused, () => menuText(locale, target.isPrivate ? 'reasonRefusedPrivate' : 'reasonRefused')],
@@ -39,7 +47,10 @@ export const failureText = (locale: Locale, reason: string, target: FailureTarge
         [/the game already exists/u, () => menuText(locale, 'gameExists')],
         [/only a future game made by the bot/u, () => menuText(locale, 'reasonNotDeletable')]
     ];
-    const match = known.find(([pattern]) => pattern.test(reason));
+    const text = known.map(([pattern, render]) => ({ found: pattern.exec(reason), render })).find(entry => isDefined(entry.found));
 
-    return { text: menuText(locale, 'failed', { reason: match?.[1]() ?? menuText(locale, 'reasonOther') }), uncertain: false };
+    return {
+        text: menuText(locale, 'failed', { reason: isDefined(text?.found) ? text.render(text.found) : menuText(locale, 'reasonOther') }),
+        uncertain: false
+    };
 };
