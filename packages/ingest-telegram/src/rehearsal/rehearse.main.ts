@@ -14,12 +14,12 @@ import { assertLocal } from './assert-local';
 import { takeCounts, takeCountsBeforeMigration } from './take-counts';
 
 const rehearsal = Effect.gen(function* () {
-    const { exportDir, configPath, allowRemoval } = yield* importSettings;
+    const settings = yield* importSettings;
     const before = yield* takeCountsBeforeMigration();
     yield* runMigrations();
-    yield* ingest(exportDir, configPath, allowRemoval);
+    yield* ingest(settings);
     const first = yield* takeCounts();
-    yield* ingest(exportDir, configPath, allowRemoval);
+    yield* ingest(settings);
     const second = yield* takeCounts();
 
     for (const [name, value] of first) {

@@ -1,11 +1,11 @@
 import { describe, expect, it } from '@effect/vitest';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 
 import { assemblePlan } from '../src/extract/assemble-plan';
 import { extractAll } from '../src/extract/extract-all';
-import { extractOtherChat, mainPollsOf } from '../src/extract/extract-other-chat';
 import { resolvePollDate } from '../src/extract/game-date';
-import { mergePlans } from '../src/extract/merge-plans';
+import { planOtherChats } from '../src/extract/plan-other-chats';
 import { postIdOf, sourceOf } from '../src/extract/post-id';
 import { isPublicHoliday } from '../src/extract/public-holiday';
 import { parseTelethonExport } from '../src/parse/parse-telethon-export';
@@ -13,8 +13,15 @@ import { parseTelethonExport } from '../src/parse/parse-telethon-export';
 import { message, testConfig } from './fixture';
 
 import type { TelegramMessage } from '../src/model/telegram-message.model';
+import type { TelegramSnapshot } from '../src/model/telegram-snapshot.model';
 
-const chat = { chatId: -1001, exportDir: 'second', matchPatterns: ['cup', 'friendly'], matchDates: ['2025-06-01', '2025-06-03'] };
+const chat = {
+    chatId: -1001,
+    exportDir: 'second',
+    matchPatterns: ['cup', 'friendly'],
+    matchDates: ['2025-06-01', '2025-06-03'],
+    ownGameDates: ['2025-05-28']
+};
 const config = {
     ...testConfig,
     otherChats: [chat],
@@ -35,14 +42,18 @@ const planOf = (
                 posts.filter(post => post < 100 === isMain).map(post => [isMain ? post : postIdOf(1, post), pollId] as const)
             )
         );
+    const snapshotOf = (isMain: boolean) =>
+        Option.fromNullishOr({ users: new Map(), pollIdByMessage: idsOf(isMain), votes: [] } satisfies TelegramSnapshot);
     const main = assemblePlan(extractAll(mainPosts, config, { pollIdByMessage: idsOf(true) }), '2025-06-30');
-    const other = extractOtherChat(
-        otherPosts.map(post => Object.assign(post, { id: postIdOf(1, post.id) })),
+    const { plan, review } = planOtherChats({
         config,
-        { chat, pollIdByMessage: idsOf(false), mainPolls: mainPollsOf(idsOf(true), main) }
-    );
+        main,
+        snapshot: snapshotOf(true),
+        others: [{ messages: otherPosts.map(post => Object.assign(post, { id: postIdOf(1, post.id) })), snapshot: snapshotOf(false) }],
+        asOf: '2025-06-30'
+    });
 
-    return Object.assign(mergePlans(main, assemblePlan(other.facts, '2025-06-30'), other.forwardedPosts), { review: other.review });
+    return { ...plan, review };
 };
 
 const summaryOf = (plan: ReturnType<typeof planOf>) =>
@@ -79,7 +90,7 @@ describe('posts of several chats', () => {
                 pollOf(105, '2025-05-28T08:00:00Z', 'Четверг, 29 мая, 19.00 North'),
                 pollOf(106, '2025-05-13T08:00:00Z', 'Среда, 19.00 North, friendly'),
                 pollOf(107, '2025-05-20T08:00:00Z', 'Среда, 19.00 Stadium'),
-                message(108, '2025-05-18T12:00:00Z', squadText),
+                message(108, '2025-05-18T12:00:00Z', squadText.replace(':', ', North:')),
                 pollOf(109, '2025-06-01T08:00:00Z', 'Сегодня, 18.00 North'),
                 pollOf(110, '2025-06-03T08:00:00Z', 'Сегодня, 18.00 North'),
                 message(111, '2025-06-03T12:00:00Z', squadText)
@@ -88,7 +99,11 @@ describe('posts of several chats', () => {
         );
 
         expect(summaryOf(plan)).toEqual([['2025-05-07', 'played', [101], 0]]);
-        expect(plan.review.map(({ localDate }) => localDate)).toEqual(['2025-05-11', '2025-05-29']);
+        expect(plan.review).toEqual([
+            { chatId: -1001, messageId: 104, localDate: '2025-05-11' },
+            { chatId: -1001, messageId: 105, localDate: '2025-05-29' },
+            { chatId: -1001, messageId: 108, localDate: '2025-05-18' }
+        ]);
         expect(plan.facts.pollPosts.map(({ messageId }) => sourceOf(config.otherChats, messageId).messageId)).toEqual([101]);
     });
 
@@ -111,7 +126,7 @@ describe('posts of several chats', () => {
             ['2025-05-13', 'played', [], 2],
             ['2025-05-14', 'cancelled', [104], 0]
         ]);
-        expect(plan.unattached.map(({ localDate }) => localDate)).toEqual(['2025-05-12']);
+        expect(plan.review).toEqual([{ chatId: -1001, messageId: 102, localDate: '2025-05-12' }]);
     });
 
     it('makes one game of a forwarded poll and of two polls for one day, and reads the squad of either chat', () => {
@@ -150,6 +165,92 @@ describe('posts of several chats', () => {
             ['2025-05-07', 'played', [101], 2]
         ]);
         expect(plan.sessions.map(({ localTime }) => localTime)).toEqual(['20:00', '18:30']);
+    });
+
+    it('joins a separate poll less than 90 minutes away, or without a stated time on one side', () => {
+        const plan = planOf(
+            [
+                pollOf(1, '2025-05-07T08:00:00Z', 'Сегодня, 20.00 North'),
+                pollOf(2, '2025-05-12T08:00:00Z', 'Сегодня, 19.00 North'),
+                pollOf(3, '2025-05-13T08:00:00Z', 'Сегодня North')
+            ],
+            [
+                pollOf(101, '2025-05-07T08:00:00Z', 'Сегодня, 18.45 North'),
+                pollOf(102, '2025-05-12T08:00:00Z', 'Сегодня North'),
+                pollOf(103, '2025-05-13T08:00:00Z', 'Сегодня, 21.00 North')
+            ],
+            {}
+        );
+
+        expect(summaryOf(plan)).toEqual([
+            ['2025-05-07', 'played', [1, 101], 0],
+            ['2025-05-12', 'played', [2, 102], 0],
+            ['2025-05-13', 'played', [3, 103], 0]
+        ]);
+    });
+
+    it('compares with every stated time of the main chat, also of its squad', () => {
+        const plan = planOf(
+            [
+                pollOf(1, '2025-05-07T08:00:00Z', 'Сегодня, 17.00 North'),
+                message(2, '2025-05-07T12:00:00Z', 'Составы, North, 20.00:\n🟢Я, Иван\n🔵Олег, Семён')
+            ],
+            [pollOf(101, '2025-05-07T08:00:00Z', 'Сегодня, 20.30 North')],
+            {}
+        );
+
+        expect(summaryOf(plan)).toEqual([['2025-05-07', 'played', [1, 101], 2]]);
+    });
+
+    it('splits a game of its own from a forward on the same day, and never puts its squad on the forwarded game', () => {
+        const plan = planOf(
+            [pollOf(1, '2025-05-07T08:00:00Z', 'Сегодня, 20.00 North')],
+            [
+                pollOf(101, '2025-05-07T08:30:00Z', 'Сегодня, 20.00 North'),
+                pollOf(102, '2025-05-07T09:00:00Z', 'Сегодня, 17.00 Park'),
+                message(103, '2025-05-07T12:00:00Z', 'Составы на сегодня, 17.00 Park:\n🟢Я, Иван\n🔵Олег, Семён')
+            ],
+            { shared: [1, 101] }
+        );
+
+        expect(summaryOf(plan)).toEqual([
+            ['2025-05-07', 'played', [1, 101], 0],
+            ['2025-05-07', 'played', [102], 2]
+        ]);
+    });
+
+    it('keeps the game of the other chat apart on a day the owner named, whatever the times', () => {
+        const plan = planOf(
+            [pollOf(1, '2025-05-28T08:00:00Z', 'Сегодня, 20.00 North')],
+            [pollOf(101, '2025-05-28T08:00:00Z', 'Сегодня, 19.30 North')],
+            {}
+        );
+
+        expect(summaryOf(plan)).toEqual([
+            ['2025-05-28', 'played', [1], 0],
+            ['2025-05-28', 'played', [101], 0]
+        ]);
+    });
+
+    it('reads league places, words and owner dates in the header of a squad, not in the notes below it', () => {
+        const teams = '\n🟢Я, Иван\n🔵Олег, Семён';
+        const plan = planOf(
+            [],
+            [
+                message(101, '2025-05-07T12:00:00Z', `Составы на сегодня, Stadium:${teams}`),
+                message(102, '2025-05-08T12:00:00Z', `Составы на сегодня, friendly:${teams}`),
+                message(103, '2025-06-03T12:00:00Z', `Составы на сегодня, North:${teams}`),
+                message(104, '2025-05-13T12:00:00Z', `Составы на сегодня, North:${teams}`),
+                message(105, '2025-05-14T12:00:00Z', `Составы на сегодня, North\n\nA friendly follows on Saturday\n${teams}`),
+                message(106, '2025-05-15T12:00:00Z', `Составы на сегодня\nfriendly, North${teams}`)
+            ],
+            {}
+        );
+
+        expect(summaryOf(plan)).toEqual([
+            ['2025-05-13', 'played', [], 2],
+            ['2025-05-14', 'played', [], 2]
+        ]);
     });
 
     it('keeps a forward in its game when the main chat corrected the time', () => {

@@ -16,6 +16,7 @@ const ExportMessageSchema = Schema.Struct({
     from: Schema.optional(Schema.NullOr(Schema.String)),
     from_id: Schema.optional(Schema.NullOr(Schema.String)),
     forwarded_from: Schema.optional(Schema.NullOr(Schema.String)),
+    forwarded_from_id: Schema.optional(Schema.NullOr(Schema.String)),
     reply_to_message_id: Schema.optional(Schema.Int),
     text: Schema.optional(TextSchema),
     poll: Schema.optional(
@@ -54,6 +55,7 @@ const userIdOf = (fromId: string | null | undefined): Option.Option<number> =>
 
 const toMessage = (raw: typeof ExportMessageSchema.Type): TelegramMessage => {
     const authorId = Option.getOrNull(userIdOf(raw.from_id));
+    const forwardedFromId = Option.getOrNull(userIdOf(raw.forwarded_from_id));
 
     return {
         id: raw.id,
@@ -65,6 +67,7 @@ const toMessage = (raw: typeof ExportMessageSchema.Type): TelegramMessage => {
         ...(isNotEmptyString(raw.from) ? { author: raw.from } : {}),
         ...(isDefined(authorId) ? { authorId } : {}),
         ...(isNotEmptyString(raw.forwarded_from) ? { forwardedFrom: raw.forwarded_from } : {}),
+        ...(isDefined(forwardedFromId) ? { forwardedFromId } : {}),
         ...(isDefined(raw.reply_to_message_id) ? { replyTo: raw.reply_to_message_id } : {}),
         ...(isDefined(raw.poll)
             ? {

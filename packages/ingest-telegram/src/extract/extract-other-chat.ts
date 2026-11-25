@@ -1,5 +1,4 @@
 import { isDefined } from '@rnw-community/shared';
-import * as Option from 'effect/Option';
 
 import { chatRules } from './chat-rules';
 import { extractAll } from './extract-all';
@@ -7,32 +6,38 @@ import { extractAll } from './extract-all';
 import type { CommunityConfig, OtherChatConfig } from '../config/community-config';
 import type { TelegramMessage } from '../model/telegram-message.model';
 import type { ImportPlan } from './assemble-plan';
-import type { ExtractedFacts, PollFact } from './fact.model';
+import type { ExtractedFacts } from './fact.model';
 
 interface OtherChat {
     readonly chat: OtherChatConfig;
     readonly pollIdByMessage: ReadonlyMap<number, string>;
-    readonly mainPolls: ReadonlyMap<string, Option.Option<PollFact>>;
+    readonly gameOfPoll: ReadonlyMap<string, ForwardedGame | null>;
+}
+
+interface ForwardedGame {
+    readonly key: string;
+    readonly isReserve: boolean;
+}
+
+export interface ForwardedPost extends ForwardedGame {
+    readonly messageId: number;
 }
 
 export const extractOtherChat = (
     messages: readonly TelegramMessage[],
     config: CommunityConfig,
-    { chat, pollIdByMessage, mainPolls }: OtherChat
+    { chat, pollIdByMessage, gameOfPoll }: OtherChat
 ) => {
-    const { isMatchDay, kindOf } = chatRules(config, chat);
+    const { kindOf } = chatRules(config, chat);
     const { polls, ...facts } = extractAll(messages, config, { pollIdByMessage });
-    const mainPollOf = ({ messageId }: PollFact) => mainPolls.get(pollIdByMessage.get(messageId) ?? `message ${messageId}`);
-    const own = polls.filter(poll => !isDefined(mainPollOf(poll)));
-    const forwarded = polls.flatMap(poll =>
-        Option.match(mainPollOf(poll) ?? Option.none(), {
-            onNone: () => [],
-            onSome: (first): PollFact[] => [{ ...first, messageId: poll.messageId }]
-        })
-    );
+    const own = polls.filter(({ messageId }) => !gameOfPoll.has(pollIdByMessage.get(messageId) ?? ''));
+    const forwarded = facts.pollPosts.flatMap(({ messageId }): ForwardedPost[] => {
+        const game = gameOfPoll.get(pollIdByMessage.get(messageId) ?? '');
 
+        return isDefined(game) ? [{ ...game, messageId }] : [];
+    });
     const regular = own.filter(poll => kindOf(poll) === 'regular');
-    const lineups = facts.lineups.filter(({ localDate }) => !isMatchDay(localDate));
+    const lineups = facts.lineups.filter(lineup => kindOf(lineup) === 'regular');
     const ownDates = new Set(
         [...regular.filter(({ isGame, isDateChoice }) => isGame && !isDateChoice), ...lineups].map(({ localDate }) => localDate)
     );
@@ -40,48 +45,40 @@ export const extractOtherChat = (
     return {
         facts: {
             ...facts,
-            polls: [
-                ...forwarded,
-                ...regular.map(poll =>
-                    Object.assign(poll, {
-                        isGame: poll.isGame && !poll.isDateChoice,
-                        joinDates: poll.joinDates.filter(date => ownDates.has(date))
-                    })
-                )
-            ],
+            polls: regular.map(poll =>
+                Object.assign(poll, {
+                    isGame: poll.isGame && !poll.isDateChoice,
+                    joinDates: poll.joinDates.filter(date => ownDates.has(date))
+                })
+            ),
             lineups,
             prices: [],
             fixtures: [],
             authors: []
         } satisfies ExtractedFacts,
-        forwardedPosts: new Set(forwarded.map(({ messageId }) => messageId)),
-        review: own.filter(poll => poll.isGame && kindOf(poll) === 'unclear')
+        forwarded,
+        review: [...own.filter(({ isGame }) => isGame), ...facts.lineups]
+            .filter(fact => kindOf(fact) === 'unclear')
+            .map(({ messageId, localDate }) => ({ messageId, localDate }))
     };
 };
 
 // A forward belongs to the game of its first post, whatever the forwarded text would mean on its own day
-export const mainPollsOf = (
+export const gameOfPolls = (
     pollIdByMessage: ReadonlyMap<number, string>,
-    { sessions, facts }: ImportPlan
-): ReadonlyMap<string, Option.Option<PollFact>> => {
-    const games = new Map(
-        sessions.flatMap(({ localDate, sport, pollMessageIds, reservePollMessageIds }) =>
-            [...pollMessageIds, ...reservePollMessageIds].map(messageId => [messageId, { localDate, sport }] as const)
-        )
-    );
-    const attached = facts.polls.flatMap(poll => {
-        const game = games.get(poll.messageId);
-        const pollId = pollIdByMessage.get(poll.messageId);
+    { sessions }: ImportPlan
+): ReadonlyMap<string, ForwardedGame | null> => {
+    const games = new Map<string, ForwardedGame | null>([...pollIdByMessage.values()].map(pollId => [pollId, null]));
 
-        return isDefined(game) && isDefined(pollId)
-            ? [[pollId, { ...poll, ...game, isGame: true, isDateChoice: false, joinDates: [] }] as const]
-            : [];
-    });
-    const known = new Map<string, PollFact>();
+    for (const { key, pollMessageIds, reservePollMessageIds } of sessions) {
+        for (const messageId of [...reservePollMessageIds, ...pollMessageIds]) {
+            const pollId = pollIdByMessage.get(messageId);
 
-    for (const [pollId, poll] of attached) {
-        known.set(pollId, known.get(pollId) ?? poll);
+            if (isDefined(pollId)) {
+                games.set(pollId, { key, isReserve: reservePollMessageIds.includes(messageId) });
+            }
+        }
     }
 
-    return new Map([...pollIdByMessage.values()].map(pollId => [pollId, Option.fromNullishOr(known.get(pollId))]));
+    return games;
 };

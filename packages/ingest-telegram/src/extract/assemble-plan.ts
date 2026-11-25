@@ -7,6 +7,7 @@ export interface PlannedSession {
     readonly key: string;
     readonly localDate: string;
     readonly localTime: string;
+    readonly statedTimes: readonly string[];
     readonly sport: Sport;
     readonly venueKey?: string;
     readonly capacityMax?: number;
@@ -98,6 +99,9 @@ const buildSession = (inputs: SessionInputs): PlannedSession => {
         key,
         localDate,
         localTime: lineup?.localTime ?? poll?.localTime ?? defaultTime,
+        statedTimes: [lineup, ...polls.filter(({ isDateChoice }) => !isDateChoice)]
+            .map(fact => fact?.localTime)
+            .filter(time => isDefined(time)),
         sport: poll?.sport ?? 'football',
         venueKey: lineup?.venueKey ?? poll?.venueKey,
         capacityMax: poll?.capacityMax,

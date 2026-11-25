@@ -1,6 +1,7 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 
 import type { ImportPlan, PlannedSession } from './assemble-plan';
+import type { ForwardedPost } from './extract-other-chat';
 import type { AccountFact } from './fact.model';
 
 const withOtherChat = (main: PlannedSession, other: PlannedSession): PlannedSession => ({
@@ -8,6 +9,7 @@ const withOtherChat = (main: PlannedSession, other: PlannedSession): PlannedSess
     ...(isDefined(main.lineup) || !isDefined(other.lineup) || main.status === 'cancelled'
         ? {}
         : { lineup: other.lineup, status: 'played' as const }),
+    statedTimes: [...main.statedTimes, ...other.statedTimes],
     pollMessageIds: [...main.pollMessageIds, ...other.pollMessageIds],
     reservePollMessageIds: [...main.reservePollMessageIds, ...other.reservePollMessageIds]
 });
@@ -27,34 +29,68 @@ const mergeAccounts = (accounts: readonly AccountFact[]): AccountFact[] => {
     return [...merged.values()];
 };
 
-// One day and time is one game, and the main chat describes it. A squad of the other chat without a poll there stays out of a main game
-export const mergePlans = (main: ImportPlan, other: ImportPlan, forwardedPosts: ReadonlySet<number>) => {
-    const mainByKey = new Map(main.sessions.map(planned => [planned.key, planned]));
-    const isOtherTime = ({ key, localTime, pollMessageIds }: PlannedSession): boolean =>
-        isNotEmptyArray(pollMessageIds) &&
-        !pollMessageIds.some(messageId => forwardedPosts.has(messageId)) &&
-        mainByKey.get(key)?.localTime !== localTime;
-    const others = other.sessions.map(planned =>
-        mainByKey.has(planned.key) && isOtherTime(planned)
-            ? Object.assign(planned, { key: `${planned.key}|${planned.localTime}` })
-            : planned
-    );
-    const otherByKey = new Map(others.map(planned => [planned.key, planned]));
-    const isAttached = ({ key, pollMessageIds }: PlannedSession): boolean => !mainByKey.has(key) || isNotEmptyArray(pollMessageIds);
-    const sessions = [
-        ...main.sessions.map(planned => {
-            const found = otherByKey.get(planned.key);
+const minutesApart = 90;
 
-            return isDefined(found) && isAttached(found) ? withOtherChat(planned, found) : planned;
-        }),
-        ...others.filter(({ key }) => !mainByKey.has(key))
-    ].toSorted((left, right) => (left.key < right.key ? -1 : 1));
-    const usedPosts = new Set(sessions.flatMap(planned => [...planned.pollMessageIds, ...planned.reservePollMessageIds]));
+const minutesOf = (time: string): number => {
+    const [hour = 0, minute = 0] = time.split(':').map(Number);
+
+    return hour * 60 + minute;
+};
+
+const isOtherGame = (main: PlannedSession, other: PlannedSession): boolean =>
+    isNotEmptyArray(main.statedTimes) &&
+    isNotEmptyArray(other.statedTimes) &&
+    main.statedTimes.every(left => other.statedTimes.every(right => Math.abs(minutesOf(left) - minutesOf(right)) >= minutesApart));
+
+interface OtherPlan {
+    readonly plan: ImportPlan;
+    readonly forwarded: readonly ForwardedPost[];
+    readonly ownGameDates: readonly string[];
+}
+
+const withForwards = (planned: PlannedSession, forwarded: readonly ForwardedPost[]): PlannedSession => {
+    const ofGame = forwarded.filter(({ key }) => key === planned.key);
+    const idsOf = (isReserve: boolean): number[] => ofGame.filter(post => post.isReserve === isReserve).map(({ messageId }) => messageId);
+
+    return {
+        ...planned,
+        pollMessageIds: [...planned.pollMessageIds, ...idsOf(false)],
+        reservePollMessageIds: [...planned.reservePollMessageIds, ...idsOf(true)]
+    };
+};
+
+// One day and time is one game, and the main chat describes it. A squad without a poll in its chat stays out of a main game
+export const mergePlans = (main: ImportPlan, { plan: other, forwarded, ownGameDates }: OtherPlan) => {
+    const sessions = new Map(main.sessions.map(planned => [planned.key, withForwards(planned, forwarded)]));
+    const unattached: PlannedSession[] = [];
+
+    for (const planned of other.sessions) {
+        const sameDay = main.sessions.filter(({ localDate, sport }) => localDate === planned.localDate && sport === planned.sport);
+        const isPolled = isNotEmptyArray(planned.pollMessageIds);
+        const game = sameDay.find(
+            candidate =>
+                !isOtherGame(candidate, planned) &&
+                !(isPolled && ownGameDates.includes(planned.localDate) && candidate.localTime !== planned.localTime) &&
+                (isPolled || forwarded.some(({ key }) => key === candidate.key))
+        );
+
+        if (isDefined(game)) {
+            sessions.set(game.key, withOtherChat(sessions.get(game.key) ?? game, planned));
+        } else if (isPolled || !isNotEmptyArray(sameDay)) {
+            const key = isNotEmptyArray(sameDay) ? `${planned.key}|${planned.localTime}` : planned.key;
+            sessions.set(key, { ...planned, key });
+        } else {
+            unattached.push(planned);
+        }
+    }
+
+    const merged = [...sessions.values()].toSorted((left, right) => (left.key < right.key ? -1 : 1));
+    const usedPosts = new Set(merged.flatMap(planned => [...planned.pollMessageIds, ...planned.reservePollMessageIds]));
 
     return {
         ...main,
-        sessions,
-        unattached: others.filter(planned => !isAttached(planned)),
+        sessions: merged,
+        unattached,
         facts: {
             ...main.facts,
             polls: [...main.facts.polls, ...other.facts.polls],

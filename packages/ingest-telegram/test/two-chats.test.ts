@@ -14,6 +14,7 @@ import * as Option from 'effect/Option';
 
 import { compareApprovals, loadApprovals } from '../src/approvals/load-approvals';
 import { parseApprovals } from '../src/approvals/parse-approvals';
+import { loadEvidence } from '../src/identity/load-evidence';
 import { importMessages } from '../src/ingest.effect';
 
 import { accountPerson, message, testConfig } from './fixture';
@@ -22,7 +23,7 @@ import type { TelegramSnapshot } from '../src/model/telegram-snapshot.model';
 
 type Message = ReturnType<typeof message>;
 
-const ids = { org: 41, striker: 42, other: 43, late: 44 };
+const ids = { org: 41, striker: 42, other: 43, late: 44, bot: 45 };
 const secondChat = -1009;
 const mondays = ['2025-05-05', '2025-05-12', '2025-05-19', '2025-05-26'];
 const wednesdays = ['2025-05-07', '2025-05-14', '2025-05-21'];
@@ -39,7 +40,7 @@ const squadOn = (id: number, date: string, names: string) =>
 const postsOn = (dates: readonly string[], names: string): Message[] =>
     dates.flatMap((date, index) => [pollOn(index * 10 + 1, date), squadOn(index * 10 + 2, date, names)]);
 
-const userOf = (id: number) => ({ id, first: `U${id}`, last: '', username: null, bot: false, deleted: false, member: true });
+const userOf = (id: number) => ({ id, first: `U${id}`, last: '', username: null, bot: id === ids.bot, deleted: false, member: true });
 
 const snapshotOf = (
     prefix: string,
@@ -61,6 +62,7 @@ interface Second {
     readonly messages: readonly Message[];
     readonly pollIds: ReadonlyMap<number, string>;
     readonly votersOf?: (index: number) => readonly number[];
+    readonly chatId?: number;
 }
 
 const load = Effect.fn('test.load')(function* (
@@ -73,7 +75,7 @@ const load = Effect.fn('test.load')(function* (
     const config = {
         ...testConfig,
         slug,
-        ...(isDefined(second) ? { otherChats: [{ chatId: secondChat, exportDir: 'second', matchPatterns: ['cup'] }] } : {})
+        ...(isDefined(second) ? { otherChats: [{ chatId: second.chatId ?? secondChat, exportDir: 'second', matchPatterns: ['cup'] }] } : {})
     };
     const mainPollIds = new Map(
         main.filter(({ poll }) => isDefined(poll)).map(({ id }) => [id, botPolls.get(id) ?? `${slug}-m-${(id - 1) / 10}`])
@@ -478,6 +480,194 @@ layer(testDbLayer, { timeout: 60_000 })('a community with two chats', it => {
             expect(namesOn('2025-05-05')).toEqual(['Гонзо']);
             expect(namesOn('2025-05-07')).toEqual(['U42']);
             expect(namesOn('2025-05-14')).toEqual(['Гонзо']);
+        })
+    );
+
+    it.effect('knows a poll of the bot by its author, also when its game was deleted', () =>
+        Effect.gen(function* () {
+            const slug = 'two-deleted-fc';
+            const main = [
+                ...postsOn(mondays, 'Олег, Семён'),
+                message(61, '2025-05-14T08:00:00Z', '', {
+                    text: undefined,
+                    author: 'Bot',
+                    authorId: ids.bot,
+                    poll: { question: 'Сегодня, 19.00 North', answers: ['+', '-'] }
+                })
+            ];
+            const forward = (id: number, date: string): Message => ({
+                ...pollOn(id, date),
+                forwardedFrom: 'Bot',
+                forwardedFromId: ids.bot
+            });
+            const second: Second = {
+                messages: [pollOn(51, '2025-05-14'), forward(52, '2025-05-21')],
+                pollIds: new Map([
+                    [51, `${slug}-m-6`],
+                    [52, `${slug}-gone`]
+                ])
+            };
+            const { games } = yield* load(slug, second, main);
+
+            expect(games.map(({ localDate }) => localDate)).toEqual(mondays);
+        })
+    );
+
+    it.effect('stops before anything is matched when a stored chat is not configured', () =>
+        Effect.gen(function* () {
+            const slug = 'two-unknown-fc';
+            const first = yield* load(slug, wednesdayPosts(slug));
+            const refused = yield* Effect.flip(load(slug));
+            const again = yield* load(slug, wednesdayPosts(slug));
+
+            expect(refused).toMatchObject({ _tag: 'UnknownChatError', chatIds: [secondChat] });
+            expect(String(refused)).toContain(`${secondChat}`);
+            expect(again.games.map(({ id }) => id)).toEqual(first.games.map(({ id }) => id));
+        })
+    );
+
+    it.effect('accepts stored posts with the chat id of the linked main chat', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'two-linked-fc';
+            const { communityId, games } = yield* load(slug);
+            const mainChat = secondChat - 20;
+            yield* db
+                .insert(telegramChat)
+                .values({ chatId: BigInt(mainChat), communityId, kind: 'supergroup', title: 'Main', purpose: 'main' });
+            yield* db
+                .update(sourceRef)
+                .set({ chatId: mainChat })
+                .where(and(eq(sourceRef.communityId, communityId), eq(sourceRef.messageId, 1)));
+            const again = yield* load(slug);
+
+            expect(again.games.map(({ id }) => id)).toEqual(games.map(({ id }) => id));
+        })
+    );
+
+    it.effect('never puts a poll of the second chat on a stored game 90 minutes away', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'two-stored-fc';
+            const first = yield* load(slug);
+            const [stored] = yield* db
+                .insert(session)
+                .values({
+                    communityId: first.communityId,
+                    activityId: first.games[0]?.activityId ?? '',
+                    localDate: '2025-05-14',
+                    startsAt: new Date('2025-05-14T18:30:00Z'),
+                    status: 'played',
+                    source: 'bot'
+                })
+                .returning();
+            const far = yield* load(slug, { messages: [pollOn(11, '2025-05-14')], pollIds: new Map([[11, `${slug}-s-1`]]) });
+            const onDay = far.games.filter(({ localDate }) => localDate === '2025-05-14');
+
+            expect(onDay).toHaveLength(2);
+            yield* db
+                .update(session)
+                .set({ startsAt: new Date('2025-05-14T17:30:00Z') })
+                .where(eq(session.id, stored?.id ?? ''));
+            yield* db
+                .delete(session)
+                .where(and(eq(session.communityId, first.communityId), eq(session.source, 'import'), eq(session.localDate, '2025-05-14')));
+            const near = yield* load(slug, { messages: [pollOn(11, '2025-05-14')], pollIds: new Map([[11, `${slug}-s-1`]]) });
+
+            expect(near.games.filter(({ localDate }) => localDate === '2025-05-14').map(({ id }) => id)).toEqual([stored?.id]);
+        })
+    );
+
+    it.effect('puts an imported squad of the first chat over a live one of the second, never the other way round', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'two-over-fc';
+            const first = yield* load(slug);
+            const game = first.games.find(({ localDate }) => localDate === '2025-05-12');
+            const sessionId = game?.id ?? '';
+            yield* db
+                .insert(telegramChat)
+                .values({ chatId: BigInt(secondChat) - 1n, communityId: first.communityId, kind: 'supergroup', title: 'Second' })
+                .onConflictDoNothing();
+            yield* db.delete(lineupEntry).where(eq(lineupEntry.sessionId, sessionId));
+            yield* db.insert(lineupEntry).values([
+                { sessionId, chatId: secondChat - 1, messageId: 7, teamOrdinal: 1, position: 1, raw: 'Живой', resolvedBy: 'guest' },
+                { sessionId, chatId: secondChat - 1, messageId: 7, teamOrdinal: 2, position: 1, raw: 'Другой', resolvedBy: 'guest' }
+            ]);
+            yield* db.insert(messageRef).values({
+                chatId: BigInt(secondChat) - 1n,
+                messageId: 7,
+                purpose: 'lineup',
+                entityType: 'session',
+                entityId: sessionId
+            });
+            const { entries } = yield* load(slug, {
+                messages: [pollOn(91, '2025-06-04')],
+                pollIds: new Map([[91, `${slug}-s-9`]]),
+                chatId: secondChat - 1
+            });
+
+            expect(entries.filter(entry => entry.date === '2025-05-12').map(({ raw, chatId }) => [raw, chatId])).toEqual([
+                ['Я', null],
+                ['Гонзо', null],
+                ['Олег', null],
+                ['Семён', null]
+            ]);
+        })
+    );
+
+    it.effect('keeps a live squad of the second chat when the export has another one', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'two-keep-live-fc';
+            const chatId = secondChat - 2;
+            const second = { ...wednesdayPosts(slug), chatId };
+            const first = yield* load(slug, second);
+            const sessionId = first.games.find(({ localDate }) => localDate === '2025-05-07')?.id ?? '';
+            yield* db
+                .insert(telegramChat)
+                .values({ chatId: BigInt(chatId), communityId: first.communityId, kind: 'supergroup', title: 'Second' });
+            yield* db.delete(lineupEntry).where(eq(lineupEntry.sessionId, sessionId));
+            yield* db
+                .insert(lineupEntry)
+                .values({ sessionId, chatId, messageId: 700, teamOrdinal: 1, position: 1, raw: 'Живой', resolvedBy: 'guest' });
+            yield* db.insert(messageRef).values({
+                chatId: BigInt(chatId),
+                messageId: 700,
+                purpose: 'lineup',
+                entityType: 'session',
+                entityId: sessionId
+            });
+            const { entries } = yield* load(slug, second);
+
+            expect(entries.filter(({ date }) => date === '2025-05-07').map(({ raw }) => raw)).toEqual(['Живой']);
+        })
+    );
+
+    it.effect('keeps votes in a bot poll of the second chat out of the evidence of the first', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'two-evidence-fc';
+            const { communityId, games } = yield* load(slug, wednesdayPosts(slug));
+            const monday = games.find(({ localDate }) => localDate === '2025-05-12')?.id ?? '';
+            const late = yield* accountPerson(ids.late);
+            yield* db
+                .insert(telegramPoll)
+                .values({ pollId: `${slug}-bot`, chatId: BigInt(secondChat), messageId: 77, sessionId: monday, options: ['in', 'out'] });
+            yield* db.insert(pollVote).values({
+                pollId: `${slug}-bot`,
+                tgUserId: BigInt(ids.late),
+                sessionId: monday,
+                choice: 'yes',
+                votedAt: new Date('2025-05-12T10:00:00Z')
+            });
+            const yesOn = (isMain: boolean) =>
+                loadEvidence(communityId, isMain).pipe(
+                    Effect.map(({ squads }) => squads.find(squad => squad.sessionId === monday)?.yes?.has(late))
+                );
+
+            expect(yield* yesOn(true)).toBe(false);
+            expect(yield* yesOn(false)).toBe(true);
         })
     );
 });

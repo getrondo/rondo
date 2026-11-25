@@ -33,7 +33,8 @@ const OtherChatConfigSchema = Schema.Struct({
     chatId: Schema.Int,
     exportDir: Schema.String,
     matchPatterns: Schema.Array(Schema.String),
-    matchDates: Schema.optional(Schema.Array(Schema.String))
+    matchDates: Schema.optional(Schema.Array(Schema.String)),
+    ownGameDates: Schema.optional(Schema.Array(Schema.String))
 });
 
 export const CommunityConfigSchema = Schema.Struct({

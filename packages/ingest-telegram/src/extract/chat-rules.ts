@@ -15,7 +15,11 @@ export const chatRules = (config: CommunityConfig, { matchPatterns, matchDates =
     const kindOfVenue = new Map(config.venues.map(({ key, kind }) => [key, kind]));
     const isMatchDay = (localDate: string): boolean =>
         weekend.has(weekdayOf(localDate)) || isPublicHoliday(localDate) || matchDates.includes(localDate);
-    const kindOf = ({ localDate, title, venueKey }: PollFact): 'regular' | 'match' | 'unclear' => {
+    const kindOf = ({
+        localDate,
+        title,
+        venueKey
+    }: Pick<PollFact, 'localDate' | 'title' | 'venueKey'>): 'regular' | 'match' | 'unclear' => {
         const isTraining = kindOfVenue.get(venueKey ?? '') === 'training';
 
         if (matchesAny(title, patterns) || (isDefined(venueKey) && !isTraining) || matchDates.includes(localDate)) {

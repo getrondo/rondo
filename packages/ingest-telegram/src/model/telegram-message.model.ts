@@ -20,6 +20,7 @@ const TelegramMessageSchema = Schema.Struct({
     location: Schema.optional(Schema.Struct({ lat: Schema.Finite, lng: Schema.Finite })),
     replyTo: Schema.optional(Schema.Int),
     forwardedFrom: Schema.optional(Schema.String),
+    forwardedFromId: Schema.optional(Schema.Int),
     text: Schema.optional(Schema.String),
     poll: Schema.optional(PollSchema),
     media: Schema.Array(MediaKindSchema)

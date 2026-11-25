@@ -4,9 +4,9 @@ import * as Option from 'effect/Option';
 import { mergeUsers } from '../parse/parse-snapshot';
 
 import { assemblePlan, type ImportPlan } from './assemble-plan';
-import { extractOtherChat, mainPollsOf } from './extract-other-chat';
+import { extractOtherChat, gameOfPolls } from './extract-other-chat';
 import { mergePlans } from './merge-plans';
-import { postIdOf } from './post-id';
+import { postIdOf, sourceOf } from './post-id';
 
 import type { CommunityConfig } from '../config/community-config';
 import type { TelegramMessage } from '../model/telegram-message.model';
@@ -50,7 +50,7 @@ const mergeSnapshots = (main: TelegramSnapshot, other: TelegramSnapshot): Telegr
 };
 
 export const planOtherChats = ({ config, main, snapshot, others, asOf }: Chats) => {
-    const review: { readonly localDate: string; readonly title: string }[] = [];
+    const review: (ReturnType<typeof sourceOf> & { readonly localDate: string })[] = [];
     let plan = main;
     let merged = snapshot;
 
@@ -65,13 +65,19 @@ export const planOtherChats = ({ config, main, snapshot, others, asOf }: Chats) 
             const extracted = extractOtherChat(messages, config, {
                 chat,
                 pollIdByMessage: content.value.pollIdByMessage,
-                mainPolls: mainPollsOf(pollIds, plan)
+                gameOfPoll: gameOfPolls(pollIds, plan)
             });
-            const { unattached, ...next } = mergePlans(plan, assemblePlan(extracted.facts, asOf), extracted.forwardedPosts);
+            const { unattached, ...next } = mergePlans(plan, {
+                plan: assemblePlan(extracted.facts, asOf),
+                forwarded: extracted.forwarded,
+                ownGameDates: chat.ownGameDates ?? []
+            });
+            const left = unattached.map(({ localDate, lineup }) => ({ messageId: lineup?.messageId ?? 0, localDate }));
             plan = next;
             review.push(
-                ...extracted.review.map(({ localDate, title }) => ({ localDate, title })),
-                ...unattached.map(({ localDate, title }) => ({ localDate, title: title ?? 'squad' }))
+                ...[...extracted.review, ...left].map(({ messageId, localDate }) =>
+                    Object.assign(sourceOf(config.otherChats, messageId), { localDate })
+                )
             );
             merged = Option.some(
                 Option.match(merged, { onNone: () => content.value, onSome: known => mergeSnapshots(known, content.value) })

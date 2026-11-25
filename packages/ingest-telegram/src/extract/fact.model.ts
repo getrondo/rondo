@@ -52,6 +52,7 @@ export interface LineupFact {
     readonly localDate: string;
     readonly localTime?: string;
     readonly venueKey?: string;
+    readonly title: string;
     readonly teams: readonly LineupTeam[];
     readonly priceCents?: number;
 }

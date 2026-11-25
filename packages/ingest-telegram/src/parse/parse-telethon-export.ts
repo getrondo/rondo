@@ -25,7 +25,9 @@ const MessageSchema = Schema.Struct({
     date: Schema.DateFromString,
     message: Schema.optional(Schema.NullOr(Schema.String)),
     from_id: Schema.optional(Schema.NullOr(Schema.Struct({ user_id: Schema.optional(Schema.Int) }))),
-    fwd_from: Schema.optional(Schema.NullOr(Schema.Struct({}))),
+    fwd_from: Schema.optional(
+        Schema.NullOr(Schema.Struct({ from_id: Schema.optional(Schema.NullOr(Schema.Struct({ user_id: Schema.optional(Schema.Int) }))) }))
+    ),
     reply_to: Schema.optional(Schema.NullOr(Schema.Struct({ reply_to_msg_id: Schema.optional(Schema.NullOr(Schema.Int)) }))),
     entities: Schema.optional(
         Schema.NullOr(
@@ -60,6 +62,7 @@ const toMessage = (
 ): TelegramMessage => {
     const text = raw.message ?? '';
     const authorId = raw.from_id?.user_id;
+    const forwardedFromId = raw.fwd_from?.from_id?.user_id;
     const replyTo = raw.reply_to?.reply_to_msg_id;
     const author = nameOf(users.get(authorId ?? 0));
     const poll = raw.media?.poll;
@@ -80,6 +83,7 @@ const toMessage = (
         ...(isNotEmptyString(author) ? { author } : {}),
         ...(isDefined(authorId) ? { authorId } : {}),
         ...(isDefined(raw.fwd_from) ? { forwardedFrom: 'forward' } : {}),
+        ...(isDefined(forwardedFromId) ? { forwardedFromId } : {}),
         ...(isDefined(replyTo) ? { replyTo } : {}),
         ...(isDefined(poll)
             ? {

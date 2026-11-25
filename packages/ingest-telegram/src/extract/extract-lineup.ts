@@ -270,6 +270,7 @@ export const extractLineup = (
                       localDate: headerDate.confidence >= statedDateConfidence ? headerDate.date : postedDate,
                       localTime: findLocalTime(header),
                       venueKey: venueOf(header),
+                      title: header.trim().split(/\n\s*\n/u)[0] ?? '',
                       teams,
                       priceCents: Option.fromNullishOr(pricePattern.exec(text)).pipe(
                           Option.map(price => Number(price[1]) * 100),

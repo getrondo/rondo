@@ -53,6 +53,7 @@ export const recordProvenance = Effect.fn('IngestTelegram.recordProvenance')(fun
     const refs = plan.sessions.flatMap((planned, index) => referencesOf(planned, sessionIds[index] ?? ''));
     const unique = [...new Map(refs.map(ref => [`${ref.messageId}|${ref.kind}`, ref])).values()];
     const sentAtById = new Map([
+        ...plan.facts.pollPosts.map(post => [post.messageId, post.postedAt] as const),
         ...plan.facts.polls.map(poll => [poll.messageId, poll.postedAt] as const),
         ...plan.facts.lineups.map(lineup => [lineup.messageId, lineup.postedAt] as const),
         ...plan.facts.cancellations.map(cancellation => [cancellation.messageId, cancellation.postedAt] as const)

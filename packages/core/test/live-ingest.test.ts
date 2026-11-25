@@ -1,7 +1,8 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { personAlias } from '@rondo/db/schema/identity.schema';
-import { teamMember } from '@rondo/db/schema/play.schema';
+import { messageRef } from '@rondo/db/schema/platform.schema';
+import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, eq } from 'drizzle-orm';
@@ -13,6 +14,36 @@ import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer'
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
 const config = seedConfig('live-fc');
+
+const matchChat = -910;
+const cancelChat = -920;
+
+const seedMatchChat = Effect.fn('test.seedMatchChat')(function* (slug: string, secondChatId: number) {
+    const scoped = { ...seedConfig(slug), otherChats: [{ chatId: secondChatId, exportDir: 'second', matchPatterns: ['friendly'] }] };
+    const { communityId } = yield* seedCommunity(scoped);
+    const personId = yield* upsertTelegramUser({ id: 910n, firstName: 'Org' });
+    const post = (chatId: number, messageId: number, sentAt: string, content: { readonly text?: string; readonly question?: string }) =>
+        ingestGroupMessage(communityId, scoped, {
+            chatId: BigInt(chatId),
+            messageId,
+            sentAt: new Date(sentAt),
+            senderPersonId: personId,
+            senderTgUserId: 910n,
+            senderName: 'Org',
+            isTrusted: true,
+            ...(isDefined(content.text) ? { text: content.text } : {}),
+            ...(isDefined(content.question) ? { poll: { question: content.question, answers: ['+', '-'] } } : {})
+        });
+    const db = yield* Db;
+    const entries = db
+        .select({ chatId: lineupEntry.chatId, raw: lineupEntry.raw })
+        .from(lineupEntry)
+        .innerJoin(session, eq(session.id, lineupEntry.sessionId))
+        .where(eq(session.communityId, communityId))
+        .orderBy(lineupEntry.teamOrdinal, lineupEntry.position);
+
+    return { communityId, post, entries };
+});
 
 layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it => {
     it.effect('turns a poll and a line-up into session data and only suggests a cancellation', () =>
@@ -225,6 +256,88 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             expect([match, friendly, matchSquad].map(({ poll, lineup }) => poll || lineup)).toEqual([false, false, false]);
             expect([weekly.poll, weeklySquad.lineup, elsewhere.poll]).toEqual([true, true, true]);
             expect(games.map(({ date }) => date).toSorted()).toEqual(['2026-05-13', '2026-05-17']);
+        })
+    );
+
+    it.effect('stores a squad of the second chat with its chat and never replaces a main squad with it', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, post, entries } = yield* seedMatchChat('live-second-squad', matchChat);
+            const second = 'Составы на сегодня, North:\n🟢Я, Иван\n🔵Олег, Семён';
+            const main = 'Составы на сегодня, North:\n🟢Я, Глеб\n🔵Павел, Ян';
+            yield* post(-911, 1, '2026-05-13T08:00:00Z', { question: 'Сегодня, 19.00 North' });
+            yield* post(matchChat, 2, '2026-05-13T15:00:00Z', { text: second });
+            const unpolled = yield* entries;
+            yield* post(matchChat, 3, '2026-05-13T15:10:00Z', { question: 'Сегодня, 19.00 North' });
+            yield* post(matchChat, 4, '2026-05-13T15:20:00Z', { text: second });
+            const stored = yield* entries;
+            yield* post(-911, 5, '2026-05-13T15:30:00Z', { text: main });
+            yield* post(matchChat, 6, '2026-05-13T15:40:00Z', { text: second });
+            const kept = yield* entries;
+            const games = yield* db.select({ id: session.id }).from(session).where(eq(session.communityId, communityId));
+            const teams = yield* db
+                .select()
+                .from(teamMember)
+                .where(eq(teamMember.sessionId, games[0]?.id ?? ''));
+
+            expect(unpolled).toEqual([]);
+            expect(stored.map(({ chatId }) => chatId)).toEqual([matchChat, matchChat, matchChat, matchChat]);
+            expect(kept.map(({ chatId }) => chatId)).toEqual([null, null, null, null]);
+            expect(kept.map(({ raw }) => raw)).toContain('Глеб');
+            expect([games.length, teams.length]).toEqual([1, 4]);
+        })
+    );
+
+    it.effect('keeps teams the bot published when a squad of the second chat follows', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, post, entries } = yield* seedMatchChat('live-second-teams', matchChat);
+            yield* post(matchChat, 11, '2026-05-13T08:00:00Z', { question: 'Сегодня, 19.00 North' });
+            const [game] = yield* db.select().from(session).where(eq(session.communityId, communityId));
+            const sessionId = game?.id ?? '';
+            const personId = yield* upsertTelegramUser({ id: 912n, firstName: 'Player' });
+            const [published] = yield* db.insert(team).values({ sessionId, ordinal: 1, publishedAt: new Date() }).returning();
+            yield* db.insert(teamMember).values({ teamId: published?.id ?? '', sessionId, personId, assignedBy: 'balancer' });
+            yield* post(matchChat, 12, '2026-05-13T15:00:00Z', { text: 'Составы на сегодня, North:\n🟢Я, Иван\n🔵Олег, Семён' });
+            const members = yield* db.select().from(teamMember).where(eq(teamMember.sessionId, sessionId));
+
+            expect(yield* entries).toEqual([]);
+            expect(members.map(member => member.personId)).toEqual([personId]);
+        })
+    );
+
+    it.effect('reads the match rules in squad headers of the second chat', () =>
+        Effect.gen(function* () {
+            const { post, entries } = yield* seedMatchChat('live-second-header', matchChat);
+            const named = yield* post(matchChat, 1, '2026-05-13T15:00:00Z', {
+                text: 'Составы на сегодня, friendly:\n🟢Я, Иван\n🔵Олег, Семён'
+            });
+
+            expect(named.lineup).toBe(false);
+            expect(yield* entries).toEqual([]);
+        })
+    );
+
+    it.effect('suggests a cancellation from the second chat only for its own games, never on match days', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, post } = yield* seedMatchChat('live-second-cancel', cancelChat);
+            const inDay = (date: string) => and(eq(session.communityId, communityId), eq(session.localDate, date));
+            const cancel = { text: 'Сегодня отмена, дождь' };
+            yield* post(-911, 1, '2026-05-13T08:00:00Z', { question: 'Сегодня, 19.00 North' });
+            const foreign = yield* post(cancelChat, 2, '2026-05-13T09:00:00Z', cancel);
+            yield* post(cancelChat, 3, '2026-05-20T08:00:00Z', { question: 'Сегодня, 19.00 North' });
+            const own = yield* post(cancelChat, 4, '2026-05-20T09:00:00Z', cancel);
+            yield* post(-911, 5, '2026-05-23T08:00:00Z', { question: 'Сегодня, 19.00 North' });
+            const [saturday] = yield* db.select().from(session).where(inDay('2026-05-23'));
+            yield* db
+                .insert(messageRef)
+                .values({ chatId: BigInt(cancelChat), messageId: 6, purpose: 'poll', entityType: 'session', entityId: saturday?.id ?? '' });
+            const weekend = yield* post(cancelChat, 7, '2026-05-23T09:00:00Z', cancel);
+            const main = yield* post(-911, 8, '2026-05-23T10:00:00Z', cancel);
+
+            expect([foreign, weekend].map(({ cancellation }) => isDefined(cancellation))).toEqual([false, false]);
+            expect([own, main].map(({ cancellation }) => isDefined(cancellation))).toEqual([true, true]);
         })
     );
 });
