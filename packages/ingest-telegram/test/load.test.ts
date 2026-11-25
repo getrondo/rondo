@@ -4,7 +4,7 @@ import { priceRule } from '@rondo/db/schema/finance.schema';
 import { person, personAlias, telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { fixture, squad } from '@rondo/db/schema/league.schema';
 import { activity, community } from '@rondo/db/schema/org.schema';
-import { teamMember } from '@rondo/db/schema/play.schema';
+import { team, teamColor, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -187,6 +187,47 @@ layer(testDbLayer, { timeout: 60_000 })('loading an import plan', it => {
 
             expect(early?.personId).toBeNull();
             expect(isDefined(late?.personId)).toBe(true);
+        })
+    );
+
+    it.effect('maps 💷 and 🔴 to the one red colour even when the config still calls 💷 orange', () =>
+        Effect.gen(function* () {
+            const config = {
+                ...testConfig,
+                slug: 'money-red-fc',
+                teamColors: [
+                    { emoji: '💷', name: 'orange' },
+                    { emoji: '🔴', name: 'red' },
+                    { emoji: '🔵', name: 'blue' }
+                ]
+            };
+            const squads = [
+                message(1, '2025-05-04T18:00:00Z', '', {
+                    text: undefined,
+                    poll: { question: 'Понедельник, 5 мая, 19.00 North. 18 чел', answers: ['+', '-'] }
+                }),
+                message(2, '2025-05-05T15:00:00Z', 'Составы на сегодня, North:\n💷Я, Иван, Пётр\n🔵Олег, Семён, Павел'),
+                message(3, '2025-05-11T18:00:00Z', '', {
+                    text: undefined,
+                    poll: { question: 'Понедельник, 12 мая, 19.00 North. 18 чел', answers: ['+', '-'] }
+                }),
+                message(4, '2025-05-12T15:00:00Z', 'Составы на сегодня, North:\n🔴Я, Иван, Пётр\n🔵Олег, Семён, Павел')
+            ];
+            yield* loadPlan(config, assemblePlan(extractAll(squads, config), '2025-06-30'), { fileSha256: 'sha', allowRemoval: true });
+            yield* loadPlan(config, assemblePlan(extractAll(squads, config), '2025-06-30'), { fileSha256: 'sha', allowRemoval: true });
+            const db = yield* Db;
+            const communityId = yield* loadedCommunity(config.slug);
+            const colours = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId));
+            const teams = yield* db
+                .select({ ordinal: team.ordinal, colorId: team.colorId })
+                .from(team)
+                .innerJoin(session, eq(session.id, team.sessionId))
+                .where(eq(session.communityId, communityId));
+            const red = colours.find(row => row.name === 'red')?.id;
+
+            expect(colours.map(row => row.name).toSorted()).toEqual(['blue', 'red']);
+            expect(teams.filter(row => row.ordinal === 1).map(row => row.colorId)).toEqual([red, red]);
+            expect(teams.every(row => isDefined(row.colorId))).toBe(true);
         })
     );
 

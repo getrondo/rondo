@@ -7,6 +7,7 @@ import { venue } from '@rondo/db/schema/venue.schema';
 import { and, eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
+import { teamBadges } from '../config/team-badges';
 import { DuplicateVenueNameError } from '../error/duplicate-venue-name.error';
 
 import type { CommunityConfig } from '../config/community-config';
@@ -100,18 +101,30 @@ export const upsertReference = Effect.fn('IngestTelegram.upsertReference')(funct
         : [];
     const venueIdByKey = new Map(config.venues.map(configured => [configured.key, venues.find(row => row.name === configured.name)?.id]));
 
+    // A bib emoji such as 💷 is its colour (red): one row per colour, whatever an older config calls it
+    const colourOf = (emoji: string, name: string): string =>
+        teamBadges.find(badge => badge.badge === emoji || badge.aliases.some(alias => alias === emoji))?.colour ?? name;
+
     if (isNotEmptyArray(config.teamColors)) {
         yield* transaction
             .insert(teamColor)
-            .values(config.teamColors.map(color => ({ communityId, name: color.name, emoji: color.emoji })))
+            .values(config.teamColors.map(color => ({ communityId, name: colourOf(color.emoji, color.name), emoji: color.emoji })))
             .onConflictDoNothing();
     }
 
     const colors = yield* transaction.select().from(teamColor).where(eq(teamColor.communityId, communityId));
+    const byColour = new Map(colors.map(row => [colourOf(row.emoji ?? '', row.name), row.id]));
 
     return {
         activityIdBySport: new Map(activities.map(row => [row.sport, row.id])),
         venueIdByKey,
-        colorIdByEmoji: new Map(colors.map(row => [row.emoji ?? '', row.id]))
+        colorIdByEmoji: new Map([
+            ...colors.map((row): [string, string] => [row.emoji ?? '', row.id]),
+            ...config.teamColors.flatMap((color): [string, string][] => {
+                const id = byColour.get(colourOf(color.emoji, color.name));
+
+                return isDefined(id) ? [[color.emoji, id]] : [];
+            })
+        ])
     } satisfies ReferenceIds;
 });
