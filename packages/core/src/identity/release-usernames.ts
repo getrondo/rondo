@@ -4,7 +4,7 @@ import { Db } from '@rondo/db/service/db.service';
 import { inArray, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-export const releaseUsernames = Effect.fn('IngestTelegram.releaseUsernames')(function* (usernames: readonly string[]) {
+export const releaseUsernames = Effect.fn('Core.releaseUsernames')(function* (usernames: readonly string[]) {
     const db = yield* Db;
 
     if (isNotEmptyArray(usernames)) {

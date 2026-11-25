@@ -2,7 +2,7 @@ import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 
 import type { ImportPlan, PlannedSession } from './assemble-plan';
 import type { ForwardedPost } from './extract-other-chat';
-import type { AccountFact } from './fact.model';
+import type { AccountFact } from '@rondo/core/extract/fact.model';
 
 const withOtherChat = (main: PlannedSession, other: PlannedSession): PlannedSession => ({
     ...main,

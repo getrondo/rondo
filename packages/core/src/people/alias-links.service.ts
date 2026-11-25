@@ -3,18 +3,18 @@ import { personAlias } from '@rondo/db/schema/identity.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { assignAlias, guestPersonOf } from '@rondo/ingest-telegram/identity/assign-alias';
-import { refreshNames } from '@rondo/ingest-telegram/identity/refresh-names';
-import { aliasResolution } from '@rondo/ingest-telegram/identity/resolve-member';
-import { rankedLinks } from '@rondo/ingest-telegram/identity/vote-links';
-import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
-import { alignGuests } from '@rondo/ingest-telegram/roster/align-guests';
-import { syncSessionRoster } from '@rondo/ingest-telegram/roster/sync-session-roster';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
+import { assignAlias, guestPersonOf } from '../identity/assign-alias';
+import { refreshNames } from '../identity/refresh-names';
+import { aliasResolution } from '../identity/resolve-member';
+import { rankedLinks } from '../identity/vote-links';
+import { alignGuests } from '../roster/align-guests';
+import { syncSessionRoster } from '../roster/sync-session-roster';
 import { latestVotes } from '../signups/latest-votes';
 
 import { linkedPersonsOf, recordDecision, requireNoOtherPeriod } from './alias-decisions';
@@ -135,7 +135,7 @@ const requireEntry = Effect.fn('Core.requireEntry')(function* ({ communityId, en
         .from(lineupEntry)
         .innerJoin(session, eq(session.id, lineupEntry.sessionId))
         .leftJoin(personAlias, eq(personAlias.id, lineupEntry.aliasId))
-        .where(and(eq(session.communityId, communityId), eq(lineupEntry.isGuest, false), sql`${lineupEntry.id}::text = ${entryId}`));
+        .where(and(sql`${lineupEntry.id}::text = ${entryId}`, eq(session.communityId, communityId), eq(lineupEntry.isGuest, false)));
 
     return isDefined(found) ? found : yield* ActionFailedError.make({ reason: 'line-up entry not found' });
 });

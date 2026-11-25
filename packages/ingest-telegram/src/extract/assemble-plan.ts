@@ -1,7 +1,7 @@
 import { isDefined } from '@rnw-community/shared';
 import * as Option from 'effect/Option';
 
-import type { CancellationFact, ExtractedFacts, FixtureFact, LineupFact, PollFact, PriceFact, Sport } from './fact.model';
+import type { CancellationFact, ExtractedFacts, FixtureFact, LineupFact, PollFact, PriceFact, Sport } from '@rondo/core/extract/fact.model';
 
 export interface PlannedSession {
     readonly key: string;

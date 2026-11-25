@@ -8,7 +8,7 @@ import * as Effect from 'effect/Effect';
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 
-import type { CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
+import type { CommunityConfig } from '../config/community-config';
 
 export interface VenueDetails {
     readonly shortName?: string;

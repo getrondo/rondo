@@ -12,8 +12,8 @@ import { postIdIn } from '../extract/post-id';
 
 import { mainChatId } from './main-chat-id';
 
-import type { CommunityConfig } from '../config/community-config';
 import type { ChatContent } from '../interface/chat-content.interface';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
 
 export const liveMessages = Effect.fn('IngestTelegram.liveMessages')(function* (config: CommunityConfig) {
     const db = yield* Db;

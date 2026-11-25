@@ -2,7 +2,7 @@ import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { rating, ratingEvent, team } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import { and, asc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 

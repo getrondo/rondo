@@ -1,5 +1,5 @@
 import { isDefined } from '@rnw-community/shared';
-import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';

@@ -19,12 +19,7 @@ interface AliasAssignment {
     readonly resolvedBy: 'alias' | 'vote' | 'guest';
 }
 
-export const assignAlias = Effect.fn('IngestTelegram.assignAlias')(function* ({
-    alias,
-    personId,
-    resolution,
-    resolvedBy
-}: AliasAssignment) {
+export const assignAlias = Effect.fn('Core.assignAlias')(function* ({ alias, personId, resolution, resolvedBy }: AliasAssignment) {
     const db = yield* Db;
     const placed = [
         ...(alias.kind === 'placeholder' ? [] : [isNotNull(lineupEntry.personId)]),
@@ -45,7 +40,7 @@ export const assignAlias = Effect.fn('IngestTelegram.assignAlias')(function* ({
     yield* refreshNames([...formerPersonIds, personId].filter(id => isDefined(id)));
 });
 
-export const guestPersonOf = Effect.fn('IngestTelegram.guestPersonOf')(function* (alias: Alias) {
+export const guestPersonOf = Effect.fn('Core.guestPersonOf')(function* (alias: Alias) {
     const db = yield* Db;
 
     if (isDefined(alias.guestPersonId)) {

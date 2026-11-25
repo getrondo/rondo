@@ -1,12 +1,11 @@
 import { isDefined } from '@rnw-community/shared';
+import { chatRules } from '@rondo/core/extract/chat-rules';
+import { extractPoll, makeVenueMatcher } from '@rondo/core/extract/extract-poll';
 import * as Option from 'effect/Option';
 
-import { chatRules } from './chat-rules';
-import { extractPoll, makeVenueMatcher } from './extract-poll';
-
-import type { CommunityConfig } from '../config/community-config';
 import type { ChatContent } from '../interface/chat-content.interface';
-import type { PollFact } from './fact.model';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
+import type { PollFact } from '@rondo/core/extract/fact.model';
 
 interface OriginalPoll {
     readonly place: number;

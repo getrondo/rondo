@@ -4,7 +4,7 @@ import { roleGrant } from '@rondo/db/schema/org.schema';
 import { team, teamDraft } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import { and, desc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 

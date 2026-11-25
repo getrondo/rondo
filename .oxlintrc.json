@@ -883,6 +883,32 @@
                     }
                 ]
             }
+        },
+        {
+            "files": ["packages/core/**/*.ts", "packages/db/**/*.ts"],
+            "rules": {
+                "no-restricted-imports": [
+                    "error",
+                    {
+                        "paths": [
+                            {
+                                "name": "effect",
+                                "message": "Import Effect modules by subpath, e.g. import * as Effect from 'effect/Effect'"
+                            },
+                            {
+                                "name": "zod",
+                                "message": "Use effect/Schema."
+                            }
+                        ],
+                        "patterns": [
+                            {
+                                "group": ["@rondo/ingest-telegram", "@rondo/ingest-telegram/*"],
+                                "message": "ingest-telegram depends on core and db, never the reverse."
+                            }
+                        ]
+                    }
+                ]
+            }
         }
     ]
 }

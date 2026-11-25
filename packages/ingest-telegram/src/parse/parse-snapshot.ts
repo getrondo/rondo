@@ -1,8 +1,5 @@
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
-import * as Effect from 'effect/Effect';
-import * as Schema from 'effect/Schema';
-
-import { answerChoice } from '../extract/poll-answers';
+import { answerChoice } from '@rondo/core/extract/poll-answers';
 import {
     SnapshotMessageSchema,
     SnapshotUserSchema,
@@ -11,7 +8,9 @@ import {
     type SnapshotVote,
     type TelegramSnapshot,
     type VoteChoice
-} from '../model/telegram-snapshot.model';
+} from '@rondo/core/model/telegram-snapshot.model';
+import * as Effect from 'effect/Effect';
+import * as Schema from 'effect/Schema';
 
 interface SnapshotFiles {
     readonly users: readonly string[];

@@ -1,4 +1,4 @@
-import { zonedToInstant } from '@rondo/ingest-telegram/extract/zoned-time';
+import { zonedToInstant } from '../extract/zoned-time';
 
 export const localTimeOf = (instant: Date, timeZone: string): string =>
     new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(instant);

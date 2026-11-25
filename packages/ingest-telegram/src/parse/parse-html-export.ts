@@ -1,10 +1,9 @@
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
+import { zonedToInstant } from '@rondo/core/extract/zoned-time';
 import * as Option from 'effect/Option';
 import { parse, type HTMLElement } from 'node-html-parser';
 
-import { zonedToInstant } from '../extract/zoned-time';
-
-import type { TelegramMessage } from '../model/telegram-message.model';
+import type { TelegramMessage } from '@rondo/core/model/telegram-message.model';
 
 const mediaSelectors = [
     ['photo', '.photo_wrap'],

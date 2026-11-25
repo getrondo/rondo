@@ -1,4 +1,4 @@
-import { zonedToInstant } from '../extract/zoned-time';
+import { zonedToInstant } from '@rondo/core/extract/zoned-time';
 
 import type { PlannedSession } from '../extract/assemble-plan';
 

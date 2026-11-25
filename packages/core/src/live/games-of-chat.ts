@@ -6,8 +6,8 @@ import * as Effect from 'effect/Effect';
 
 import { linkedChatsOf } from '../community/community.repository';
 
+import type { CommunityConfig } from '../config/community-config';
 import type { GroupMessage } from './live-ingest';
-import type { CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
 
 interface PostingChat {
     readonly communityId: string;

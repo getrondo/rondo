@@ -8,7 +8,7 @@ import * as Effect from 'effect/Effect';
 
 import { ActionFailedError } from '../error/action-failed.error';
 
-import type { Alias } from '@rondo/ingest-telegram/interface/directory.interface';
+import type { Alias } from '../interface/directory.interface';
 
 interface Decision {
     readonly alias: Pick<Alias, 'id' | 'communityId'>;

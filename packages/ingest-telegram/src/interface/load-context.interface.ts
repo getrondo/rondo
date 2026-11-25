@@ -1,7 +1,7 @@
-import type { CommunityConfig } from '../config/community-config';
 import type { ImportPlan } from '../extract/assemble-plan';
-import type { TelegramSnapshot } from '../model/telegram-snapshot.model';
 import type { Transaction } from './transaction.type';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
+import type { TelegramSnapshot } from '@rondo/core/model/telegram-snapshot.model';
 
 export interface LoadContext {
     readonly transaction: Transaction;

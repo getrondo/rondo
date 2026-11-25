@@ -17,7 +17,7 @@ import { indexVotes, matchSegments, splitByGaps, type VoteMatch } from './match-
 import { refreshNames } from './refresh-names';
 import { suggestLinks } from './suggest-links';
 
-const openAliases = Effect.fn('IngestTelegram.openAliases')(function* (communityId: string) {
+const openAliases = Effect.fn('Core.openAliases')(function* (communityId: string) {
     const db = yield* Db;
     const open = yield* db
         .select()
@@ -27,7 +27,7 @@ const openAliases = Effect.fn('IngestTelegram.openAliases')(function* (community
     return new Map(open.map(alias => [alias.id, alias]));
 });
 
-export const rankedLinks = Effect.fn('IngestTelegram.rankedLinks')(function* (communityId: string) {
+export const rankedLinks = Effect.fn('Core.rankedLinks')(function* (communityId: string) {
     const evidence = yield* loadEvidence(communityId);
     const open = yield* openAliases(communityId);
     const periods = new Map<string, { first: string; last: string }>();
@@ -47,7 +47,7 @@ export const rankedLinks = Effect.fn('IngestTelegram.rankedLinks')(function* (co
     });
 });
 
-export const releaseVoteLinks = Effect.fn('IngestTelegram.releaseVoteLinks')(function* (communityId: string) {
+export const releaseVoteLinks = Effect.fn('Core.releaseVoteLinks')(function* (communityId: string) {
     const db = yield* Db;
     const inCommunity = sql`select id from identity.person_alias where community_id = ${communityId}::uuid`;
 
@@ -76,7 +76,7 @@ export const releaseVoteLinks = Effect.fn('IngestTelegram.releaseVoteLinks')(fun
     return linked.flatMap(({ personId }) => (isDefined(personId) ? [personId] : []));
 });
 
-const assignEntries = Effect.fn('IngestTelegram.assignEntries')(function* (entryIds: readonly string[], personId: string) {
+const assignEntries = Effect.fn('Core.assignEntries')(function* (entryIds: readonly string[], personId: string) {
     const db = yield* Db;
 
     if (isNotEmptyArray(entryIds)) {
@@ -117,7 +117,7 @@ const withoutMain = (evidence: LinkEvidence): LinkEvidence => ({
     entries: evidence.entries.map(entry => (entry.isMain ? Object.assign(entry, { resolvedBy: 'alias' as const }) : entry))
 });
 
-const linkNicknames = Effect.fn('IngestTelegram.linkNicknames')(function* (
+const linkNicknames = Effect.fn('Core.linkNicknames')(function* (
     communityId: string,
     evidence: LinkEvidence,
     decisions: LinkDecisions,
@@ -210,7 +210,7 @@ const gameAssignments = (
             : [];
     });
 
-const linkSharedNickname = Effect.fn('IngestTelegram.linkSharedNickname')(function* (
+const linkSharedNickname = Effect.fn('Core.linkSharedNickname')(function* (
     evidence: LinkEvidence,
     decisions: LinkDecisions,
     aliasId: string
@@ -247,7 +247,7 @@ const linkSharedNickname = Effect.fn('IngestTelegram.linkSharedNickname')(functi
     return new Map(assignments.map(({ entry, personId }) => [entry.id, personId]));
 });
 
-const linkChats = Effect.fn('IngestTelegram.linkChats')(function* (communityId: string, isMain: boolean) {
+const linkChats = Effect.fn('Core.linkChats')(function* (communityId: string, isMain: boolean) {
     const everything = yield* loadEvidence(communityId, isMain);
     const loaded = isMain ? everything : withoutMain(everything);
     const decisions = yield* loadDecisions(communityId);
@@ -268,7 +268,7 @@ const linkChats = Effect.fn('IngestTelegram.linkChats')(function* (communityId: 
     return { aliases, segments, sharedEntries };
 });
 
-export const linkByVotes = Effect.fn('IngestTelegram.linkByVotes')(function* (communityId: string, hasOtherChats: boolean) {
+export const linkByVotes = Effect.fn('Core.linkByVotes')(function* (communityId: string, hasOtherChats: boolean) {
     const main = yield* linkChats(communityId, true);
 
     if (!hasOtherChats) {

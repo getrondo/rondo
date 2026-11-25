@@ -1,4 +1,5 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { teamBadges } from '@rondo/core/config/team-badges';
 import { priceRule } from '@rondo/db/schema/finance.schema';
 import { fixture } from '@rondo/db/schema/league.schema';
 import { activity, community } from '@rondo/db/schema/org.schema';
@@ -7,12 +8,11 @@ import { venue } from '@rondo/db/schema/venue.schema';
 import { and, eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { teamBadges } from '../config/team-badges';
 import { DuplicateVenueNameError } from '../error/duplicate-venue-name.error';
 
-import type { CommunityConfig } from '../config/community-config';
 import type { LoadContext, ReferenceIds } from '../interface/load-context.interface';
 import type { Transaction } from '../interface/transaction.type';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
 
 export const assertUniqueVenueNames = (config: CommunityConfig): Effect.Effect<void, DuplicateVenueNameError> => {
     const keysByName = new Map<string, string[]>();

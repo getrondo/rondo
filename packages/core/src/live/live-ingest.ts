@@ -4,15 +4,15 @@ import { messageRef } from '@rondo/db/schema/platform.schema';
 import { team, teamColor } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { chatRules } from '@rondo/ingest-telegram/extract/chat-rules';
-import { extractLineup } from '@rondo/ingest-telegram/extract/extract-lineup';
-import { extractPoll, makeVenueMatcher } from '@rondo/ingest-telegram/extract/extract-poll';
-import { extractCancellation } from '@rondo/ingest-telegram/extract/extract-signals';
-import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
+import { chatRules } from '../extract/chat-rules';
+import { extractLineup } from '../extract/extract-lineup';
+import { extractPoll, makeVenueMatcher } from '../extract/extract-poll';
+import { extractCancellation } from '../extract/extract-signals';
 import { todayIn } from '../sessions/local-time';
 import { createSession, getSession, listSessions } from '../sessions/session.service';
 import { badgeOfEmoji, badgeOfRow } from '../teams/badges';
@@ -22,10 +22,10 @@ import { gamesOfChat } from './games-of-chat';
 import { hasMainRoster } from './has-main-roster';
 import { storeHandSquad } from './store-hand-squad';
 
+import type { CommunityConfig } from '../config/community-config';
+import type { LineupFact, PollFact } from '../extract/fact.model';
+import type { TelegramMessage } from '../model/telegram-message.model';
 import type { CancelReason, SessionView } from '../sessions/session.model';
-import type { CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
-import type { LineupFact, PollFact } from '@rondo/ingest-telegram/extract/fact.model';
-import type { TelegramMessage } from '@rondo/ingest-telegram/model/telegram-message.model';
 
 export interface GroupMessage {
     readonly chatId: bigint;

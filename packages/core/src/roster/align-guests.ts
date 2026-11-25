@@ -2,7 +2,7 @@ import { Db } from '@rondo/db/service/db.service';
 import { sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-export const alignGuests = Effect.fn('IngestTelegram.alignGuests')(function* (communityId: string) {
+export const alignGuests = Effect.fn('Core.alignGuests')(function* (communityId: string) {
     const db = yield* Db;
 
     yield* db.execute(sql`

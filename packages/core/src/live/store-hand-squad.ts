@@ -1,6 +1,6 @@
-import { storeLineup } from '@rondo/ingest-telegram/roster/store-lineup';
 import * as Effect from 'effect/Effect';
 
+import { storeLineup } from '../roster/store-lineup';
 import { reseedDraft } from '../teams/team-draft.service';
 
 // A squad posted in a chat is stored, and an open draft starts again from it

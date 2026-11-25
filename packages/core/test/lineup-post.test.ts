@@ -1,8 +1,8 @@
 import { isDefined } from '@rnw-community/shared';
-import { extractLineup } from '@rondo/ingest-telegram/extract/extract-lineup';
-import { makeVenueMatcher } from '@rondo/ingest-telegram/extract/extract-poll';
 import { describe, expect, it } from 'vitest';
 
+import { extractLineup } from '../src/extract/extract-lineup';
+import { makeVenueMatcher } from '../src/extract/extract-poll';
 import { lineupDiff, lineupPostHtml } from '../src/teams/lineup-post';
 import { seedConfig } from '../src/testing/seed-community';
 

@@ -14,7 +14,7 @@ import { refreshNames } from './refresh-names';
 const fixed = ['manual', 'account', 'handle'] as const;
 
 // One player is named once per game: fixed entries first, then approvals from the narrowest, then everything else
-export const applyApproved = Effect.fn('IngestTelegram.applyApproved')(function* (communityId: string) {
+export const applyApproved = Effect.fn('Core.applyApproved')(function* (communityId: string) {
     const db = yield* Db;
     const inScope = and(eq(session.communityId, communityId), eq(lineupEntry.isGuest, false));
     const columns = {

@@ -11,10 +11,10 @@ import { sessionEntity } from './load-provenance';
 import { mainChatId } from './main-chat-id';
 import { sessionMillis, startOf } from './start-of';
 
-import type { CommunityConfig } from '../config/community-config';
 import type { PlannedSession } from '../extract/assemble-plan';
 import type { LoadContext } from '../interface/load-context.interface';
 import type { liveMessages } from './live-messages';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
 
 type LiveMessages = Effect.Success<ReturnType<typeof liveMessages>>;
 

@@ -376,9 +376,6 @@ importers:
       '@rondo/db':
         specifier: workspace:*
         version: link:../db
-      '@rondo/ingest-telegram':
-        specifier: workspace:*
-        version: link:../ingest-telegram
       '@rondo/telegram':
         specifier: workspace:*
         version: link:../telegram
@@ -447,6 +444,9 @@ importers:
       '@rnw-community/shared':
         specifier: 3.0.5
         version: 3.0.5
+      '@rondo/core':
+        specifier: workspace:*
+        version: link:../core
       '@rondo/db':
         specifier: workspace:*
         version: link:../db

@@ -3,14 +3,14 @@ import { aliasLink, person, personAlias, telegramAccount } from '@rondo/db/schem
 import { membership } from '@rondo/db/schema/org.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { normalizeAlias } from '@rondo/ingest-telegram/extract/normalize';
-import { refreshNames } from '@rondo/ingest-telegram/identity/refresh-names';
-import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import { and, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
+import { normalizeAlias } from '../extract/normalize';
+import { refreshNames } from '../identity/refresh-names';
 import { ensureMembership } from '../identity/telegram-user';
 
 import { recordDecision } from './alias-decisions';

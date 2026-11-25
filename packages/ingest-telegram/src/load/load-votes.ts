@@ -1,4 +1,5 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { insertMany } from '@rondo/core/utils/insert-many.util';
 import { importedPoll, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { and, eq, inArray, ne } from 'drizzle-orm';
@@ -7,13 +8,12 @@ import * as Effect from 'effect/Effect';
 import { ForeignPollError } from '../error/foreign-poll.error';
 import { TooManyRemovedGamesError } from '../error/too-many-removed-games.error';
 import { sourceOf } from '../extract/post-id';
-import { insertMany } from '../utils/insert-many.util';
 
 import { maxRemovedShare } from './delete-stale-sessions';
 
-import type { PollPostFact } from '../extract/fact.model';
-import type { Directory } from '../interface/directory.interface';
 import type { LoadContext } from '../interface/load-context.interface';
+import type { PollPostFact } from '@rondo/core/extract/fact.model';
+import type { Directory } from '@rondo/core/interface/directory.interface';
 
 const firstPosts = (posts: readonly PollPostFact[], pollIdByMessage: ReadonlyMap<number, string>): Map<string, PollPostFact> => {
     const first = new Map<string, PollPostFact>();

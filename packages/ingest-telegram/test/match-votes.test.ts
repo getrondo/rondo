@@ -1,10 +1,9 @@
 import { describe, expect, it } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
+import { isCertainSet, matchSet } from '@rondo/core/identity/match-set';
+import { indexVotes, matchSegments, type AliasGame, type Squad } from '@rondo/core/identity/match-votes';
+import { suggestLinks } from '@rondo/core/identity/suggest-links';
 import * as Option from 'effect/Option';
-
-import { isCertainSet, matchSet } from '../src/identity/match-set';
-import { indexVotes, matchSegments, type AliasGame, type Squad } from '../src/identity/match-votes';
-import { suggestLinks } from '../src/identity/suggest-links';
 
 const accountsOf = (found: ReturnType<typeof matchSet>): readonly string[] =>
     found.pipe(

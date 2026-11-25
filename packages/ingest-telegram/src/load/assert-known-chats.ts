@@ -9,7 +9,7 @@ import { UnknownChatError } from '../error/unknown-chat.error';
 
 import { mainChatId } from './main-chat-id';
 
-import type { CommunityConfig } from '../config/community-config';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
 
 const StoredChatsSchema = Schema.Struct({ rows: Schema.Array(Schema.Struct({ chat_id: Schema.FiniteFromString })) });
 

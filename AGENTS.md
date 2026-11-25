@@ -37,9 +37,9 @@ apps/
 packages/
   assistant/            AI assistant (Vercel AI SDK) and its tools
   bot/                  Update handlers, menus and jobs
-  core/                 Domain logic
+  core/                 Domain logic, message extraction, identity, roster and community config
   db/                   Drizzle schema per bounded context, migrations, DB layer
-  ingest-telegram/      Telegram history importer
+  ingest-telegram/      Telegram history importer (parse, load, CLIs); depends on core, never the reverse
   telegram/             Telegram client layer and webhook
 tests/
   test-kit/             @rondo/test-kit: vitest config factory and shared test helpers (the PGlite layer lives in @rondo/db/testing)

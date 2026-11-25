@@ -6,7 +6,7 @@ import * as Effect from 'effect/Effect';
 
 import type { Directory } from '../interface/directory.interface';
 
-export const loadDirectory = Effect.fn('IngestTelegram.loadDirectory')(function* (communityId: string) {
+export const loadDirectory = Effect.fn('Core.loadDirectory')(function* (communityId: string) {
     const db = yield* Db;
     const accounts = yield* db.select().from(telegramAccount);
     const aliases = yield* db.select().from(personAlias).where(eq(personAlias.communityId, communityId));

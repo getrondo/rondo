@@ -2,12 +2,13 @@ import { isDefined, isEmptyArray, isNotEmptyString } from '@rnw-community/shared
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { membership } from '@rondo/db/schema/org.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { releaseUsernames } from '@rondo/ingest-telegram/identity/release-usernames';
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
 import { resolveLocale } from '../i18n/locale';
+
+import { releaseUsernames } from './release-usernames';
 
 export interface TelegramUser {
     readonly id: bigint;

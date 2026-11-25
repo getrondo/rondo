@@ -9,7 +9,7 @@ import { syncSessionRoster } from '../roster/sync-session-roster';
 
 const minRepeats = 2;
 
-export const markShared = Effect.fn('IngestTelegram.markShared')(function* (communityId: string) {
+export const markShared = Effect.fn('Core.markShared')(function* (communityId: string) {
     const db = yield* Db;
     const repeated = db
         .select({ aliasId: lineupEntry.aliasId, sessionId: lineupEntry.sessionId })

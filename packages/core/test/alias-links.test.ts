@@ -4,7 +4,6 @@ import { auditLog, pollVote } from '@rondo/db/schema/platform.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { removeUnusedNicknames } from '@rondo/ingest-telegram/load/remove-unused-nicknames';
 import { and, eq, sql, type SQL } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
@@ -344,8 +343,8 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
             const { communityId } = yield* seeded('orphan-fc', 200n, '🟢Я, Гонзо\n🔵Олег, Семён');
             const [orphan] = yield* db.insert(person).values({ displayName: 'Сирота', source: 'import' }).returning({ id: person.id });
             const name = { communityId, personId: orphan?.id, guestPersonId: orphan?.id, alias: 'Сирота', aliasNorm: 'сирота' };
-            yield* db.insert(personAlias).values(name);
-            yield* db.transaction(transaction => removeUnusedNicknames({ transaction, communityId }));
+            const [nickname] = yield* db.insert(personAlias).values(name).returning({ id: personAlias.id });
+            yield* db.delete(personAlias).where(eq(personAlias.id, nickname?.id ?? ''));
             const [stored] = yield* db
                 .select()
                 .from(person)
@@ -448,7 +447,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
             const { communityId, account } = yield* seeded('gone-alias-fc', 250n, '🟢Я, Гонзо\n🔵Олег, Семён');
             const [unused] = yield* db.insert(personAlias).values({ communityId, alias: 'Лишний', aliasNorm: 'лишний' }).returning();
             const link = linkAlias({ communityId, aliasId: unused?.id ?? '', personId: account, actorPersonId: null });
-            yield* db.transaction(transaction => removeUnusedNicknames({ transaction, communityId }));
+            yield* db.delete(personAlias).where(eq(personAlias.id, unused?.id ?? ''));
             const refused = yield* Effect.flip(link);
 
             expect(refused._tag).toBe('ActionFailedError');

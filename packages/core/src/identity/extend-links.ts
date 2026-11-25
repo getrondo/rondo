@@ -11,7 +11,7 @@ import { refreshNames } from './refresh-names';
 
 const ExtendedSchema = Schema.Struct({ rows: Schema.Array(Schema.Struct({ session_id: Schema.String, person_id: Schema.String })) });
 
-export const extendLinks = Effect.fn('IngestTelegram.extendLinks')(function* (communityId: string) {
+export const extendLinks = Effect.fn('Core.extendLinks')(function* (communityId: string) {
     const db = yield* Db;
     const result = yield* db.execute(sql`
         with linked as (

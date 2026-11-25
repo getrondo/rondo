@@ -1,8 +1,11 @@
 import { expect, layer } from '@effect/vitest';
 import { isEmptyString, isNotEmptyArray } from '@rnw-community/shared';
+import { syncMember } from '@rondo/core/identity/telegram-user';
+import { linkAlias, unlinkAlias } from '@rondo/core/people/alias-links.service';
+import { localPostgresLayer } from '@rondo/core/testing/local-postgres.layer';
+import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
 import { personAlias } from '@rondo/db/schema/identity.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { importMessages } from '@rondo/ingest-telegram/ingest.effect';
 import { and, eq, sql } from 'drizzle-orm';
 import * as Deferred from 'effect/Deferred';
 import * as Effect from 'effect/Effect';
@@ -11,12 +14,9 @@ import * as Fiber from 'effect/Fiber';
 import * as Option from 'effect/Option';
 import * as Schedule from 'effect/Schedule';
 
-import { syncMember } from '../src/identity/telegram-user';
-import { linkAlias, unlinkAlias } from '../src/people/alias-links.service';
-import { localPostgresLayer } from '../src/testing/local-postgres.layer';
-import { seedCommunity, seedConfig } from '../src/testing/seed-community';
+import { importMessages } from '../src/ingest.effect';
 
-import type { TelegramMessage } from '@rondo/ingest-telegram/model/telegram-message.model';
+import type { TelegramMessage } from '@rondo/core/model/telegram-message.model';
 
 const databaseUrl = process.env.RONDO_TEST_DATABASE_URL ?? '';
 

@@ -1,6 +1,7 @@
-import { Db } from '@rondo/db/service/db.service';
 import { sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
+
+import { Db } from './db.service';
 
 type Community = { readonly id: string } | { readonly slug: string };
 

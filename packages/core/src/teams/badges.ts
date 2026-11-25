@@ -1,5 +1,6 @@
 import { isDefined } from '@rnw-community/shared';
-import { teamBadges } from '@rondo/ingest-telegram/config/team-badges';
+
+import { teamBadges } from '../config/team-badges';
 
 import type { Badge, BadgeColour } from './interface/badge.interface';
 

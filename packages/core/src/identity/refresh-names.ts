@@ -20,7 +20,7 @@ const renamedByAdmin = sql`exists (
     select 1 from audit.log entry where entry.action = 'person.rename' and entry.entity_id = ${person.id}::text
 )`;
 
-export const refreshNames = Effect.fn('IngestTelegram.refreshNames')(function* (personIds: readonly string[]) {
+export const refreshNames = Effect.fn('Core.refreshNames')(function* (personIds: readonly string[]) {
     const db = yield* Db;
 
     if (isNotEmptyArray(personIds)) {

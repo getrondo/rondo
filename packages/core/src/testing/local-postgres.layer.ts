@@ -1,11 +1,12 @@
 // Test files run in parallel against one database, so its migrations take turns
 import { runMigrations } from '@rondo/db/migration/migrate.effect';
 import { Db } from '@rondo/db/service/db.service';
-import { assertLocal } from '@rondo/ingest-telegram/rehearsal/assert-local';
 import { sql } from 'drizzle-orm';
 import * as ConfigProvider from 'effect/ConfigProvider';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
+
+import { assertLocal } from './assert-local';
 
 const migrateInTurn = Effect.gen(function* () {
     const db = yield* Db;

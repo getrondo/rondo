@@ -1,14 +1,13 @@
 import { isDefined } from '@rnw-community/shared';
+import { extractLineup } from '@rondo/core/extract/extract-lineup';
+import { extractPoll, isReservePoll, makeVenueMatcher } from '@rondo/core/extract/extract-poll';
+import { extractCancellation, extractPrice, makeFixtureExtractor } from '@rondo/core/extract/extract-signals';
 import * as Option from 'effect/Option';
 
-import { extractLineup } from './extract-lineup';
-import { extractPoll, isReservePoll, makeVenueMatcher } from './extract-poll';
-import { extractCancellation, extractPrice, makeFixtureExtractor } from './extract-signals';
-
-import type { CommunityConfig } from '../config/community-config';
-import type { TelegramMessage } from '../model/telegram-message.model';
-import type { AccountFact, AuthorFact, ExtractedFacts, GuestRequestFact, PollFact, PollPostFact } from './fact.model';
 import type { originalPolls } from './original-polls';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
+import type { AccountFact, AuthorFact, ExtractedFacts, GuestRequestFact, PollFact, PollPostFact } from '@rondo/core/extract/fact.model';
+import type { TelegramMessage } from '@rondo/core/model/telegram-message.model';
 
 const collectAuthors = (messages: readonly TelegramMessage[]): AuthorFact[] => {
     const authors = new Map<string, AuthorFact>();

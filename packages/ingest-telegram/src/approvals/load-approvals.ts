@@ -1,17 +1,16 @@
 import { isDefined } from '@rnw-community/shared';
+import { applyApproved } from '@rondo/core/identity/apply-approved';
+import { alignGuests } from '@rondo/core/roster/align-guests';
+import { markUndecidedTeams } from '@rondo/core/roster/mark-undecided-teams';
 import { aliasLink, person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { community } from '@rondo/db/schema/org.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import * as Effect from 'effect/Effect';
-
-import { applyApproved } from '../identity/apply-approved';
-import { withCommunityLock } from '../load/with-community-lock';
-import { alignGuests } from '../roster/align-guests';
-import { markUndecidedTeams } from '../roster/mark-undecided-teams';
 
 import type { ApprovalRow } from './parse-approvals';
 

@@ -73,7 +73,7 @@ export const withLinks = (evidence: LinkEvidence, personIdByEntry: ReadonlyMap<s
     ...entryIndex(evidence.entries.map(entry => withPerson(entry, personIdByEntry.get(entry.id))))
 });
 
-export const loadEvidence = Effect.fn('IngestTelegram.loadEvidence')(function* (communityId: string, isMainOnly = false) {
+export const loadEvidence = Effect.fn('Core.loadEvidence')(function* (communityId: string, isMainOnly = false) {
     const db = yield* Db;
     const otherChatPoll = db
         .select({ pollId: telegramPoll.pollId })

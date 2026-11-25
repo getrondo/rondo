@@ -1,8 +1,8 @@
 import { describe, expect, it } from '@effect/vitest';
+import { extractLineup } from '@rondo/core/extract/extract-lineup';
+import { makeVenueMatcher } from '@rondo/core/extract/extract-poll';
 import * as Effect from 'effect/Effect';
 
-import { extractLineup } from '../src/extract/extract-lineup';
-import { makeVenueMatcher } from '../src/extract/extract-poll';
 import { parseJsonExport } from '../src/parse/parse-json-export';
 
 import { message, testConfig } from './fixture';
