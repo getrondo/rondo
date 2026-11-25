@@ -23,7 +23,8 @@ import { publishLineup } from '../src/teams/publish-lineup';
 import { changeDraft, openDraft } from '../src/teams/team-draft.service';
 import { recordResult } from '../src/teams/team-result';
 import { confirmAsOwner, teamsActionAsOwner } from '../src/testing/confirm-action';
-import { seedGame } from '../src/testing/seed-game';
+
+import { publishPlanned, twoGroupGame } from './support/two-group-game';
 
 const blocked = new Map<number, Error>();
 const afterSend = new Map<number, () => void>();
@@ -41,37 +42,6 @@ const recorder = makeRecorder((method, payload) => {
     return method === 'sendMessage' ? { message_id: messageId, date: 0, chat: { id: payload.chat_id, type: 'supergroup' } } : true;
 });
 const sendsTo = (chatId: number) => recorder.calls.filter(call => call.payload.chat_id === chatId).map(call => call.method);
-
-const twoGroupGame = Effect.fn('test.twoGroupGame')(function* (slug: string, chats: readonly [number, number], base: number) {
-    const db = yield* Db;
-    const { communityId, sessionId } = yield* seedGame(slug);
-
-    for (const [index, chatId] of chats.entries()) {
-        yield* db.insert(telegramChat).values({ chatId: BigInt(chatId), communityId, kind: 'supergroup', title: `Group ${index + 1}` });
-        yield* db
-            .insert(messageRef)
-            .values({ chatId: BigInt(chatId), messageId: index + 1, purpose: 'poll', entityType: 'session', entityId: sessionId });
-    }
-
-    for (let index = 0; index < 8; index += 1) {
-        const personId = yield* syncMember(communityId, { id: BigInt(base + index), firstName: `Player${index}` }, 'active');
-        yield* db.insert(signup).values({ sessionId, personId, status: 'in' });
-    }
-
-    yield* openDraft(communityId, sessionId, null);
-
-    return { communityId, sessionId };
-});
-
-const publishPlanned = Effect.fn('test.publishPlanned')(function* (
-    game: { readonly communityId: string; readonly sessionId: string },
-    retryToken: string | null = null
-) {
-    const input = { ...game, locale: 'uk' as const, actorPersonId: null, privateChatId: null, fallback: Option.none(), retryToken };
-    const plan = yield* planLineup(input);
-
-    return yield* publishLineup({ ...input, version: plan.version, fingerprint: plan.fingerprint });
-});
 
 const swapFirsts = Effect.fn('test.swapFirsts')(function* (game: { readonly communityId: string; readonly sessionId: string }) {
     const { row } = yield* openDraft(game.communityId, game.sessionId, null);
@@ -288,7 +258,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
         Effect.gen(function* () {
             const db = yield* Db;
             const game = yield* twoGroupGame('delivery-not-revertible', [-7991, -7992], 79_900);
-            const later = yield* seedGame('delivery-not-revertible-later');
+            const later = yield* twoGroupGame('delivery-not-revertible-later', [-79_931, -79_932], 799_300);
             yield* publishPlanned(game);
             yield* resultThenSwap(game);
             const [event] = yield* db.select().from(ratingEvent).where(eq(ratingEvent.sessionId, game.sessionId));

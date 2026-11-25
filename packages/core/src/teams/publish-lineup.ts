@@ -1,20 +1,18 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { lineupDelivery, team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
-import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { withCommunityLock } from '@rondo/db/service/with-community-lock';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, eq, gt, isNull, lte, or, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { recordAudit } from '../audit/record-audit';
-import { ActionFailedError, failureOf, type ActionFailure } from '../error/action-failed.error';
+import { ActionFailedError } from '../error/action-failed.error';
 import { addMillis } from '../utils/add-millis.util';
-import { topicOptions } from '../utils/topic-options.util';
 
 import { badgeOfColour, badgeOfRow } from './badges';
+import { deliverOne, isGameOpen, type Claim } from './deliver-lineup';
 import { syncRoster } from './draft-state';
 import { planLineup, type PlanInput } from './lineup-plan';
 import { loadDraft } from './team-draft.service';
@@ -23,10 +21,6 @@ import { clearResult, isRevertible } from './team-result';
 
 import type { PostTeam } from './interface/lineup-post.interface';
 import type { DeliveryOutcome, LineupPlan, PlannedDelivery, PublishOutcome } from './interface/publish.interface';
-
-const notModified = /message is not modified/iu;
-const notFound = /message to edit not found/iu;
-const htmlOptions = { parse_mode: 'HTML' as const, link_preview_options: { is_disabled: true } };
 
 const colourIdOf = Effect.fn('Core.colourIdOf')(function* (communityId: string, colour: string) {
     const db = yield* Db;
@@ -78,19 +72,6 @@ const storeSquad = Effect.fn('Core.storeSquad')(function* (communityId: string, 
 });
 
 const busyMs = 60_000;
-const closedStatuses = new Set(['cancelled', 'played', 'moved']);
-
-interface Claim {
-    readonly delivery: PlannedDelivery;
-    readonly token: string;
-}
-
-const isGameOpen = Effect.fn('Core.isGameOpenForLineup')(function* (sessionId: string) {
-    const db = yield* Db;
-    const [game] = yield* db.select({ status: session.status }).from(session).where(eq(session.id, sessionId));
-
-    return isDefined(game) && !closedStatuses.has(game.status);
-});
 
 const claimPublish = Effect.fn('Core.claimPublish')(function* (sessionId: string, now: Date) {
     const db = yield* Db;
@@ -131,96 +112,6 @@ const claimDelivery = Effect.fn('Core.claimLineupDelivery')(function* (sessionId
         .returning({ token: lineupDelivery.token });
 
     return claimed?.token ?? null;
-});
-
-const sendOne = (delivery: PlannedDelivery) =>
-    Effect.gen(function* () {
-        const telegram = yield* Telegram;
-        const chatId = Number(delivery.chatId);
-        const { messageId } = delivery;
-
-        if (isDefined(messageId)) {
-            yield* telegram.call('editMessageText', api => api.editMessageText(chatId, messageId, delivery.html, htmlOptions));
-
-            return { messageId, status: 'edited' as const };
-        }
-
-        const sent = yield* telegram.call('sendMessage', api =>
-            api.sendMessage(chatId, delivery.html, { ...htmlOptions, ...topicOptions(delivery) })
-        );
-
-        return { messageId: sent.message_id, status: 'sent' as const };
-    });
-
-const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: string, sessionId: string, claim: Claim, publishToken: string) {
-    const db = yield* Db;
-    const { delivery } = claim;
-    const where = and(
-        eq(lineupDelivery.sessionId, sessionId),
-        eq(lineupDelivery.chatId, delivery.chatId),
-        eq(lineupDelivery.token, claim.token)
-    );
-    const outcome = (status: DeliveryOutcome['status'], failure: ActionFailure | null): DeliveryOutcome => ({
-        chatId: delivery.chatId,
-        title: delivery.title,
-        status,
-        failure,
-        isEdit: isDefined(delivery.messageId)
-    });
-    const send = sendOne(delivery).pipe(
-        Effect.flatMap(done =>
-            db
-                .update(lineupDelivery)
-                .set({ status: 'sent', messageId: done.messageId, text: delivery.text, topicId: delivery.topicId })
-                .where(where)
-                .pipe(Effect.as(outcome(done.status, null)))
-        ),
-        Effect.catchTag('TelegramApiError', error => {
-            if (notModified.test(error.description)) {
-                return db
-                    .update(lineupDelivery)
-                    .set({ status: 'sent', text: delivery.text })
-                    .where(where)
-                    .pipe(Effect.as(outcome('edited', null)));
-            }
-
-            const status = error.isUncertain ? 'uncertain' : 'refused';
-            const isGone = notFound.test(error.description);
-            const isKept = status === 'refused' && isDefined(delivery.messageId) && !isGone;
-
-            const failure = isGone ? ({ code: 'message_gone' } as const) : failureOf(error);
-
-            // A refused send as a new message keeps the id of the message that is still in the group
-            return db
-                .update(lineupDelivery)
-                .set({ status: isKept ? 'sent' : status, ...(isGone ? { messageId: null } : {}) })
-                .where(where)
-                .pipe(Effect.as(outcome(status, failure)));
-        })
-    );
-    const checked = Effect.gen(function* () {
-        const [draft] = yield* db.select({ token: teamDraft.publishToken }).from(teamDraft).where(eq(teamDraft.sessionId, sessionId));
-        const [own] = yield* db.select({ token: lineupDelivery.token }).from(lineupDelivery).where(where);
-
-        if (draft?.token !== publishToken || !isDefined(own)) {
-            return outcome('busy', null);
-        }
-
-        if (!(yield* isGameOpen(sessionId))) {
-            yield* db
-                .update(lineupDelivery)
-                .set({ status: isDefined(delivery.messageId) ? 'sent' : 'refused' })
-                .where(where);
-
-            return outcome('refused', { code: 'game_over' });
-        }
-
-        return yield* send;
-    });
-
-    return yield* withCommunityLock({ id: communityId }, checked).pipe(
-        Effect.catchCause(cause => Effect.logError('[teams] lineup receipt not saved', cause).pipe(Effect.as(outcome('uncertain', null))))
-    );
 });
 
 // Someone joined or left since the screen was drawn, or a newcomer is not placed yet: the admin sees the change first
