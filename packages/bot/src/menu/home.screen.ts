@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { communityProfile } from '@rondo/core/community/community.repository';
 import { formatSessionLabel } from '@rondo/core/i18n/messages';
 import { listSessions } from '@rondo/core/sessions/session.service';
@@ -41,12 +41,14 @@ const nextGameLine = Effect.fn('Bot.nextGameLine')(function* (user: MenuUser, ne
 });
 
 export const startScreen = Effect.fn('Bot.startScreen')(function* (user: MenuUser, firstName: string) {
-    const [next] = yield* upcomingGames(user);
-    const nextLine = yield* nextGameLine(user, next);
+    const upcoming = yield* upcomingGames(user);
+    const played = yield* listSessions(user.communityId, { from: addDays(user.today, -180), to: user.today });
+    const games =
+        isNotEmptyArray(upcoming) || isNotEmptyArray(played) ? [{ text: menuText(user.locale, 'games'), callback_data: 'm:gl' }] : [];
 
     return {
-        text: [menuText(user.locale, 'startHello', { name: escapeHtml(firstName) }), nextLine].join('\n'),
-        keyboard: [[{ text: menuText(user.locale, 'newGame'), callback_data: 'm:ng' }]]
+        text: menuText(user.locale, 'startHello', { name: escapeHtml(firstName) }),
+        keyboard: [[{ text: menuText(user.locale, 'newGame'), callback_data: 'm:ng' }, ...games]]
     } satisfies Screen;
 });
 
@@ -54,9 +56,7 @@ export const homeScreen = Effect.fn('Bot.homeScreen')(function* (user: MenuUser)
     const profile = yield* communityProfile(user.communityId);
     const [next] = yield* upcomingGames(user);
     const name = Option.match(profile, { onNone: () => '', onSome: value => value.name });
-    const nextLine = isDefined(next)
-        ? `${menuText(user.locale, 'nextGame')}: <b>${escapeHtml(formatSessionLabel(user.locale, next))}</b>, ${yield* signedUpLine(user, next)}`
-        : menuText(user.locale, 'noGames');
+    const nextLine = yield* nextGameLine(user, next);
 
     return {
         text: [menuText(user.locale, 'home', { name: escapeHtml(name) }), '', nextLine].join('\n'),

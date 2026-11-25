@@ -2,24 +2,33 @@ import * as Schema from 'effect/Schema';
 
 import type { PastGame, PlannedGame } from '@rondo/core/menu/past-game.interface';
 
-const views = ['main', 'day', 'place', 'venues', 'venue_name', 'map', 'address', 'time', 'size', 'note'] as const;
+const views = ['main', 'day', 'place', 'venues', 'venue_name', 'map', 'address', 'time', 'size', 'note', 'dest'] as const;
 
-export const DraftSchema = Schema.Struct({
-    flow: Schema.Literal('new'),
-    view: Schema.Literals(views),
-    manual: Schema.Boolean,
-    page: Schema.Int,
+const gameFields = {
     localDate: Schema.NullOr(Schema.String),
     localTime: Schema.NullOr(Schema.String),
     venueId: Schema.NullOr(Schema.String),
     fields: Schema.NullOr(Schema.Int),
     places: Schema.NullOr(Schema.Int),
     sized: Schema.Boolean,
+    custom: Schema.Boolean,
     note: Schema.NullOr(Schema.String),
-    sessionId: Schema.NullOr(Schema.String),
+    sessionId: Schema.NullOr(Schema.String)
+};
+
+const RestoreSchema = Schema.Struct(gameFields);
+
+export const DraftSchema = Schema.Struct({
+    flow: Schema.Literal('new'),
+    view: Schema.Literals(views),
+    manual: Schema.Boolean,
+    page: Schema.Int,
+    ...gameFields,
     summary: Schema.NullOr(Schema.String),
     notice: Schema.NullOr(Schema.String),
-    audience: Schema.Array(Schema.String)
+    audience: Schema.Array(Schema.String),
+    uncertain: Schema.Boolean,
+    restore: Schema.NullOr(RestoreSchema)
 });
 
 export type Draft = typeof DraftSchema.Type;
@@ -65,5 +74,8 @@ export const emptyDraft: Draft = {
     sessionId: null,
     summary: null,
     notice: null,
-    audience: []
+    audience: [],
+    custom: false,
+    uncertain: false,
+    restore: null
 };

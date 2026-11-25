@@ -1,8 +1,8 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { linkedChatsOf } from '@rondo/core/community/community.repository';
 import { formatSessionLabel } from '@rondo/core/i18n/messages';
-import { hasOpenPoll, hasPollFor } from '@rondo/core/menu/game-history.repository';
-import { isDeletableSession } from '@rondo/core/sessions/delete-session';
+import { hasOpenPoll } from '@rondo/core/menu/game-history.repository';
+import { hasOnlyAdminVotes, isDeletableSession } from '@rondo/core/sessions/delete-session';
 import { listSessions, requireSession } from '@rondo/core/sessions/session.service';
 import { audienceOf } from '@rondo/core/signups/audience';
 import { rosterOf } from '@rondo/core/signups/signup.service';
@@ -15,13 +15,16 @@ import { fitLabel } from '../utils/fit-label.util';
 import { toShortId } from '../utils/to-short-id.util';
 
 import { signedUpLine, upcomingGames } from './home.screen';
-import { menuText } from './menu-text';
+import { menuText, type MenuKey } from './menu-text';
+import { quotedTitles } from './new-game/audience';
 
 import type { MenuButton, MenuUser, Screen } from './screen.interface';
 import type { Locale } from '@rondo/core/i18n/locale';
 import type { SessionView } from '@rondo/core/sessions/session.model';
 
 const pastShown = 5;
+const namesPerPage = 8;
+const full = buttonBudget(1);
 
 const closedText: Readonly<Record<Locale, Readonly<Record<string, string>>>> = {
     uk: { played: 'Зіграно', cancelled: 'Скасовано', moved: 'Перенесено' },
@@ -35,29 +38,42 @@ export const navRow = (locale: Locale, back: string): MenuButton[] => [
 
 const gameButton = (locale: Locale, game: SessionView): MenuButton[] => [
     {
-        text: fitLabel(`${game.status === 'cancelled' ? '✖️ ' : ''}${formatSessionLabel(locale, game)}`, buttonBudget(1)),
+        text: fitLabel(`${game.status === 'cancelled' ? '✖️ ' : ''}${formatSessionLabel(locale, game)}`, full),
         callback_data: `m:g:${toShortId(game.id)}`
     }
 ];
 
-export const gamesScreen = Effect.fn('Bot.gamesScreen')(function* (user: MenuUser) {
-    const upcoming = yield* upcomingGames(user);
+const pastGames = Effect.fn('Bot.pastGames')(function* (user: MenuUser) {
     const recent = yield* listSessions(user.communityId, { from: addDays(user.today, -180), to: addDays(user.today, -1) });
-    const past = recent
+
+    return recent
         .filter(game => isDefined(game.venueName))
         .slice(-pastShown)
         .toSorted((left, right) => right.localDate.localeCompare(left.localDate));
-    const games = [...upcoming, ...past];
+});
+
+export const gamesScreen = Effect.fn('Bot.gamesScreen')(function* (user: MenuUser) {
+    const upcoming = yield* upcomingGames(user);
+    const past = yield* pastGames(user);
+    const empty = !isNotEmptyArray(upcoming) && !isNotEmptyArray(past);
 
     return {
-        text: isNotEmptyArray(games)
-            ? menuText(user.locale, 'gamesTitle')
-            : `${menuText(user.locale, 'gamesTitle')}\n${menuText(user.locale, 'noneYet')}`,
+        text: empty ? `${menuText(user.locale, 'gamesTitle')}\n${menuText(user.locale, 'noneYet')}` : menuText(user.locale, 'gamesTitle'),
         keyboard: [
-            ...games.map(game => gameButton(user.locale, game)),
+            ...upcoming.map(game => gameButton(user.locale, game)),
+            ...(isNotEmptyArray(past) ? [[{ text: menuText(user.locale, 'pastGames'), callback_data: 'm:gp' }]] : []),
             [{ text: menuText(user.locale, 'newGame'), callback_data: 'm:ng' }],
-            navRow(user.locale, 'm:h')
+            [{ text: menuText(user.locale, 'home_'), callback_data: 'm:h' }]
         ]
+    } satisfies Screen;
+});
+
+export const pastGamesScreen = Effect.fn('Bot.pastGamesScreen')(function* (user: MenuUser) {
+    const past = yield* pastGames(user);
+
+    return {
+        text: menuText(user.locale, 'pastGames'),
+        keyboard: [...past.map(game => gameButton(user.locale, game)), [{ text: menuText(user.locale, 'back'), callback_data: 'm:gl' }]]
     } satisfies Screen;
 });
 
@@ -65,48 +81,94 @@ const capitalized = (value: string): string => `${value.charAt(0).toUpperCase()}
 
 const names = (entries: readonly { readonly displayName: string }[]) => entries.map(entry => escapeHtml(entry.displayName)).join(', ');
 
-const actionRows = (
-    user: MenuUser,
-    game: SessionView,
-    state: {
-        readonly canPost: boolean;
-        readonly canDelete: boolean;
-        readonly signed: number;
-        readonly closedTo: readonly { readonly chatId: bigint; readonly title: string }[];
-    }
-): MenuButton[][] => {
+interface CardState {
+    readonly hasPoll: boolean;
+    readonly canDelete: boolean;
+    readonly privateOnly: boolean;
+    readonly signed: number;
+    readonly chats: readonly { readonly chatId: bigint; readonly title: string }[];
+    readonly closedTo: readonly { readonly chatId: bigint; readonly title: string }[];
+    readonly page: number;
+}
+
+const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuButton[][] => {
     const id = toShortId(game.id);
-    const button = (key: Parameters<typeof menuText>[1], op: string): MenuButton => ({
-        text: menuText(user.locale, key),
-        callback_data: `c:${op}:${id}`
-    });
-    const first = [...(state.canPost ? [button('postPoll', 'p')] : []), ...(state.signed >= 2 ? [button('teams', 'k')] : [])];
+    const button = (key: MenuKey, op: string): MenuButton => ({ text: menuText(user.locale, key), callback_data: `c:${op}:${id}` });
+    const [firstChat] = state.chats;
+    const postRows = state.hasPoll
+        ? []
+        : [
+              ...(isDefined(firstChat)
+                  ? [
+                        [
+                            {
+                                text: fitLabel(menuText(user.locale, 'postExistingTo', { where: `«${firstChat.title}»` }), full),
+                                callback_data: `c:p:${id}`
+                            }
+                        ]
+                    ]
+                  : []),
+              [button('sendPollMe', 'pm')]
+          ];
+    const resend = state.privateOnly ? [[button('resendMe', 'pr')]] : [];
     const openRows = state.closedTo.map(chat => [
-        {
-            text: fitLabel(menuText(user.locale, 'openFor', { title: chat.title }), buttonBudget(1)),
-            callback_data: `c:f:${id}:${chat.chatId}`
-        }
+        { text: fitLabel(menuText(user.locale, 'openFor', { title: chat.title }), full), callback_data: `c:f:${id}:${chat.chatId}` }
     ]);
+    const pages = Math.ceil(state.signed / namesPerPage);
+    const paging = [
+        ...(state.page > 0 ? [{ text: '◀️', callback_data: `m:g:${id}:${state.page - 1}` }] : []),
+        ...(state.page + 1 < pages ? [{ text: '▶️', callback_data: `m:g:${id}:${state.page + 1}` }] : [])
+    ];
 
     return [
-        ...(isNotEmptyArray(first) ? [first] : []),
+        ...postRows,
+        ...resend,
         ...openRows,
-        [button('time', 't'), button('place', 'v'), button('size', 'z')],
-        [button('cancelGame', 'x'), ...(state.canDelete ? [button('deleteGame', 'd')] : [])]
+        [button('time', 't'), button('day', 'dd'), button('place', 'v')],
+        [button('size', 'z'), ...(state.signed >= 2 ? [button('teams', 'k')] : [])],
+        [button('cancelGame', 'x'), ...(state.canDelete ? [button('deleteGame', 'd')] : [])],
+        ...(isNotEmptyArray(paging) ? [paging] : [])
     ];
 };
 
-export const gameCardScreen = Effect.fn('Bot.gameCardScreen')(function* (user: MenuUser, sessionId: string, header: string | null) {
+const pollLine = (user: MenuUser, state: CardState, audience: readonly bigint[]): string[] => {
+    const groups = state.chats.filter(chat => audience.includes(chat.chatId)).map(chat => chat.title);
+
+    if (isNotEmptyArray(groups)) {
+        return [menuText(user.locale, 'pollIn', { where: escapeHtml(quotedTitles(groups, user.locale)) })];
+    }
+
+    if (state.privateOnly) {
+        return [menuText(user.locale, 'pollMine')];
+    }
+
+    return state.hasPoll ? [] : [menuText(user.locale, 'pollNone')];
+};
+
+export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
+    user: MenuUser,
+    sessionId: string,
+    header: string | null,
+    page: number
+) {
     const game = yield* requireSession(user.communityId, sessionId);
     const roster = yield* rosterOf(sessionId);
     const signed = roster.filter(entry => entry.status === 'in' && entry.role === 'field');
-    const hasPoll = yield* hasPollFor(sessionId);
     const isUpcoming = game.localDate >= user.today && ['open', 'full', 'locked', 'draft'].includes(game.status);
     const chats = yield* linkedChatsOf(user.communityId);
-    const audience = yield* audienceOf(sessionId);
+    const audience = (yield* audienceOf(sessionId)).map(target => target.chatId);
     const isOpen = yield* hasOpenPoll(sessionId);
+    const onlyAdmins = yield* hasOnlyAdminVotes(user.communityId, sessionId);
     const canDelete = yield* isDeletableSession(user.communityId, sessionId, user.today);
-    const closedTo = isOpen ? chats.filter(chat => !audience.some(target => target.chatId === chat.chatId)) : [];
+    const state: CardState = {
+        hasPoll: isNotEmptyArray(audience),
+        canDelete,
+        privateOnly: isOpen && onlyAdmins && isNotEmptyArray(audience) && audience.every(chatId => chatId > 0n),
+        signed: signed.length,
+        chats,
+        closedTo: isOpen ? chats.filter(chat => !audience.includes(chat.chatId)) : [],
+        page
+    };
     const free = isDefined(game.capacityMax)
         ? [menuText(user.locale, 'free', { free: Math.max(0, game.capacityMax - signed.length) })]
         : [];
@@ -114,22 +176,22 @@ export const gameCardScreen = Effect.fn('Bot.gameCardScreen')(function* (user: M
     const keepers = roster.filter(entry => entry.status === 'in' && entry.role === 'gk');
     const closed = closedText[user.locale][game.status];
     const signedLine = yield* signedUpLine(user, game);
+    const shown = signed.slice(page * namesPerPage, page * namesPerPage + namesPerPage);
     const lines = [
         ...(isDefined(header) ? [header, ''] : []),
         `⚽ <b>${escapeHtml(formatSessionLabel(user.locale, game))}</b>`,
         ...(isDefined(closed) ? [closed] : []),
+        ...(isUpcoming ? pollLine(user, state, audience) : []),
         [capitalized(signedLine), ...free].join(' · '),
+        ...shown.map((entry, index) => `${page * namesPerPage + index + 1}. ${escapeHtml(entry.displayName)}`),
         ...(isNotEmptyArray(waiting) ? [`${menuText(user.locale, 'waiting')}: ${names(waiting)}`] : []),
         ...(isNotEmptyArray(keepers) ? [`${menuText(user.locale, 'keepers')}: ${names(keepers)}`] : [])
     ];
 
     return {
         text: lines.join('\n'),
-        keyboard: [
-            ...(isUpcoming
-                ? actionRows(user, game, { canPost: !hasPoll && isNotEmptyArray(chats), canDelete, signed: signed.length, closedTo })
-                : []),
-            navRow(user.locale, 'm:gl')
-        ]
+        keyboard: [...(isUpcoming ? actionRows(user, game, state) : []), navRow(user.locale, 'm:gl')]
     } satisfies Screen;
 });
+
+export const gameCardScreen = (user: MenuUser, sessionId: string, header: string | null) => gameCardPage(user, sessionId, header, 0);

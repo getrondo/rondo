@@ -110,3 +110,19 @@ export const conversation = (recorder: TelegramRecorder, user: Person) => {
         }
     };
 };
+
+export const labelsOf = (screen: { readonly buttons: readonly (readonly { readonly text: string }[])[] }) =>
+    screen.buttons.flat().map(button => button.text);
+
+export const lastPollId = (recorder: TelegramRecorder, chatId: number) =>
+    (
+        recorder.calls.findLast(call => call.method === 'sendPoll' && call.payload.chat_id === chatId)?.result as
+            | { poll?: { id?: string } }
+            | undefined
+    )?.poll?.id ?? '';
+
+export const walkManual = (admin: ReturnType<typeof conversation>, labels: readonly string[]) =>
+    Effect.all(
+        labels.map(label => admin.tap(label)),
+        { concurrency: 1 }
+    );

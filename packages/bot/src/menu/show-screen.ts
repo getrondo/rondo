@@ -33,3 +33,11 @@ export const showScreen = Effect.fn('Bot.showScreen')(function* (chatId: number,
 
     return sent.message_id;
 });
+
+export const clearKeyboard = Effect.fn('Bot.clearKeyboard')(function* (chatId: number, messageId: number) {
+    const telegram = yield* Telegram;
+
+    yield* telegram
+        .call('editMessageReplyMarkup', api => api.editMessageReplyMarkup(chatId, messageId, { reply_markup: { inline_keyboard: [] } }))
+        .pipe(Effect.ignore);
+});

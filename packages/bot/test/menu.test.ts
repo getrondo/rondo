@@ -42,9 +42,10 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect(home.text).toContain('Наступна гра: <b>Пт 27.11 19:00 · North Arena</b>, записались 0 з 22');
             expect(home.buttons.flat()).toHaveLength(3);
-            expect(start.text.split('\n')).toHaveLength(2);
-            expect(start.text).toContain('Привіт, Admin 301.');
-            expect(start.buttons.map(row => row.map(button => button.text))).toEqual([['➕ Нова гра']]);
+            expect(start.text).toBe(
+                'Привіт, Admin 301. Зберемо гру за пару дотиків. Спершу покажу опитування, без твого ✅ нічого не надішлю.'
+            );
+            expect(start.buttons.map(row => row.map(button => button.text))).toEqual([['➕ Нова гра', '📅 Ігри']]);
             expect(stranger.screen().text).toContain('Пока я работаю с администраторами');
             expect(commands).toMatchObject({ scope: { type: 'chat', chat_id: 301 } });
         })
@@ -57,6 +58,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/menu');
             const home = admin.screen();
             yield* admin.tap('📅 Ігри');
+            yield* admin.tap('🗂 Минулі');
+            const past = admin.screen();
             yield* admin.tap('Пт 20.11 19:00');
             const card = admin.screen();
             yield* admin.tap('⬅️ Назад');
@@ -75,8 +78,9 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(admin.screen().id).not.toBe(home.id);
             expect(card.text).toContain('Зіграно');
             expect(card.buttons.flat().map(button => button.text)).toEqual(['⬅️ Назад', '🏠 Меню']);
-            expect(games.buttons.flat().map(button => button.text)).toContain('Пт 20.11 19:00 · North Arena');
-            expect(games.buttons.flat().map(button => button.text)).not.toContain('Вт 24.11 20:00');
+            expect(past.buttons.flat().map(button => button.text)).toContain('Пт 20.11 19:00 · North Arena');
+            expect(past.buttons.flat().map(button => button.text)).not.toContain('Вт 24.11 20:00');
+            expect(games.buttons.map(row => row.map(button => button.text))).toEqual([['🗂 Минулі'], ['➕ Нова гра'], ['🏠 Меню']]);
             expect(unchanged).toBe(sends);
             expect(fallback).toBe(unchanged + 1);
             expect(admin.tidy()).toEqual({ unanswered: [], oversized: [] });

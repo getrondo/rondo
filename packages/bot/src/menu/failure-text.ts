@@ -2,18 +2,33 @@ import { menuText } from './menu-text';
 
 import type { Locale } from '@rondo/core/i18n/locale';
 
-const refused = /^Telegram refused: (.+)$/u;
+export interface FailureTarget {
+    readonly where: string;
+    readonly isPrivate: boolean;
+}
 
-export const failureText = (locale: Locale, reason: string, slug: string): string => {
+export interface FailureText {
+    readonly text: string;
+    readonly uncertain: boolean;
+}
+
+const refused = /^Telegram refused: /u;
+
+export const failureText = (locale: Locale, reason: string, target: FailureTarget): FailureText => {
+    if (/uncertain/u.test(reason)) {
+        const to = target.isPrivate ? menuText(locale, 'toMe') : menuText(locale, 'toChat', { where: target.where });
+
+        return { text: menuText(locale, 'uncertain', { to }), uncertain: true };
+    }
+
     const known: [RegExp, () => string][] = [
-        [/no group is linked/u, () => menuText(locale, 'reasonNoGroup', { slug })],
+        [/no group is linked/u, () => menuText(locale, 'reasonNoGroup')],
         [/already has an open poll/u, () => menuText(locale, 'reasonOpenPoll')],
-        [refused, () => menuText(locale, 'reasonRefused')],
-        [/uncertain/u, () => menuText(locale, 'reasonUncertain')],
+        [refused, () => menuText(locale, target.isPrivate ? 'reasonRefusedPrivate' : 'reasonRefused')],
         [/changed after the preview/u, () => menuText(locale, 'reasonChanged')],
         [/already over or cancelled/u, () => menuText(locale, 'reasonOver')]
     ];
     const match = known.find(([pattern]) => pattern.test(reason));
 
-    return menuText(locale, 'failed', { reason: match?.[1]() ?? menuText(locale, 'reasonOther') });
+    return { text: menuText(locale, 'failed', { reason: match?.[1]() ?? menuText(locale, 'reasonOther') }), uncertain: false };
 };

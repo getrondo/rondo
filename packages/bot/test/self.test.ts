@@ -6,18 +6,13 @@ import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { conversation, deliver } from './support/conversation';
+import { conversation, deliver, lastPollId } from './support/conversation';
 import { gamesOn, grantOrganizer, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
 const voter = (id: number) => ({ id, is_bot: false as const, first_name: `Voter ${id}` });
-const pollIdTo = (chatId: number) =>
-    (
-        recorder.calls.findLast(call => call.method === 'sendPoll' && call.payload.chat_id === chatId)?.result as
-            | { poll?: { id?: string } }
-            | undefined
-    )?.poll?.id ?? '';
+const pollIdTo = (chatId: number) => lastPollId(recorder, chatId);
 const vote = (pollId: string, id: number, optionIds: number[]) =>
     deliver({ poll_answer: { poll_id: pollId, user: voter(id), option_ids: optionIds, option_persistent_ids: [] } });
 
@@ -31,7 +26,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const main = admin.screen();
             yield* admin.tap('👥 22');
             yield* admin.type('1');
-            yield* admin.tap('✅ Надіслати мені');
+            yield* admin.tap('✅ Надіслати опитування мені');
             const posted = admin.screen().text;
             const pollId = pollIdTo(1101);
             yield* vote(pollId, 9811, [0]);
@@ -49,13 +44,17 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('Пт 27.11 19:00');
             yield* admin.tap('✖️ Скасувати');
             yield* admin.tap('погода');
-            yield* admin.tap('✅ Скасувати й повідомити');
+            yield* admin.tap('✅ Скасувати й надіслати мені');
             const cancelled = recorder.calls.findLast(
                 call => call.method === 'sendMessage' && String(call.payload.text).includes('Скасовано')
             );
 
-            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати мені']);
-            expect(posted.startsWith('👆 Перешли опитування вище у групу: утримуй його → Переслати. Голоси рахуються.')).toBe(true);
+            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати опитування мені']);
+            expect(
+                posted.startsWith(
+                    '✅ Гру створено. Опитування поки тільки в тебе.\n👆 Утримуй опитування → Переслати → група. Голоси рахуються.'
+                )
+            ).toBe(true);
             expect(recorder.calls.some(call => call.method === 'pinChatMessage' && call.payload.chat_id === 1101)).toBe(false);
             expect(statuses.map(row => row.status).toSorted()).toEqual(['in', 'out']);
             expect(promoted?.payload.chat_id).toBe(1101);
@@ -71,15 +70,16 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const first = conversation(recorder, adminNumbered(1102));
             const other = conversation(recorder, adminNumbered(1103));
             yield* first.type('/newgame');
-            yield* first.tap('🔁 Куди');
-            yield* first.tap('✅ Надіслати мені');
+            yield* first.tap('📤 Куди');
+            yield* first.tap('👤 Тільки мені');
+            yield* first.tap('✅ Надіслати опитування мені');
             yield* first.type('/newgame');
             const remembered = first.screen();
             yield* other.type('/newgame');
             const otherMain = other.screen();
 
             expect(recorder.calls.findLast(call => call.method === 'sendPoll')?.payload.chat_id).toBe(1102);
-            expect(remembered.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати мені']);
+            expect(remembered.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати опитування мені']);
             expect(remembered.text).toContain('Понеділок, 30 листопада');
             expect(otherMain.buttons[0]?.map(button => button.text)).toEqual(['✅ Опублікувати в «Games»']);
         })
@@ -91,21 +91,21 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const { communityId } = yield* seedSeason('self-delete', { groupChatId: null, adminId: 1104 });
             const admin = conversation(recorder, adminNumbered(1104));
             yield* admin.type('/newgame');
-            yield* admin.tap('✅ Надіслати мені');
+            yield* admin.tap('✅ Надіслати опитування мені');
             yield* vote(pollIdTo(1104), 1104, [0]);
             const card = admin.screen();
             const [created] = yield* gamesOn(communityId, '2026-11-27');
             yield* admin.tap('🗑 Видалити');
             const confirmation = admin.screen();
-            yield* admin.tapOn(confirmation, '✅ Видалити');
+            yield* admin.tapOn(confirmation, '🗑 Видалити назавжди');
             const afterDelete = admin.screen().text;
-            yield* admin.tapOn(confirmation, '✅ Видалити');
+            yield* admin.tapOn(confirmation, '🗑 Видалити назавжди');
             const [gone] = yield* gamesOn(communityId, '2026-11-27');
             const leftovers = yield* Effect.all([db.select().from(telegramPoll), db.select().from(pollVote), db.select().from(messageRef)]);
             const [audit] = yield* db.select().from(auditLog).where(eq(auditLog.action, 'session.delete'));
             yield* admin.type('/newgame');
-            yield* admin.tap('Пн 30.11');
-            yield* admin.tap('✅ Надіслати мені');
+            yield* admin.tap('↔️ Інша');
+            yield* admin.tap('✅ Надіслати опитування мені');
             yield* vote(pollIdTo(1104), 9821, [0]);
             yield* admin.type('/games');
             yield* admin.tap('Пн 30.11 18:30');

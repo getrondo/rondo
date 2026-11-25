@@ -40,10 +40,10 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('✅ Опублікувати');
             const [game] = yield* gamesOn(communityId, '2026-11-26');
 
-            expect(days.slice(0, 3)).toEqual(['✓ Пт 27.11', 'Пн 30.11', 'Сб 28.11']);
-            expect(days).toContain('Чт 26.11');
+            expect(days.slice(0, 3)).toEqual(['✓ Пт 27.11', 'Сб 28.11', 'Нд 29.11']);
+            expect(days).toContain('Сьогодні 26.11');
             expect(limitless.text).not.toContain('місць');
-            expect(limitless.buttons[2]?.map(button => button.text)).toEqual(['👥 −', '👥 ♾', '👥 +']);
+            expect(limitless.buttons[1]?.map(button => button.text)).toEqual(['👥 −', '👥 ♾', '👥 +']);
             expect(refused).toContain('вже минув');
             expect(game).toMatchObject({ capacityMax: 25 });
         })
@@ -58,6 +58,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('📍 North Arena');
             yield* admin.tap('➕ Нове місце');
             yield* admin.type('Lake Court');
+            yield* admin.tap('📍 Lake Court');
+            yield* admin.tap('📍 Додати адресу');
             yield* admin.type('https://www.google.com/maps/place/Lake/@48.21,16.37,17z');
             yield* admin.tap('✅ Опублікувати');
             const [stored] = yield* db
@@ -82,15 +84,15 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* seedSeason('more-address', { groupChatId: -5003, adminId: 803 });
             const admin = conversation(recorder, adminNumbered(803));
             yield* admin.type('/newgame');
-            const hinted = admin.screen().text;
-            yield* admin.tap('📍 Адреса');
+            yield* admin.tap('📍 North Arena');
+            const hinted = admin.labels().flat();
+            yield* admin.tap('📍 Додати адресу');
             yield* admin.type('Main Street 1 (gate B)');
             const preview = admin.screen();
             yield* admin.tap('✅ Опублікувати');
 
-            expect(hinted).toContain('немає адреси');
-            expect(preview.text).not.toContain('немає адреси');
-            expect(preview.buttons.flat().map(button => button.text)).not.toContain('📍 Адреса');
+            expect(hinted).toContain('📍 Додати адресу');
+            expect(preview.text).toContain('Main Street 1 (gate B)');
             expect(pollTo(-5003)?.payload.description).toBe('📍 <b>North Arena</b>\n<b>Main Street 1 (gate B)</b>');
         })
     );
@@ -111,20 +113,20 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(804));
             yield* admin.type('/newgame');
             const announce = admin.screen();
-            yield* admin.tap('Пн 30.11');
+            yield* admin.tap('↔️ Інша');
             yield* admin.tap('📅 Пн 30.11');
             yield* admin.tap('Пт 27.11');
             const duplicate = admin.screen().text;
-            yield* admin.tap('✖️');
+            yield* admin.tap('Закрити');
             yield* admin.type('/newgame');
             yield* admin.tap('📣 Опублікувати');
             const games = yield* gamesOn(communityId, '2026-11-27');
 
-            expect(announce.text).toContain('Гра вже є, опитування ще ні');
+            expect(announce.text).toContain('Гра вже є, опитування ще немає');
             expect(announce.buttons.map(row => row.map(button => button.text))).toEqual([
                 ['📣 Опублікувати в «Games»'],
-                ['Пн 30.11 18:30 · Park Field'],
-                ['🔁 Куди', '🛠 Вручну', '✖️']
+                ['↔️ Інша: Пн 18:30 · Park Field'],
+                ['📤 Куди', '🛠 З нуля', 'Закрити']
             ]);
             expect(duplicate).toContain('На цей день уже є гра: Пт 27.11');
             expect(games).toHaveLength(1);
@@ -142,7 +144,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/newgame');
 
             expect(admin.screen().text).toContain('Поки замало історії');
-            expect(admin.labels().flat()).toEqual(expect.arrayContaining(['Пт 27.11', '✖️']));
+            expect(admin.labels().flat()).toEqual(expect.arrayContaining(['Пт 27.11', 'Закрити']));
         })
     );
 
@@ -154,13 +156,19 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             recorder.failures.set('sendPoll', new Error('socket hang up'));
             yield* admin.tap('✅ Опублікувати');
             recorder.failures.delete('sendPoll');
-            const uncertain = admin.screen().text;
+            const uncertain = admin.screen();
             recorder.failures.set('pinChatMessage', refusal('pinChatMessage', 'Bad Request: not enough rights to pin a message'));
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('🔁 Перевірив, надіслати знову');
             recorder.failures.delete('pinChatMessage');
             const games = yield* gamesOn(communityId, '2026-11-27');
 
-            expect(uncertain).toContain('Невідомо, чи пішло повідомлення');
+            expect(
+                uncertain.text.startsWith(
+                    '⚠️ Не знаю, чи дійшло опитування до «Games». Перевір: якщо воно там, видали його й надішли знову.'
+                )
+            ).toBe(true);
+            expect(uncertain.text).not.toContain('нічого не надіслано');
+            expect(uncertain.buttons[0]?.map(button => button.text)).toEqual(['🔁 Перевірив, надіслати знову']);
             expect(games).toHaveLength(1);
             expect(admin.screen().text).toContain('✅ Гру створено');
         })
@@ -178,9 +186,11 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const poll = pollTo(-5007)?.payload;
             const route = (poll?.reply_markup as { inline_keyboard: { url: string }[][] } | undefined)?.inline_keyboard[0]?.[0]?.url ?? '';
 
-            expect(preview).toContain(`<blockquote>${String(poll?.question)}\n\n▫️ ✅ Граю\n▫️ ❌ Не граю</blockquote>`);
+            expect(preview).toContain(`<blockquote>${String(poll?.question)}\n\n`);
+            expect(preview).toContain('▫️ ✅ Граю\n▫️ ❌ Не граю</blockquote>');
             expect(preview).toContain(String(poll?.description));
             expect(preview).toContain(route.replace('&', '&amp;'));
+            expect(preview).toMatch(/<blockquote>[^<]*\n\n📍 <b>North Arena<\/b>[\s\S]*▫️ ✅ Граю/u);
         })
     );
 

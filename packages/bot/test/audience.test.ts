@@ -61,7 +61,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 .from(signup)
                 .where(eq(signup.sessionId, game?.id ?? ''));
 
-            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Опублікувати в «Games + Second»']);
+            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Опублікувати в обидві групи']);
             expect(callsTo(-4011, 'sendPoll')).toHaveLength(1);
             expect(callsTo(-4012, 'forwardMessage')[0]?.payload).toMatchObject({ from_chat_id: -4011 });
             expect(callsTo(-4012, 'sendPoll')).toHaveLength(0);
@@ -75,8 +75,9 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* seedSecondGroup(communityId, { main: -4021, second: -4022, venueId: park });
             const admin = conversation(recorder, adminNumbered(703));
             yield* admin.type('/newgame');
-            yield* admin.tap('🔁 Куди');
-            yield* admin.tap('🔁 Куди');
+            yield* admin.tap('📤 Куди');
+            const choices = admin.labels().flat();
+            yield* admin.tap('«Games»');
             yield* admin.tap('👥 22');
             yield* admin.type('2');
             yield* admin.tap('✅ Опублікувати');
@@ -90,22 +91,24 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('Пт 27.11 19:00');
             const card = admin.screen();
             recorder.failures.set('forwardMessage', refusal('forwardMessage', 'Bad Request: not enough rights'));
-            yield* admin.tap('📣 Відкрити ще для: Second');
+            yield* admin.tap('📣 Надіслати ще в «Second»');
             const confirmation = admin.screen().text;
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('✅ Надіслати в «Second»');
             recorder.failures.delete('forwardMessage');
             const refused = admin.screen();
-            yield* admin.tap('📣 Відкрити ще для: Second');
-            yield* admin.tap('✅ Опублікувати');
+            yield* admin.tap('📣 Надіслати ще в «Second»');
+            yield* admin.tap('✅ Надіслати в «Second»');
             const opened = admin.screen();
             yield* vote(9301, []);
             const mentions = [-4021, -4022].map(chatId => callsTo(chatId, 'sendMessage').at(-1)?.payload.text);
 
             expect(card.text).toContain('Записались 2 з 2 · вільно 0');
-            expect(confirmation).toContain('Так буде в групі');
+            expect(choices).toEqual(['👤 Тільки мені', '«Games»', '«Second»', '✓ «Games» і «Second»', '⬅️ Назад']);
+            expect(confirmation).toContain('Так буде в «Second»:');
             expect(refused.text).toContain('Telegram не прийняв');
-            expect(refused.buttons.flat().map(button => button.text)).toContain('📣 Відкрити ще для: Second');
-            expect(opened.buttons.flat().map(button => button.text)).not.toContain('📣 Відкрити ще для: Second');
+            expect(refused.buttons.flat().map(button => button.text)).toContain('📣 Надіслати ще в «Second»');
+            expect(opened.buttons.flat().map(button => button.text)).not.toContain('📣 Надіслати ще в «Second»');
+            expect(opened.text.split('\n')[0]).toBe('✅ Опитування тепер і в «Second».');
             expect(callsTo(-4022, 'sendPoll')).toHaveLength(0);
             expect(mentions.every(text => String(text).includes('Voter 9303'))).toBe(true);
         })

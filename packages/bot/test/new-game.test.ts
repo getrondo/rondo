@@ -55,12 +55,11 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             expect(main.text).toContain('1 поле, 22 місця');
             expect(main.buttons.map(row => row.map(button => button.text))).toEqual([
                 ['✅ Опублікувати в «Games»'],
-                ['Пн 30.11 18:30 · Park Field'],
                 ['👥 −', '👥 22', '👥 +'],
                 ['🕖 19:00', '📅 Пт 27.11'],
                 ['📍 North Arena'],
-                ['📍 Адреса'],
-                ['🔁 Куди', '🛠 Вручну', '✖️']
+                ['↔️ Інша: Пн 18:30 · Park Field'],
+                ['📤 Куди', '🛠 З нуля', 'Закрити']
             ]);
             expect(game).toMatchObject({ venueId: north, capacityMax: 22, fieldsPlanned: 1, status: 'open' });
             expect(poll?.payload).toMatchObject({ description: '📍 <b>North Arena</b>', description_parse_mode: 'HTML' });
@@ -77,7 +76,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             const owner = adminNumbered(102);
             const admin = conversation(recorder, owner);
             yield* admin.type('/newgame');
-            yield* admin.tap('Пн 30.11 18:30 · Park Field');
+            yield* admin.tap('↔️ Інша: Пн 18:30 · Park Field');
             const monday = admin.screen();
             yield* admin.tap('👥 +');
             yield* admin.tap('👥 +');
@@ -101,8 +100,8 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             expect(places.flat()).toEqual(
                 expect.arrayContaining(['✓ Park Field', 'North Arena', '📍 Інше місце', '➕ Нове місце', '⬅️ Назад'])
             );
-            expect(ready.buttons[2]?.map(button => button.text)).toEqual(['👥 −', '👥 19', '👥 +']);
-            expect(game).toMatchObject({ venueId: park, capacityMax: 19 });
+            expect(ready.buttons[1]?.map(button => button.text)).toEqual(['👥 −', '👥 21', '👥 +']);
+            expect(game).toMatchObject({ venueId: park, capacityMax: 21 });
             expect(admin.tidy()).toEqual({ unanswered: [], oversized: [] });
         })
     );
@@ -122,6 +121,9 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             yield* admin.tap('📍 North Arena');
             yield* admin.tap('➕ Нове місце');
             yield* admin.type('River Court');
+            const straight = admin.screen();
+            yield* admin.tap('📍 River Court');
+            yield* admin.tap('📍 Додати адресу');
             const pinAsked = admin.screen();
             yield* admin.location(48.2, 16.4);
             const ready = admin.screen();
@@ -130,6 +132,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             const [poll] = pollsTo(-1003);
 
             expect(refused).toContain('минул');
+            expect(straight.text).toContain('Опитування буде таким:');
             expect(pinAsked.buttons.flat().map(button => button.text)).toContain('⏭ Пропустити');
             expect(ready.text).toContain('Субота, 5 грудня, 20.15 River Court');
             expect(game?.capacityMax).toBe(22);
@@ -145,7 +148,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             const owner = adminNumbered(104);
             const admin = conversation(recorder, owner);
             yield* admin.type('/newgame');
-            yield* admin.tap('🛠 Вручну');
+            yield* admin.tap('🛠 З нуля');
             yield* admin.tap('Сб 28.11');
             yield* admin.tap('➕ Нове місце');
             yield* admin.type('Hill Park');
@@ -153,7 +156,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             yield* admin.type('17:00');
             yield* admin.tap('♾ Без ліміту');
             const preview = admin.screen();
-            yield* admin.tap('💾 Лише гра');
+            yield* admin.tap('💾 Зберегти без опитування');
             const [game] = yield* gamesOn(communityId, '2026-11-28');
 
             expect(preview.text).toContain('Субота, 28 листопада, 17.00 Hill Park');
@@ -168,17 +171,19 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             const owner = adminNumbered(105);
             const admin = conversation(recorder, owner);
             yield* admin.type('/newgame');
-            yield* admin.tap('✖️');
+            yield* admin.tap('Закрити');
             const home = admin.screen().text;
             yield* admin.type('/newgame');
             const main = admin.screen();
-            yield* admin.tap('✅ Надіслати мені');
+            yield* admin.tap('✅ Надіслати опитування мені');
             const [game] = yield* gamesOn(communityId, '2026-11-27');
 
             expect(home).toContain('Rondo');
-            expect(main.text).toContain('Опитування прийде тобі сюди');
-            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати мені']);
-            expect(main.text).toContain('У групу нічого не надіслано.');
+            expect(main.text).toContain('Опитування зʼявиться тут');
+            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати опитування мені']);
+            expect(main.text).toContain('Поки нічого не надіслано.');
+            expect(main.text).toContain('Опитування зʼявиться тут, у групу перешлеш ти.');
+            expect(main.buttons.flat().map(button => button.text)).not.toContain('📤 Куди');
             expect(game?.status).toBe('open');
         })
     );
@@ -211,7 +216,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             const other = conversation(recorder, second);
             yield* first.type('/newgame');
             yield* other.type('/newgame');
-            yield* other.tap('Пн 30.11 18:30 · Park Field');
+            yield* other.tap('↔️ Другая: Пн 18:30 · Park Field');
             yield* first.tap('👥 +');
             const ready = first.screen();
             yield* first.tapOn(ready, '✅ Опублікувати');

@@ -50,8 +50,9 @@ export const applyPlaceInput = Effect.fn('Bot.applyPlaceInput')(function* (user:
         return yield* placeOfName(user, name, actorPersonId).pipe(
             Effect.map(venueId => {
                 const located = data.venues.find(entry => entry.id === venueId)?.located ?? false;
+                const known = isDefined(draft.localDate) && isDefined(draft.localTime) && draft.sized;
 
-                return withVenue(draft, venueId, data, located ? null : 'map');
+                return withVenue(draft, venueId, data, located || known ? null : 'map');
             }),
             Effect.catchTag('ActionFailedError', () => Effect.succeed({ ...draft, notice: 'newPlaceName' }))
         );

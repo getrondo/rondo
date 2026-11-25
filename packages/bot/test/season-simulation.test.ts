@@ -2,8 +2,9 @@ import { describe, expect, it } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { addDays } from '@rondo/core/utils/add-days.util';
 
-import { applyOp, applyText, startDraft, withVenue } from '../src/menu/new-game/new-game.flow';
+import { applyOp, startDraft, withVenue } from '../src/menu/new-game/new-game.flow';
 import { newGameKeyboard } from '../src/menu/new-game/new-game.keyboard';
+import { applyText } from '../src/menu/new-game/typed-input';
 import { toShortId } from '../src/utils/to-short-id.util';
 
 import { syntheticSeason, type SeasonGame } from './support/season-model';
@@ -91,10 +92,14 @@ const planGame = (target: SeasonGame, data: NewGameData): Effort => {
             tap('vs', toShortId(venueId));
         } else {
             tap('vn');
-            draft = withVenue(draft, venueId, { ...data, venues: [...data.venues, named(venueId)] }, 'map');
+            const known = isDefined(draft.localDate) && isDefined(draft.localTime) && draft.sized;
+            draft = withVenue(draft, venueId, { ...data, venues: [...data.venues, named(venueId)] }, known ? null : 'map');
             taps += 1;
             typed += named(venueId).name.length;
-            tap('ms');
+
+            if (draft.view === 'map') {
+                tap('ms');
+            }
         }
     }
 
@@ -162,7 +167,7 @@ describe('a synthetic season through the /newgame screens', () => {
         const newPlace = results.filter(result => result.game.kind === 'new-place');
 
         expect(oneChange.filter(result => result.effort.taps > 4).map(result => result.game)).toEqual([]);
-        expect(newPlace.map(result => result.effort)).toEqual([{ taps: 6, typed: 14, changed: 1 }]);
+        expect(newPlace.map(result => result.effort)).toEqual([{ taps: 5, typed: 14, changed: 1 }]);
     });
 
     it('reports the effort per kind of game', () => {
@@ -185,7 +190,7 @@ describe('a synthetic season through the /newgame screens', () => {
           {
             "new-place": {
               "byTaps": {
-                "6": 1,
+                "5": 1,
               },
               "games": 1,
               "typed": 14,

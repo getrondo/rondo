@@ -14,6 +14,7 @@ export const actionContextFor = (tgUserId: bigint) =>
             timezone: Option.match(profile, { onNone: () => 'Europe/Vienna', onSome: value => value.timezone }),
             group: yield* mainGroupOf(communityId),
             groupLocale: yield* groupLocaleOf(communityId),
-            actorPersonId: yield* personIdOfTelegramUser(tgUserId)
+            actorPersonId: yield* personIdOfTelegramUser(tgUserId),
+            requester: tgUserId
         } satisfies ActionContext;
     }, Effect.orDie);
