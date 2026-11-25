@@ -1,4 +1,5 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -12,7 +13,7 @@ import { linkAlias, requireAlias, unlinkAlias } from '../people/alias-links.serv
 import { arePeopleOf, createPerson, mergePeople, renamePerson } from '../people/people.service';
 import { deleteSession } from '../sessions/delete-session';
 import { todayIn } from '../sessions/local-time';
-import { cancelSession, createSession, requireSession, updateSession } from '../sessions/session.service';
+import { cancelSession, createSession, findSameGame, requireSession, updateSession } from '../sessions/session.service';
 import { noticeTargets } from '../signups/audience';
 import { forwardPoll } from '../signups/forward-poll';
 import { publishPoll } from '../signups/publish-poll';
@@ -92,7 +93,18 @@ type ActionResult = Readonly<Record<string, string | number>>;
 const asResult = Effect.map((value: ActionResult): ActionResult => value);
 
 const createFrom = (action: Extract<Action, { _tag: 'create_session' }>, { communityId, timezone, actorPersonId }: ActionContext) =>
-    createSession({ ...action, communityId, timezone, actorPersonId });
+    withCommunityLock(
+        { id: communityId },
+        Effect.gen(function* () {
+            const existing = yield* findSameGame({ ...action, communityId, timezone });
+
+            if (Option.isSome(existing)) {
+                return yield* ActionFailedError.make({ reason: `the game already exists: ${existing.value}` });
+            }
+
+            return yield* createSession({ ...action, communityId, timezone, actorPersonId });
+        })
+    );
 
 const executeAction = Effect.fn('Core.executeAction')(function* (
     action: Exclude<Action, { _tag: 'announce_session' }>,

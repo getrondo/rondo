@@ -158,8 +158,19 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
     const target = { where: `«${first?.title ?? ''}»`, isPrivate: self };
     const outcome = yield* runConfirmed(user, actionOf(draft, withPoll, data), { summary: withPoll ? draft.summary : null, target });
 
+    const existing = outcome._tag === 'failed' ? /the game already exists: ([\w-]+)/u.exec(outcome.reason)?.[1] : null;
+    const at = { messageId, expected: consumed.value.revision };
+
+    if (isDefined(existing)) {
+        yield* rememberDone(user, at, { sessionId: existing, created: false, self: false, revision: String(row.revision) });
+        const card = yield* gameCardScreen(user, existing, { text: menuText(user.locale, 'gameExists'), saysPoll: false });
+        yield* showScreen(user.chatId, messageId, card);
+
+        return Option.none<string>();
+    }
+
     if (outcome._tag === 'failed' || !isDefined(outcome.sessionId)) {
-        yield* presentNewGame(user, { ...draft, ...failureOf(outcome) }, data, { messageId, expected: consumed.value.revision });
+        yield* presentNewGame(user, { ...draft, ...failureOf(outcome) }, data, at);
 
         return Option.none<string>();
     }
@@ -167,13 +178,13 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
     const done = { sessionId: outcome.sessionId, created: !isDefined(draft.sessionId), revision: String(row.revision) };
 
     if (self) {
-        yield* rememberDone(user, { messageId, expected: consumed.value.revision }, { ...done, self: true });
+        yield* rememberDone(user, at, { ...done, self: true });
         yield* showSelfReceipt(user, messageId, { sessionId: outcome.sessionId, status: done.created ? 'receiptMe' : 'sentMe' });
 
         return Option.none<string>();
     }
 
-    yield* rememberDone(user, { messageId, expected: consumed.value.revision }, { ...done, self: false });
+    yield* rememberDone(user, at, { ...done, self: false });
     const lines = withPoll ? yield* resultLines(user, draft, outcome.sessionId) : [menuText(user.locale, 'createdQuiet')];
     const card = yield* gameCardScreen(user, outcome.sessionId, { text: lines.join('\n'), saysPoll: withPoll });
     yield* showScreen(user.chatId, messageId, card);

@@ -141,8 +141,10 @@ without the bot still arrive as poll answers with public voters.
 | 128 | ADMIN AFTER | Delete keeps a game it cannot prove empty | 🗑 → ✅ with stopPoll refused, or more voters than stored | Poll closed when it could be | Plain reason, game kept | Game kept | update | `keeps the game when the poll cannot be closed or holds votes the bot has not seen` |
 | 129 | ADMIN AFTER | No delete without the bot poll | Card of a 💾 game or one with a line-up of other players | — | No 🗑 | — | update | `offers no delete for a game without the bot poll or with a line-up of other players` |
 | 130 | SEND SAFETY | Delete versus vote | Delete and a player vote at the same time (Postgres) | — | — | Never a deleted game with a counted vote | service | `never deletes a game whose player vote was counted at the same time` |
-| 131 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 132 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 133 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 134 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 135 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 131 | CREATE | Two admins post the same game | Both open /newgame, both ✅ | One poll | Second admin: «Гра вже є, друге опитування не надіслано» and the card with its poll | One game | update | `shows the game the other admin already posted instead of creating a second one` |
+| 132 | SEND SAFETY | Same game confirmed at once | Six confirmations of one game at the same moment (Postgres) | — | One done, the rest «already exists» | One game | service | `creates one game when two admins confirm the same game at once` |
+| 133 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 134 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 135 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 136 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 137 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |

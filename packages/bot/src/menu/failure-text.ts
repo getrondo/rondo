@@ -30,6 +30,7 @@ export const failureText = (locale: Locale, reason: string, target: FailureTarge
         [/no longer available/u, () => menuText(locale, 'placeGone')],
         [/could not be closed, so the game is kept/u, () => menuText(locale, 'reasonPollOpen')],
         [/votes the bot has not seen/u, () => menuText(locale, 'reasonUnseenVotes')],
+        [/the game already exists/u, () => menuText(locale, 'gameExists')],
         [/only a future game made by the bot/u, () => menuText(locale, 'reasonNotDeletable')]
     ];
     const match = known.find(([pattern]) => pattern.test(reason));

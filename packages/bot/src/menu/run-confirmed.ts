@@ -17,7 +17,7 @@ import type { Action } from '@rondo/core/actions/action.model';
 
 type ConfirmedOutcome =
     | { readonly _tag: 'done'; readonly sessionId: string | null }
-    | { readonly _tag: 'failed'; readonly text: string; readonly uncertain: boolean };
+    | { readonly _tag: 'failed'; readonly text: string; readonly uncertain: boolean; readonly reason: string };
 
 export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (
     user: MenuUser,
@@ -49,5 +49,5 @@ export const runConfirmed = Effect.fn('Bot.runConfirmed')(function* (
     const reason = outcome._tag === 'failed' ? outcome.reason : outcome._tag;
     const failure = failureText(user.locale, reason, { ...context.target, where: escapeHtml(context.target.where) });
 
-    return { _tag: 'failed', ...failure } satisfies ConfirmedOutcome;
+    return { _tag: 'failed', ...failure, reason } satisfies ConfirmedOutcome;
 });

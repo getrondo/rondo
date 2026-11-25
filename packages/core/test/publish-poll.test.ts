@@ -196,7 +196,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
             const { communityId } = yield* seedCommunity(seedConfig('publish-commit-fc'));
             const sessionId = yield* createSession(gameOf(communityId));
             const before = countOfCalls('stopPoll');
-            const last = yield* confirm(communityId, createAction);
+            const last = yield* confirm(communityId, { ...createAction, localTime: '11:00' });
             const messageId = Predicate.hasProperty(last.result, 'messageId') ? Number(last.result.messageId) + 2 : 0;
             yield* db.insert(telegramPoll).values({
                 pollId: 'committed',
