@@ -1,0 +1,143 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "67c5729f-2164-450b-9054-e5c275c5daf3",
+    "prevIds": ["e4e67498-39c2-4d8c-abdb-27c0ee7b1c88"],
+    "footprints": [
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "comms", "poll_forward"],
+            "writes": [
+                "s|tbl|comms.poll_forward",
+                "n|tbl|comms.poll_forward",
+                "e|tbl|comms.poll_forward",
+                "n|rel|comms.poll_forward",
+                "n|type|comms.poll_forward",
+                "n|rel|comms.poll_forward_pkey"
+            ],
+            "reads": ["n|sch|comms"]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "comms", "poll_forward"],
+            "writes": [
+                "s|fk|comms.poll_forward.poll_forward_poll_id_telegram_poll_poll_id_fkey",
+                "n|fk|comms.poll_forward.poll_forward_poll_id_telegram_poll_poll_id_fkey",
+                "e|fk|comms.poll_forward.poll_forward_poll_id_telegram_poll_poll_id_fkey",
+                "n|con|comms.poll_forward.poll_forward_poll_id_telegram_poll_poll_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|comms.poll_forward",
+                "n|sch|comms",
+                "n|tbl|comms.telegram_poll",
+                "n|sch|comms",
+                "n|col|comms.poll_forward.poll_id",
+                "n|col|comms.telegram_poll.poll_id",
+                "e|uniqueness|comms.telegram_poll.poll_id"
+            ]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "name": "poll_forward",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_forward",
+                "name": "poll_id",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_forward",
+                "name": "chat_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_forward",
+                "name": "message_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_forward",
+                "name": "claimed_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "now()",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_forward",
+                "name": "poll_forward_poll_id_telegram_poll_poll_id_fkey",
+                "nameExplicit": false,
+                "columns": ["poll_id"],
+                "schemaTo": "comms",
+                "tableTo": "telegram_poll",
+                "columnsTo": ["poll_id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "poll_forward",
+                "name": "poll_forward_pkey",
+                "columns": ["poll_id", "chat_id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        }
+    ]
+}

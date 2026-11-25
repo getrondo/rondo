@@ -145,8 +145,11 @@ without the bot still arrive as poll answers with public voters.
 | 132 | SEND SAFETY | Same game confirmed at once | Six confirmations of one game at the same moment (Postgres) | — | One done, the rest «already exists» | One game | service | `creates one game when two admins confirm the same game at once` |
 | 133 | SEND SAFETY | Card notice changed before ✅ | Card → 🕖 → 20:15, a player votes, then ✅ | Nothing, then exactly the previewed notice | «Дані змінилися…» and a fresh preview with the new name | Game moved after the second ✅ | update | `sends exactly the previewed notice and shows a fresh preview when it changed before ✅` |
 | 134 | SEND SAFETY | Card notice audience | update_session with a preview for other chats or other text | Nothing | — | Refused as changed | service | `sends a card notice only to the previewed audience with the previewed text` |
-| 135 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
-| 136 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
-| 137 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
-| 138 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
-| 139 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |
+| 135 | AUDIENCE | Forward with an unknown result | Card → 📣 Надіслати ще в → ✅ times out; card again; ✅ Немає, надіслати в | One forward, then one more after the admin says it is missing | «Не знаю, чи дійшло… голоси з нього рахуються», one ✅ button instead of 📣 | One claim per poll and group | update | `keeps one claim per group after an unknown forward and sends again only after the admin says it is not there` |
+| 136 | AUDIENCE | Forward claim | Unknown, repeat, refused, then sent | — | — | Claim kept when unknown, freed after a refusal | service | `claims a group once, keeps the claim when the result is unknown and frees it after a refusal` |
+| 137 | SEND SAFETY | Forwards at once | Eight forwards of one poll to one group (Postgres) | One forward | — | One claim | service | `forwards a poll to a group once when it is sent many times at once` |
+| 138 | PLANNED | Live list of signed players | — | — | — | — | — | planned #33 |
+| 139 | PLANNED | Who has not answered | — | — | — | — | — | planned #65 |
+| 140 | PLANNED | Repost of an organizer's poll | — | — | — | — | — | planned #51 |
+| 141 | PLANNED | Morning digest | — | — | — | — | — | planned #31 |
+| 142 | PLANNED | Repost of the bot's own poll | — | — | — | — | — | planned #66 |

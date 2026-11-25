@@ -71,6 +71,19 @@ export const telegramPoll = comms.table(
     t => [index('telegram_poll_session_idx').on(t.sessionId)]
 );
 
+export const pollForward = comms.table(
+    'poll_forward',
+    {
+        pollId: text('poll_id')
+            .notNull()
+            .references(() => telegramPoll.pollId, { onDelete: 'cascade' }),
+        chatId: bigint('chat_id', { mode: 'bigint' }).notNull(),
+        messageId: bigint('message_id', { mode: 'number' }),
+        claimedAt: instant('claimed_at').notNull().defaultNow()
+    },
+    t => [primaryKey({ columns: [t.pollId, t.chatId] })]
+);
+
 export const importedPoll = comms.table(
     'imported_poll',
     {

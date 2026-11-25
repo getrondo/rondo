@@ -114,7 +114,8 @@ const runGameAction = Effect.fn('Bot.runGameAction')(function* (
         return Option.none<string>();
     }
 
-    const card = yield* gameCardScreen(user, sessionOf(action), { text: outcome.text, saysPoll: false });
+    const unknownForward = action._tag === 'forward_poll' && /forward result is uncertain/u.test(outcome.reason);
+    const card = yield* gameCardScreen(user, sessionOf(action), unknownForward ? null : { text: outcome.text, saysPoll: false });
     yield* showScreen(user.chatId, tap.messageId, card);
 
     return Option.none<string>();
@@ -187,6 +188,14 @@ export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: Men
 
     if (yield* listTap(user, game.value, { op, arg, messageId })) {
         return Option.none<string>();
+    }
+
+    if (op === 'fr' && /^-\d+$/u.test(arg)) {
+        return yield* runGameAction(
+            user,
+            { _tag: 'forward_poll', sessionId: game.value.id, chatId: arg, resend: true },
+            { messageId, revision: '', expected: null }
+        );
     }
 
     if (op === 'pr') {

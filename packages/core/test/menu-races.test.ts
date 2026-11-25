@@ -16,19 +16,21 @@ import { Access } from '../src/access/admin-access';
 import { decideAction, proposeAction } from '../src/actions/pending-action.service';
 import { deleteSession } from '../src/sessions/delete-session';
 import { createSession } from '../src/sessions/session.service';
+import { forwardPoll } from '../src/signups/forward-poll';
 import { applyPollAnswer } from '../src/signups/signup.service';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
 import type { Action } from '../src/actions/action.model';
 
 const databaseUrl = process.env.RONDO_TEST_DATABASE_URL ?? '';
+const raceRecorder = makeRecorder();
 const rounds = 12;
 const now = new Date('2026-11-25T08:00:00Z');
 const withoutPostgres = isEmptyString(databaseUrl);
 
 const postgresLayer = Layer.mergeAll(
     Layer.effectDiscard(assertLocal(databaseUrl).pipe(Effect.andThen(runMigrations()))).pipe(Layer.provideMerge(Db.layer)),
-    recordingTelegramLayer(makeRecorder()),
+    recordingTelegramLayer(raceRecorder),
     Access.layerFor([42n])
 ).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ DATABASE_URL: databaseUrl }))));
 
@@ -111,6 +113,36 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('menu race
             expect(
                 outcomes.filter(outcome => outcome._tag === 'failed' && outcome.reason.startsWith('the game already exists'))
             ).toHaveLength(5);
+        })
+    );
+
+    it.effect.skipIf(withoutPostgres)('forwards a poll to a group once when it is sent many times at once', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig(`race-forward-${unique()}`));
+            const sessionId = yield* createSession({
+                communityId,
+                timezone: 'Europe/Vienna',
+                title: null,
+                actorPersonId: null,
+                venueId: null,
+                capacityMax: 14,
+                localDate: '2030-12-07',
+                localTime: '19:00'
+            });
+            const pollId = `race-forward-${unique()}`;
+            const target = { chatId: -9_400_000n - BigInt(Math.floor(performance.now())), topicId: null };
+            yield* db.insert(telegramPoll).values({ pollId, chatId: -1n, messageId: 1, sessionId, options: ['in', 'out'] });
+            const outcomes = yield* Effect.all(
+                Array.from({ length: 8 }, () => forwardPoll(sessionId, target, false).pipe(Effect.exit)),
+                { concurrency: 'unbounded' }
+            );
+            const forwards = raceRecorder.calls.filter(
+                call => call.method === 'forwardMessage' && call.payload.chat_id === Number(target.chatId)
+            );
+
+            expect(outcomes.filter(outcome => outcome._tag === 'Success')).toHaveLength(1);
+            expect(forwards).toHaveLength(1);
         })
     );
 });

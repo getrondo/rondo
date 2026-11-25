@@ -50,7 +50,11 @@ const AnnounceSessionAction = Schema.TaggedStruct('announce_session', {
 
 const DeleteSessionAction = Schema.TaggedStruct('delete_session', { sessionId: Schema.String });
 
-const ForwardPollAction = Schema.TaggedStruct('forward_poll', { sessionId: Schema.String, chatId: Schema.String });
+const ForwardPollAction = Schema.TaggedStruct('forward_poll', {
+    sessionId: Schema.String,
+    chatId: Schema.String,
+    resend: Schema.optional(Schema.Boolean)
+});
 
 const PublishTeamsAction = Schema.TaggedStruct('publish_teams', {
     sessionId: Schema.String,

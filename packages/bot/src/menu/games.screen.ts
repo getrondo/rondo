@@ -5,6 +5,7 @@ import { hasOpenPoll } from '@rondo/core/menu/game-history.repository';
 import { hasOnlyAdminVotes, isDeletableSession } from '@rondo/core/sessions/delete-session';
 import { listSessions, requireSession } from '@rondo/core/sessions/session.service';
 import { audienceOf } from '@rondo/core/signups/audience';
+import { unknownForwardsOf } from '@rondo/core/signups/forward-poll';
 import { rosterOf } from '@rondo/core/signups/signup.service';
 import { addDays } from '@rondo/core/utils/add-days.util';
 import { escapeHtml } from '@rondo/telegram/format/html';
@@ -12,6 +13,7 @@ import * as Effect from 'effect/Effect';
 
 import { buttonBudget } from '../utils/button-budget.util';
 import { fitLabel } from '../utils/fit-label.util';
+import { labelWidth } from '../utils/label-width.util';
 import { toShortId } from '../utils/to-short-id.util';
 
 import { signedUpLine, upcomingGames } from './home.screen';
@@ -88,6 +90,7 @@ interface CardState {
     readonly signed: number;
     readonly chats: readonly { readonly chatId: bigint; readonly title: string }[];
     readonly closedTo: readonly { readonly chatId: bigint; readonly title: string }[];
+    readonly unknownTo: readonly { readonly chatId: bigint; readonly title: string }[];
     readonly page: number;
 }
 
@@ -111,6 +114,14 @@ const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuBu
               [button('sendPollMe', 'pm')]
           ];
     const resend = state.privateOnly ? [[button('resendMe', 'pr')]] : [];
+    const unknownRows = state.unknownTo.map(chat => [
+        {
+            text: menuText(user.locale, 'resendTo', {
+                where: `«${fitLabel(chat.title, full - labelWidth(menuText(user.locale, 'resendTo', { where: '«»' })))}»`
+            }),
+            callback_data: `c:fr:${id}:${chat.chatId}`
+        }
+    ]);
     const openRows = state.closedTo.map(chat => [
         { text: fitLabel(menuText(user.locale, 'openFor', { title: chat.title }), full), callback_data: `c:f:${id}:${chat.chatId}` }
     ]);
@@ -123,6 +134,7 @@ const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuBu
     return [
         ...postRows,
         ...resend,
+        ...unknownRows,
         ...openRows,
         [button('time', 't'), button('day', 'dd')],
         [button('place', 'v'), button('size', 'z')],
@@ -179,13 +191,15 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
     const isOpen = yield* hasOpenPoll(sessionId);
     const onlyAdmins = yield* hasOnlyAdminVotes(user.communityId, sessionId);
     const canDelete = yield* isDeletableSession(user.communityId, sessionId, user.today);
+    const unknown = yield* unknownForwardsOf(sessionId);
     const state: CardState = {
         hasPoll: isNotEmptyArray(audience),
         canDelete,
         privateOnly: isOpen && onlyAdmins && isNotEmptyArray(audience) && audience.every(chatId => chatId > 0n),
         signed: signed.length,
         chats,
-        closedTo: isOpen ? chats.filter(chat => !audience.includes(chat.chatId)) : [],
+        closedTo: isOpen ? chats.filter(chat => !audience.includes(chat.chatId) && !unknown.includes(chat.chatId)) : [],
+        unknownTo: isOpen ? chats.filter(chat => unknown.includes(chat.chatId)) : [],
         page
     };
     const waiting = roster.filter(entry => entry.status === 'waitlisted');
@@ -195,6 +209,9 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
     const shown = signed.slice(page * namesPerPage, page * namesPerPage + namesPerPage);
     const lines = [
         ...(isDefined(header) ? [header.text, ''] : []),
+        ...(isUpcoming
+            ? state.unknownTo.map(chat => menuText(user.locale, 'uncertainForward', { where: escapeHtml(`«${chat.title}»`) }))
+            : []),
         `⚽ <b>${escapeHtml(formatSessionLabel(user.locale, game))}</b>`,
         ...(isDefined(closed) ? [closed] : []),
         ...(isUpcoming && header?.saysPoll !== true ? pollLine(user, state, audience) : []),
