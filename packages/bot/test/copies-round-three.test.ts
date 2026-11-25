@@ -120,4 +120,47 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(claim?.chatId).toBe(-1_000_026_004n);
         })
     );
+
+    it.effect('moves a supergroup even when the new chat already holds the same message or an older claim', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedSeason('r5-migrate-conflict', { groupChatId: -26_005, adminId: 2605 });
+            const admin = conversation(recorder, adminNumbered(2605));
+            yield* admin.type('/newgame');
+            yield* admin.tap('✅ Надіслати');
+            const pollId = lastPollId(recorder, -26_005);
+            const [ref] = yield* db.select().from(messageRef).where(eq(messageRef.chatId, -26_005n));
+            const moved = -1_000_026_005n;
+            yield* db.insert(messageRef).values({
+                chatId: moved,
+                messageId: ref?.messageId ?? 0,
+                purpose: 'lineup',
+                entityType: 'session',
+                entityId: ref?.entityId ?? ''
+            });
+            yield* db.insert(pollForward).values([
+                { pollId, chatId: -26_005n, messageId: 11, generation: 2, claimedAt: new Date('2026-11-26T09:05:00Z') },
+                { pollId, chatId: moved, messageId: null, generation: 1, claimedAt: new Date('2026-11-26T09:01:00Z') }
+            ]);
+            yield* deliver({
+                message: {
+                    message_id: 3,
+                    date: 1_795_680_000,
+                    chat: { id: -26_005, type: 'group', title: 'Games' },
+                    from: { id: 2605, is_bot: false, first_name: 'Admin 2605' },
+                    migrate_to_chat_id: Number(moved)
+                }
+            });
+            const [chat] = yield* db.select().from(telegramChat).where(eq(telegramChat.communityId, communityId));
+            const refs = yield* db
+                .select()
+                .from(messageRef)
+                .where(eq(messageRef.messageId, ref?.messageId ?? 0));
+            const claims = yield* db.select().from(pollForward).where(eq(pollForward.pollId, pollId));
+
+            expect(chat?.chatId).toBe(moved);
+            expect(refs.map(row => [row.chatId, row.purpose])).toEqual([[moved, 'lineup']]);
+            expect(claims.map(row => [row.chatId, row.messageId])).toEqual([[moved, 11]]);
+        })
+    );
 });
