@@ -45,7 +45,7 @@ export const upsertTelegramUser = Effect.fn('Core.upsertTelegramUser')(function*
                         username: user.username ?? null,
                         firstName: user.firstName,
                         lastName: user.lastName ?? null,
-                        languageCode: user.languageCode ?? null,
+                        languageCode: sql`coalesce(excluded.language_code, ${telegramAccount.languageCode})`,
                         lastSeenAt: sql`now()`
                     }
                 })
@@ -134,4 +134,17 @@ export const accountNamesOf = Effect.fn('Core.accountNamesOf')(function* (tgUser
         .where(inArray(telegramAccount.tgUserId, [...tgUserIds]));
 
     return new Map(rows.map(row => [String(row.tgUserId), row.name]));
+});
+
+export const rememberLanguage = Effect.fn('Core.rememberLanguage')(function* (tgUserId: bigint, languageCode: string | undefined) {
+    const db = yield* Db;
+
+    if (!isNotEmptyString(languageCode)) {
+        return;
+    }
+
+    yield* db
+        .update(telegramAccount)
+        .set({ languageCode })
+        .where(and(eq(telegramAccount.tgUserId, tgUserId), sql`${telegramAccount.languageCode} is distinct from ${languageCode}`));
 });

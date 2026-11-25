@@ -13,6 +13,7 @@ import { text } from '@rondo/core/i18n/messages';
 import { displayNameOf, syncMember } from '@rondo/core/identity/telegram-user';
 import { ingestGroupMessage } from '@rondo/core/live/live-ingest';
 import { recordPollCopy } from '@rondo/core/signups/record-poll-copy';
+import { recordLineupCopy } from '@rondo/core/teams/record-lineup-copy';
 import { topicOptions } from '@rondo/core/utils/topic-options.util';
 import { learnVenuePin } from '@rondo/core/venues/venue.service';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
@@ -67,6 +68,22 @@ const handleLink = Effect.fn('Bot.handleLink')(function* (message: Message, slug
     yield* reply(`${text(locale, 'linked')}: ${slug}`);
 });
 
+const recordBotCopy = Effect.fn('Bot.recordBotCopy')(function* (communityId: string, message: Message, body: string) {
+    const chatId = BigInt(message.chat.id);
+
+    if (isDefined(message.poll)) {
+        return yield* recordPollCopy({ communityId, pollId: message.poll.id, chatId, messageId: message.message_id });
+    }
+
+    if (message.forward_origin?.type === 'user' && message.forward_origin.sender_user.is_bot) {
+        yield* recordLineupCopy({ communityId, chatId, messageId: message.message_id, text: body });
+
+        return true;
+    }
+
+    return false;
+});
+
 export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* (message: Message) {
     const sender = message.from;
     const body = message.text ?? message.caption;
@@ -114,11 +131,7 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
         });
     }
 
-    const isBotPoll = isDefined(message.poll)
-        ? yield* recordPollCopy({ communityId, pollId: message.poll.id, chatId: BigInt(message.chat.id), messageId: message.message_id })
-        : false;
-
-    if (isBotPoll) {
+    if (yield* recordBotCopy(communityId, message, body ?? '')) {
         return noFollowUp;
     }
 

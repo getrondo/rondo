@@ -1,7 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { messageRef, pendingAction, telegramPoll } from '@rondo/db/schema/platform.schema';
-import { team } from '@rondo/db/schema/play.schema';
-import { session } from '@rondo/db/schema/scheduling.schema';
+import { team, teamMember } from '@rondo/db/schema/play.schema';
+import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { refusal } from '@rondo/telegram/testing/recording-telegram.layer';
 import { eq } from 'drizzle-orm';
@@ -11,9 +11,11 @@ import * as Predicate from 'effect/Predicate';
 
 import { describeAction } from '../src/actions/describe-action';
 import { decideAction, proposeAction } from '../src/actions/pending-action.service';
+import { syncMember } from '../src/identity/telegram-user';
 import { noticeOf } from '../src/notify/notice-preview';
 import { createSession } from '../src/sessions/session.service';
 import { publishPoll } from '../src/signups/publish-poll';
+import { publishTeamsAction } from '../src/teams/team.service';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -274,24 +276,51 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('publishing a poll', it => {
         })
     );
 
-    it.effect('keeps the posted teams when Telegram refuses new ones', () =>
+    it.effect('edits the posted teams and keeps them when Telegram refuses the edit, never posting a second line-up', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('publish-teams-fc'));
             const sessionId = yield* createSession(gameOf(communityId));
-            const teamsOf = (strength: number): Action => ({
-                _tag: 'publish_teams',
-                sessionId,
-                teams: [{ ordinal: 1, players: [], strength }]
-            });
-            yield* confirm(communityId, teamsOf(5));
-            const refused = refusal('sendMessage', 'Bad Request: not enough rights');
-            const { outcome } = yield* failing('sendMessage', refused, confirm(communityId, teamsOf(6)));
-            const stored = yield* db.select().from(team).where(eq(team.sessionId, sessionId));
+            const players = yield* Effect.all(
+                [1, 2, 3, 4].map(index => syncMember(communityId, { id: BigInt(7100 + index), firstName: `Team${index}` }, 'active'))
+            );
+            yield* db.insert(signup).values(players.map(personId => ({ sessionId, personId, status: 'in' as const })));
+            const teamsOf = (order: readonly string[]) =>
+                publishTeamsAction({
+                    communityId,
+                    sessionId,
+                    teams: [order.slice(0, 2), order.slice(2)].map((members, index) => ({
+                        ordinal: index + 1,
+                        players: members.map(personId => ({ personId, displayName: '', isGk: false }))
+                    })),
+                    teamCount: 2,
+                    locale: 'uk',
+                    privateChatId: null,
+                    fallback: Option.fromNullishOr(group),
+                    actorPersonId: null
+                });
+            const membersOf = () =>
+                db
+                    .select({ personId: teamMember.personId, ordinal: team.ordinal })
+                    .from(teamMember)
+                    .innerJoin(team, eq(team.id, teamMember.teamId))
+                    .where(eq(teamMember.sessionId, sessionId))
+                    .orderBy(teamMember.personId);
+            const sends = countOfCalls('sendMessage');
+            yield* confirm(communityId, yield* teamsOf(players));
+            const swapped = [players[2] ?? '', players[1] ?? '', players[0] ?? '', players[3] ?? ''];
+            const edited = yield* confirm(communityId, yield* teamsOf(swapped));
+            const afterEdit = yield* membersOf();
+            const refused = refusal('editMessageText', 'Bad Request: message to edit not found');
+            const back = yield* teamsOf(players);
+            const { outcome } = yield* failing('editMessageText', refused, confirm(communityId, back));
 
+            expect(countOfCalls('sendMessage') - sends).toBe(1);
+            expect(edited.outcome._tag).toBe('done');
             expect(outcome._tag).toBe('failed');
-            expect(stored.map(row => Number(row.predictedStrength))).toEqual([5]);
-            expect(stored[0]?.publishedAt).toBeInstanceOf(Date);
+            expect(reasonIn(outcome)).toContain('message to edit not found');
+            expect(yield* membersOf()).toEqual(afterEdit);
+            expect(afterEdit.find(row => row.personId === players[2])?.ordinal).toBe(1);
         })
     );
 

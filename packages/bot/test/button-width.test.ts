@@ -53,7 +53,6 @@ const steps: readonly Step[] = [
     ['op', 'g'],
     ['op', 'z'],
     ['op', 'g'],
-    ['op', 'k'],
     ['type', '/games'],
     ['op', 'gl'],
     ['type', '/newgame'],

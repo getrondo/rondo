@@ -5,8 +5,13 @@ const LocalTime = Schema.String.check(Schema.isPattern(/^\d{2}:\d{2}$/u));
 const FieldCount = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 9 }));
 const CancelReason = Schema.Literals(['weather', 'low_turnout', 'venue', 'holiday', 'organizer', 'other']);
 
-const TeamPlayer = Schema.Struct({ personId: Schema.String, displayName: Schema.String, strength: Schema.Finite, isGk: Schema.Boolean });
-const Team = Schema.Struct({ ordinal: Schema.Int, players: Schema.Array(TeamPlayer), strength: Schema.Finite });
+const TeamPlayer = Schema.Struct({
+    personId: Schema.String,
+    displayName: Schema.String,
+    strength: Schema.optional(Schema.Finite),
+    isGk: Schema.Boolean
+});
+const Team = Schema.Struct({ ordinal: Schema.Int, players: Schema.Array(TeamPlayer), strength: Schema.optional(Schema.Finite) });
 
 const NoticeTarget = Schema.Struct({ chatId: Schema.String, topicId: Schema.NullOr(Schema.Int) });
 
@@ -62,7 +67,9 @@ const ForwardPollAction = Schema.TaggedStruct('forward_poll', {
 const PublishTeamsAction = Schema.TaggedStruct('publish_teams', {
     sessionId: Schema.String,
     teams: Schema.Array(Team),
-    preview: Schema.optional(NoticePreview)
+    version: Schema.Int,
+    fingerprint: Schema.String,
+    preview: Schema.Struct({ text: Schema.String, to: Schema.Array(Schema.NullOr(Schema.String)), clearsResult: Schema.Boolean })
 });
 
 const MergePeopleAction = Schema.TaggedStruct('merge_people', { fromPersonId: Schema.String, intoPersonId: Schema.String });

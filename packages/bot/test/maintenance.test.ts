@@ -1,8 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { syncMember } from '@rondo/core/identity/telegram-user';
-import { createSession } from '@rondo/core/sessions/session.service';
 import { recordedTelegramDbLayer, recorder } from '@rondo/core/testing/recorded-telegram.layer';
-import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
+import { seedGame as seedBareGame } from '@rondo/core/testing/seed-game';
 import { telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
@@ -17,17 +16,7 @@ const afterTheGame = new Date('2026-12-04T22:00:00Z');
 
 const seedGame = Effect.fn('test.seedGame')(function* (slug: string) {
     const db = yield* Db;
-    const { communityId } = yield* seedCommunity(seedConfig(slug));
-    const sessionId = yield* createSession({
-        communityId,
-        timezone: 'Europe/Vienna',
-        localDate: '2026-12-04',
-        localTime: '19:30',
-        venueId: null,
-        capacityMax: null,
-        title: null,
-        actorPersonId: null
-    });
+    const { communityId, sessionId } = yield* seedBareGame(slug);
     const people = yield* Effect.all([1n, 2n, 3n].map(id => syncMember(communityId, { id, firstName: `P${id}` }, 'active')));
     const [first = '', second = '', third = ''] = people;
     yield* db.insert(signup).values([

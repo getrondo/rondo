@@ -31,7 +31,7 @@ export interface PollAnswerOutcome {
     readonly promoted: readonly PromotedPlayer[];
 }
 
-const fieldPlayersIn = Effect.fn('Core.fieldPlayersIn')(function* (sessionId: string, exceptPersonId: string | null) {
+export const fieldPlayersIn = Effect.fn('Core.fieldPlayersIn')(function* (sessionId: string, exceptPersonId: string | null) {
     const db = yield* Db;
     const conditions = [
         eq(signup.sessionId, sessionId),
@@ -81,7 +81,7 @@ const promoteWaitlisted = Effect.fn('Core.promoteWaitlisted')(function* (session
         return [];
     }
 
-    const account = primaryAccount(db);
+    const account = primaryAccount(db, sessionId);
     const waiting = yield* db
         .select({ id: signup.id, personId: signup.personId, displayName: person.displayName, tgUserId: account.tgUserId })
         .from(signup)
@@ -120,6 +120,15 @@ const refreshFullness = Effect.fn('Core.refreshFullness')(function* (sessionId: 
 
 const closedStatuses: SessionStatus[] = ['played', 'cancelled', 'moved'];
 
+export const fillFreeSeats = Effect.fn('Core.fillFreeSeats')(function* (sessionId: string, capacityMax: number | null) {
+    const promoted = isDefined(capacityMax)
+        ? yield* promoteWaitlisted(sessionId, capacityMax - (yield* fieldPlayersIn(sessionId, null)))
+        : [];
+    yield* refreshFullness(sessionId, capacityMax);
+
+    return promoted;
+});
+
 export const lockSession = Effect.fn('Core.lockSession')(function* (sessionId: string) {
     const db = yield* Db;
     const [row] = yield* db
@@ -151,10 +160,7 @@ const setSignup = Effect.fn('Core.setSignup')(function* (sessionId: string, pers
     const seatedStatus = hasSeat ? 'in' : 'waitlisted';
     const status = choice === 'out' ? 'out' : seatedStatus;
     yield* writeSignup({ sessionId, personId, role, status });
-    const promoted = isDefined(capacityMax)
-        ? yield* promoteWaitlisted(sessionId, capacityMax - (yield* fieldPlayersIn(sessionId, null)))
-        : [];
-    yield* refreshFullness(sessionId, capacityMax);
+    const promoted = yield* fillFreeSeats(sessionId, capacityMax);
 
     return Option.some<PollAnswerOutcome>({ sessionId, status, promoted });
 });
@@ -226,7 +232,14 @@ export const rosterOf = Effect.fn('Core.rosterOf')(function* (sessionId: string)
     const db = yield* Db;
 
     return yield* db
-        .select({ personId: signup.personId, displayName: person.displayName, role: signup.role, status: signup.status })
+        .select({
+            personId: signup.personId,
+            displayName: person.displayName,
+            role: signup.role,
+            status: signup.status,
+            isGuest: signup.isGuest,
+            hostId: signup.guestOfPersonId
+        })
         .from(signup)
         .innerJoin(person, eq(person.id, signup.personId))
         .where(eq(signup.sessionId, sessionId))

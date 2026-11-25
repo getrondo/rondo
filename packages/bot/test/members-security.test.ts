@@ -190,7 +190,6 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('19:30');
             yield* admin.tap('✅ Змінити й написати в «Games»');
             yield* admin.tap('👕 Склади');
-            yield* admin.tap('2 команди');
             yield* admin.tap('✅ Надіслати в «Games»');
             const posts = recorder.calls
                 .filter(call => call.method === 'sendMessage' && call.payload.chat_id === -8005)

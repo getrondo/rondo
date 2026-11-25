@@ -2,6 +2,7 @@ import { isDefined } from '@rnw-community/shared';
 import { decideAction, type DecisionOutcome } from '@rondo/core/actions/pending-action.service';
 import { resolveLocale, type Locale } from '@rondo/core/i18n/locale';
 import { text } from '@rondo/core/i18n/messages';
+import { rememberLanguage } from '@rondo/core/identity/telegram-user';
 import { clearAdminState } from '@rondo/core/menu/admin-state.repository';
 import { Telegram } from '@rondo/telegram/service/telegram.service';
 import * as Effect from 'effect/Effect';
@@ -39,11 +40,12 @@ const outcomeText = (locale: Locale, outcome: DecisionOutcome): string => {
     }
 };
 
-const menuData = /^[cmn]:/u;
+const menuData = /^[cmnt]:/u;
 
 const handleMenuCallback = Effect.fn('Bot.handleMenuCallback')(function* (query: CallbackQuery, chatId: number, messageId: number) {
     const telegram = yield* Telegram;
     const user = yield* menuUserOf(query.from);
+    yield* rememberLanguage(BigInt(query.from.id), query.from.language_code);
     const answer = (toast: string | undefined) =>
         telegram
             .call('answerCallbackQuery', api => api.answerCallbackQuery(query.id, isDefined(toast) ? { text: toast } : {}))

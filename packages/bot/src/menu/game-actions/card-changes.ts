@@ -1,6 +1,5 @@
 import { isDefined } from '@rnw-community/shared';
 import { ActionSchema, type Action } from '@rondo/core/actions/action.model';
-import { proposeTeams } from '@rondo/core/teams/team.service';
 import { requireVenue } from '@rondo/core/venues/venue.service';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -37,10 +36,3 @@ export const changeOf = (user: MenuUser, sessionId: string, tap: { readonly op: 
 };
 
 export const ownVenue = (user: MenuUser, venueId: string) => requireVenue(user.communityId, venueId).pipe(Effect.option);
-
-export const teamsOf = Effect.fn('Bot.teamsOf')(function* (sessionId: string, count: number) {
-    const teams = yield* proposeTeams(sessionId, count);
-    const players = teams.reduce((total, team) => total + team.players.length, 0);
-
-    return players >= count * 2 ? Option.some<Action>({ _tag: 'publish_teams', sessionId, teams }) : Option.none<Action>();
-});

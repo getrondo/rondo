@@ -1,4 +1,4 @@
-import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { isDefined } from '@rnw-community/shared';
 import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -18,7 +18,7 @@ import { cancelSession, createSession, findSameGame, requireSession, updateSessi
 import { forwardPoll } from '../signups/forward-poll';
 import { publishPoll } from '../signups/publish-poll';
 import { closePollsOf } from '../signups/signup.service';
-import { publishTeams, setSeedRating } from '../teams/team.service';
+import { executePublishTeams, setSeedRating } from '../teams/team.service';
 import { createVenue, requireVenue, updateVenue } from '../venues/venue.service';
 
 import type { Locale } from '../i18n/locale';
@@ -139,19 +139,13 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
             }).pipe(asResult);
         }
         case 'publish_teams': {
-            return yield* Effect.gen(function* () {
-                yield* requirePreviewed(action, context);
-                const target = yield* requireSession(communityId, action.sessionId);
-                const groups = previewedTargets(action) ?? (yield* noticeTargetsOf(context, action.sessionId));
-
-                if (!isNotEmptyArray(groups)) {
-                    return yield* ActionFailedError.make({ reason: 'no group is linked to this community yet' });
-                }
-
-                yield* publishTeams({ target, teams: action.teams, groups, locale, actorPersonId });
-
-                return { sessionId: action.sessionId };
-            }).pipe(asResult);
+            return yield* executePublishTeams(action, {
+                communityId,
+                locale,
+                actorPersonId,
+                privateChatId: isDefined(context.requester) ? Number(context.requester) : null,
+                fallback: context.group
+            }).pipe(Effect.as({ sessionId: action.sessionId }), asResult);
         }
         case 'delete_session': {
             const now = yield* DateTime.nowAsDate;
@@ -220,9 +214,6 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
 
 const peopleIn = (action: Action): readonly string[] => {
     switch (action._tag) {
-        case 'publish_teams': {
-            return action.teams.flatMap(({ players }) => players.map(({ personId }) => personId));
-        }
         case 'merge_people': {
             return [action.fromPersonId, action.intoPersonId];
         }
@@ -240,6 +231,7 @@ const peopleIn = (action: Action): readonly string[] => {
         case 'update_session':
         case 'cancel_session':
         case 'announce_session':
+        case 'publish_teams':
         case 'delete_session':
         case 'forward_poll': {
             return [];

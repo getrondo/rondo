@@ -6,6 +6,8 @@ import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lo
 import { and, eq, inArray, isNotNull, lt, ne } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
+import { outAfterSquad } from '../teams/lineup-of-draft';
+
 import type { SessionStatus } from './session.model';
 
 const unfinishedStatuses: SessionStatus[] = ['open', 'full', 'locked'];
@@ -24,12 +26,15 @@ const playersOf = Effect.fn('Core.playersOf')(function* (sessionId: string) {
         .innerJoin(team, eq(team.id, teamMember.teamId))
         .where(and(eq(teamMember.sessionId, sessionId), isNotNull(team.publishedAt)));
     const signups = yield* db
-        .select({ personId: signup.personId })
+        .select({ personId: signup.personId, isGuest: signup.isGuest, status: signup.status })
         .from(signup)
-        .where(and(eq(signup.sessionId, sessionId), eq(signup.status, 'in')));
-    const deciding = [lineup, teams].find(rows => isNotEmptyArray(rows)) ?? signups;
+        .where(eq(signup.sessionId, sessionId));
+    const excluded = new Set([...signups.filter(row => row.isGuest).map(row => row.personId), ...(yield* outAfterSquad(sessionId))]);
+    const signed = signups.filter(row => row.status === 'in');
+    const deciding = [teams, lineup].find(rows => isNotEmptyArray(rows)) ?? signed;
+    const players = [...new Set(deciding.flatMap(({ personId }) => (isDefined(personId) && !excluded.has(personId) ? [personId] : [])))];
 
-    return [...new Set(deciding.map(({ personId }) => personId).filter(personId => isDefined(personId)))];
+    return { players, excluded: [...excluded] };
 });
 
 const finishSession = Effect.fn('Core.finishSession')(function* (sessionId: string, startedBefore: Date) {
@@ -45,7 +50,14 @@ const finishSession = Effect.fn('Core.finishSession')(function* (sessionId: stri
     }
 
     yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
-    const players = yield* playersOf(sessionId);
+    const { players, excluded } = yield* playersOf(sessionId);
+
+    // Automatic attendance of guests and of who left after the squad goes, what an admin marked stays
+    if (isNotEmptyArray(excluded)) {
+        yield* db
+            .delete(attendance)
+            .where(and(eq(attendance.sessionId, sessionId), ne(attendance.source, 'manual'), inArray(attendance.personId, excluded)));
+    }
 
     if (isNotEmptyArray(players)) {
         yield* db

@@ -14,6 +14,7 @@ import { DraftSchema } from './new-game/draft';
 import { continueNewGame, handleNewGameTap, liveDraftElsewhere, openNewGame } from './new-game/new-game.handler';
 import { showScreen } from './show-screen';
 import { replyStale } from './stale-reply';
+import { handleTeamsTap } from './teams/teams.handler';
 
 import type { MenuUser } from './screen.interface';
 
@@ -56,7 +57,7 @@ const navigate = Effect.fn('Bot.navigate')(function* (user: MenuUser, parts: rea
             return Option.some(menuText(user.locale, 'stale'));
         }
 
-        const card = yield* gameCardPage(user, sessionId, null, Number(page ?? '0') || 0).pipe(Effect.option);
+        const card = yield* gameCardPage(user, sessionId, null, { page: Number(page ?? '0') || 0 }).pipe(Effect.option);
 
         if (Option.isNone(card)) {
             return Option.some(menuText(user.locale, 'unknownGame'));
@@ -104,6 +105,9 @@ export const handleMenuTap = Effect.fn('Bot.handleMenuTap')(function* (user: Men
         }
         case 'c': {
             return yield* handleGameTap(user, parts, messageId);
+        }
+        case 't': {
+            return yield* handleTeamsTap(user, data, messageId);
         }
         default: {
             return Option.some(menuText(user.locale, 'stale'));

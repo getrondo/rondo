@@ -1,0 +1,662 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "2f699242-aa79-4d06-a4fa-311fae7fa5a2",
+    "prevIds": ["ea1d59bc-290b-46b1-8bc7-b04a27f5f510"],
+    "footprints": [
+        {
+            "statementType": "create_enum",
+            "statementTarget": ["enum", "play", "lineup_delivery_status"],
+            "writes": [
+                "s|enum|play.lineup_delivery_status",
+                "n|enum|play.lineup_delivery_status",
+                "e|enum|play.lineup_delivery_status",
+                "n|type|play.lineup_delivery_status"
+            ],
+            "reads": ["n|sch|play"]
+        },
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "play", "lineup_delivery"],
+            "writes": [
+                "s|tbl|play.lineup_delivery",
+                "n|tbl|play.lineup_delivery",
+                "e|tbl|play.lineup_delivery",
+                "n|rel|play.lineup_delivery",
+                "n|type|play.lineup_delivery",
+                "n|rel|play.lineup_delivery_pkey"
+            ],
+            "reads": ["n|sch|play", "n|enum|play.lineup_delivery_status"]
+        },
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "play", "team_draft"],
+            "writes": [
+                "s|tbl|play.team_draft",
+                "n|tbl|play.team_draft",
+                "e|tbl|play.team_draft",
+                "n|rel|play.team_draft",
+                "n|type|play.team_draft",
+                "n|rel|play.team_draft_pkey"
+            ],
+            "reads": ["n|sch|play"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "play_private", "rating_event", "session_id"],
+            "writes": [
+                "s|col|play_private.rating_event.session_id",
+                "n|col|play_private.rating_event.session_id",
+                "e|col|play_private.rating_event.session_id"
+            ],
+            "reads": ["n|tbl|play_private.rating_event", "n|sch|play_private"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "play", "team", "rank"],
+            "writes": ["s|col|play.team.rank", "n|col|play.team.rank", "e|col|play.team.rank"],
+            "reads": ["n|tbl|play.team", "n|sch|play"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "scheduling", "signup", "is_guest"],
+            "writes": ["s|col|scheduling.signup.is_guest", "n|col|scheduling.signup.is_guest", "e|col|scheduling.signup.is_guest"],
+            "reads": ["n|tbl|scheduling.signup", "n|sch|scheduling"]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play", "lineup_delivery"],
+            "writes": [
+                "s|fk|play.lineup_delivery.lineup_delivery_session_id_session_id_fkey",
+                "n|fk|play.lineup_delivery.lineup_delivery_session_id_session_id_fkey",
+                "e|fk|play.lineup_delivery.lineup_delivery_session_id_session_id_fkey",
+                "n|con|play.lineup_delivery.lineup_delivery_session_id_session_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play.lineup_delivery",
+                "n|sch|play",
+                "n|tbl|scheduling.session",
+                "n|sch|scheduling",
+                "n|col|play.lineup_delivery.session_id",
+                "n|col|scheduling.session.id",
+                "e|uniqueness|scheduling.session.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play_private", "rating_event"],
+            "writes": [
+                "s|fk|play_private.rating_event.rating_event_session_id_session_id_fkey",
+                "n|fk|play_private.rating_event.rating_event_session_id_session_id_fkey",
+                "e|fk|play_private.rating_event.rating_event_session_id_session_id_fkey",
+                "n|con|play_private.rating_event.rating_event_session_id_session_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play_private.rating_event",
+                "n|sch|play_private",
+                "n|tbl|scheduling.session",
+                "n|sch|scheduling",
+                "n|col|play_private.rating_event.session_id",
+                "n|col|scheduling.session.id",
+                "e|uniqueness|scheduling.session.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play", "team_draft"],
+            "writes": [
+                "s|fk|play.team_draft.team_draft_session_id_session_id_fkey",
+                "n|fk|play.team_draft.team_draft_session_id_session_id_fkey",
+                "e|fk|play.team_draft.team_draft_session_id_session_id_fkey",
+                "n|con|play.team_draft.team_draft_session_id_session_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play.team_draft",
+                "n|sch|play",
+                "n|tbl|scheduling.session",
+                "n|sch|scheduling",
+                "n|col|play.team_draft.session_id",
+                "n|col|scheduling.session.id",
+                "e|uniqueness|scheduling.session.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play", "team_draft"],
+            "writes": [
+                "s|fk|play.team_draft.team_draft_community_id_community_id_fkey",
+                "n|fk|play.team_draft.team_draft_community_id_community_id_fkey",
+                "e|fk|play.team_draft.team_draft_community_id_community_id_fkey",
+                "n|con|play.team_draft.team_draft_community_id_community_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play.team_draft",
+                "n|sch|play",
+                "n|tbl|org.community",
+                "n|sch|org",
+                "n|col|play.team_draft.community_id",
+                "n|col|org.community.id",
+                "e|uniqueness|org.community.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play", "team_draft"],
+            "writes": [
+                "s|fk|play.team_draft.team_draft_updated_by_person_id_fkey",
+                "n|fk|play.team_draft.team_draft_updated_by_person_id_fkey",
+                "e|fk|play.team_draft.team_draft_updated_by_person_id_fkey",
+                "n|con|play.team_draft.team_draft_updated_by_person_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play.team_draft",
+                "n|sch|play",
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|col|play.team_draft.updated_by",
+                "n|col|identity.person.id",
+                "e|uniqueness|identity.person.id"
+            ]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "name": "lineup_delivery",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "name": "team_draft",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "name": "lineup_delivery_status",
+                "values": ["claimed", "sent", "uncertain", "refused"],
+                "entityType": "enums"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "session_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "chat_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "topic_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "message_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "text",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "status",
+                "type": "lineup_delivery_status",
+                "typeSchema": "play",
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "token",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "gen_random_uuid()",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "updated_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "now()",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "rating_event",
+                "name": "session_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team",
+                "name": "rank",
+                "type": "smallint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "session_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "community_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "version",
+                "type": "integer",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "1",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "state",
+                "type": "jsonb",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "proposed_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "changed_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "notified_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "published_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "publish_token",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "publish_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "updated_by",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "updated_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "now()",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "scheduling",
+                "table": "signup",
+                "name": "is_guest",
+                "type": "boolean",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "false",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "lineup_delivery_session_id_session_id_fkey",
+                "nameExplicit": false,
+                "columns": ["session_id"],
+                "schemaTo": "scheduling",
+                "tableTo": "session",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "rating_event",
+                "name": "rating_event_session_id_session_id_fkey",
+                "nameExplicit": false,
+                "columns": ["session_id"],
+                "schemaTo": "scheduling",
+                "tableTo": "session",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "SET NULL",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "team_draft_session_id_session_id_fkey",
+                "nameExplicit": false,
+                "columns": ["session_id"],
+                "schemaTo": "scheduling",
+                "tableTo": "session",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "team_draft_community_id_community_id_fkey",
+                "nameExplicit": false,
+                "columns": ["community_id"],
+                "schemaTo": "org",
+                "tableTo": "community",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "team_draft_updated_by_person_id_fkey",
+                "nameExplicit": false,
+                "columns": ["updated_by"],
+                "schemaTo": "identity",
+                "tableTo": "person",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "SET NULL",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "lineup_delivery",
+                "name": "lineup_delivery_pkey",
+                "columns": ["session_id", "chat_id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "team_draft_pkey",
+                "columns": ["session_id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        }
+    ]
+}

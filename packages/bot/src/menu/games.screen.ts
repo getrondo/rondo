@@ -7,6 +7,8 @@ import { listSessions, requireSession } from '@rondo/core/sessions/session.servi
 import { audienceOf } from '@rondo/core/signups/audience';
 import { unknownForwardsOf } from '@rondo/core/signups/forward-poll';
 import { rosterOf } from '@rondo/core/signups/signup.service';
+import { squadFingerprint, storedTeams } from '@rondo/core/teams/lineup-of-draft';
+import { teamName } from '@rondo/core/teams/lineup-post';
 import { addDays } from '@rondo/core/utils/add-days.util';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
@@ -19,6 +21,7 @@ import { toShortId } from '../utils/to-short-id.util';
 import { signedUpLine, upcomingGames } from './home.screen';
 import { menuText, type MenuKey } from './menu-text';
 import { quotedTitles } from './new-game/audience';
+import { teamsData } from './teams/teams-callback';
 
 import type { MenuButton, MenuUser, Screen } from './screen.interface';
 import type { Locale } from '@rondo/core/i18n/locale';
@@ -93,6 +96,7 @@ interface CardState {
     readonly unknownTo: readonly { readonly chatId: bigint; readonly title: string; readonly token: string }[];
     readonly retry: RetryTarget | null;
     readonly page: number;
+    readonly hasTeams: boolean;
 }
 
 const retryRoom = (user: MenuUser): number => full - labelWidth(menuText(user.locale, 'resendTo', { where: '«»' }));
@@ -147,8 +151,8 @@ const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuBu
     ]);
     const pages = Math.ceil(state.signed / namesPerPage);
     const paging = [
-        ...(state.page > 0 ? [{ text: '◀️', callback_data: `m:g:${id}:${state.page - 1}` }] : []),
-        ...(state.page + 1 < pages ? [{ text: '▶️', callback_data: `m:g:${id}:${state.page + 1}` }] : [])
+        ...(state.page > 0 ? [{ text: menuText(user.locale, 'previousPlayers'), callback_data: `m:g:${id}:${state.page - 1}` }] : []),
+        ...(state.page + 1 < pages ? [{ text: menuText(user.locale, 'nextPlayers'), callback_data: `m:g:${id}:${state.page + 1}` }] : [])
     ];
 
     return [
@@ -158,7 +162,18 @@ const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuBu
         ...openRows,
         [button('time', 't'), button('day', 'dd')],
         [button('place', 'v'), button('size', 'z')],
-        ...(state.signed >= 2 ? [[button('teams', 'k')]] : []),
+        ...(state.signed >= 2 || state.hasTeams
+            ? [
+                  [
+                      {
+                          text: state.hasTeams
+                              ? `✏️ ${menuText(user.locale, 'teams').replace(/^\S+\s/u, '')}`
+                              : menuText(user.locale, 'teams'),
+                          callback_data: teamsData({ sessionId: game.id, version: 0, page: 0 }, 'O')
+                      }
+                  ]
+              ]
+            : []),
         [button('cancelGame', 'x')],
         ...(state.canDelete ? [[button('deleteGame', 'd')]] : []),
         ...(isNotEmptyArray(paging) ? [paging] : [])
@@ -202,12 +217,59 @@ const countLine = (user: MenuUser, game: SessionView, signedLine: string, signed
     return [capitalized(signedLine), ...free].join(' · ');
 };
 
+const resultOf = (
+    user: MenuUser,
+    game: SessionView,
+    result: {
+        readonly teams: readonly { readonly ordinal: number; readonly rank: number | null; readonly badge: string }[];
+        readonly squad: string;
+    },
+    isChoosing: boolean
+): { readonly line: string; readonly rows: MenuButton[][] } | null => {
+    const stored = result.teams;
+    const hasStarted = game.startsAt.getTime() <= user.now.getTime() && game.status !== 'cancelled' && game.status !== 'moved';
+    const isRanked = stored.some(entry => isDefined(entry.rank));
+    const isCorrectable = !isRanked || user.now.getTime() <= game.startsAt.getTime() + 12 * 60 * 60_000;
+    const base = { sessionId: game.id, version: 0, page: 0 };
+    const nameAt = (index: number) => teamName(user.locale, stored[index]?.badge ?? '', index);
+
+    if (!hasStarted || !isNotEmptyArray(stored)) {
+        return null;
+    }
+
+    const winner = stored.findIndex(entry => entry.rank === 1);
+    const isDraw = stored.every(entry => entry.rank === 1);
+    const recorded = isDraw ? menuText(user.locale, 'recordedDraw') : menuText(user.locale, 'recordedWin', { team: nameAt(winner) });
+    const choice = [
+        ...Array.from({ length: Math.ceil(stored.length / 2) }, (_row, row) =>
+            stored.slice(row * 2, row * 2 + 2).map((entry, index) => ({
+                text: `🏆 ${nameAt(row * 2 + index)}`,
+                callback_data: teamsData(base, 'W', [entry.ordinal, result.squad])
+            }))
+        ),
+        [{ text: menuText(user.locale, 'draw'), callback_data: teamsData(base, 'W', [0, result.squad]) }]
+    ];
+    const change = isCorrectable ? [[{ text: menuText(user.locale, 'changeResult'), callback_data: teamsData(base, 'W', ['c']) }]] : [];
+
+    return {
+        line: isRanked && !isChoosing ? recorded : menuText(user.locale, 'howPlayed'),
+        rows: [
+            ...(isRanked && !isChoosing ? change : choice),
+            [
+                { text: menuText(user.locale, 'whoPlayed'), callback_data: teamsData(base, 'e') },
+                { text: menuText(user.locale, 'home_'), callback_data: 'm:h' }
+            ]
+        ]
+    };
+};
+
 export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
     user: MenuUser,
     sessionId: string,
     header: CardHeader | null,
-    page: number
+    card: { readonly page: number; readonly isChoosing?: boolean }
 ) {
+    const { page } = card;
     const game = yield* requireSession(user.communityId, sessionId);
     const roster = yield* rosterOf(sessionId);
     const signed = roster.filter(entry => entry.status === 'in' && entry.role === 'field');
@@ -218,6 +280,8 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
     const onlyAdmins = yield* hasOnlyAdminVotes(user.communityId, sessionId);
     const canDelete = yield* isDeletableSession(user.communityId, sessionId, user.today);
     const unknown = yield* unknownForwardsOf(sessionId);
+    const stored = yield* storedTeams(sessionId);
+    const result = resultOf(user, game, { teams: stored, squad: yield* squadFingerprint(sessionId) }, card.isChoosing === true);
     const state: CardState = {
         hasPoll: isNotEmptyArray(audience),
         canDelete,
@@ -235,33 +299,38 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
               )
             : [],
         retry: header?.retry ?? null,
-        page
+        page,
+        hasTeams: isNotEmptyArray(stored)
     };
     const waiting = roster.filter(entry => entry.status === 'waitlisted');
     const keepers = roster.filter(entry => entry.status === 'in' && entry.role === 'gk');
     const closed = closedText[user.locale][game.status];
     const signedLine = yield* signedUpLine(user, game);
     const shown = signed.slice(page * namesPerPage, page * namesPerPage + namesPerPage);
-    const lines = [
-        ...(isDefined(header) ? [header.text, ''] : []),
-        ...(isUpcoming
-            ? state.unknownTo
-                  .map(chat => menuText(user.locale, 'uncertainForward', { where: escapeHtml(`«${chat.title}»`) }))
-                  .filter(line => header?.text.includes(line) !== true)
-            : []),
-        `⚽ <b>${escapeHtml(formatSessionLabel(user.locale, game))}</b>`,
-        ...(isDefined(closed) ? [closed] : []),
-        ...(isUpcoming && header?.saysPoll !== true ? pollLine(user, state, audience) : []),
-        countLine(user, game, signedLine, signed.length),
-        ...shown.map((entry, index) => `${page * namesPerPage + index + 1}. ${escapeHtml(entry.displayName)}`),
-        ...(isNotEmptyArray(waiting) ? [`${menuText(user.locale, 'waiting')}: ${names(waiting)}`] : []),
-        ...(isNotEmptyArray(keepers) ? [`${menuText(user.locale, 'keepers')}: ${names(keepers)}`] : [])
-    ];
+    const title = `⚽ <b>${escapeHtml(formatSessionLabel(user.locale, game))}</b>`;
+    const lines = isDefined(result)
+        ? [...(isDefined(header) ? [header.text, ''] : []), title, '', result.line]
+        : [
+              ...(isDefined(header) ? [header.text, ''] : []),
+              ...(isUpcoming
+                  ? state.unknownTo
+                        .map(chat => menuText(user.locale, 'uncertainForward', { where: escapeHtml(`«${chat.title}»`) }))
+                        .filter(line => header?.text.includes(line) !== true)
+                  : []),
+              title,
+              ...(isDefined(closed) ? [closed] : []),
+              ...(isUpcoming && header?.saysPoll !== true ? pollLine(user, state, audience) : []),
+              countLine(user, game, signedLine, signed.length),
+              ...shown.map((entry, index) => `${page * namesPerPage + index + 1}. ${escapeHtml(entry.displayName)}`),
+              ...(isNotEmptyArray(waiting) ? [`${menuText(user.locale, 'waiting')}: ${names(waiting)}`] : []),
+              ...(isNotEmptyArray(keepers) ? [`${menuText(user.locale, 'keepers')}: ${names(keepers)}`] : [])
+          ];
 
     return {
         text: lines.join('\n'),
-        keyboard: [...(isUpcoming ? actionRows(user, game, state) : []), navRow(user.locale, 'm:gl')]
+        keyboard: isDefined(result) ? result.rows : [...(isUpcoming ? actionRows(user, game, state) : []), navRow(user.locale, 'm:gl')]
     } satisfies Screen;
 });
 
-export const gameCardScreen = (user: MenuUser, sessionId: string, header: CardHeader | null) => gameCardPage(user, sessionId, header, 0);
+export const gameCardScreen = (user: MenuUser, sessionId: string, header: CardHeader | null) =>
+    gameCardPage(user, sessionId, header, { page: 0 });

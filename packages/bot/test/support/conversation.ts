@@ -28,6 +28,11 @@ export interface Person {
 
 let nextUpdateId = 50_000;
 
+export const startUpdatesAt = (updateId: number) =>
+    Effect.sync(() => {
+        nextUpdateId = updateId;
+    });
+
 const keyboardOf = (markup: unknown): readonly (readonly Button[])[] =>
     (markup as { inline_keyboard?: Button[][] } | undefined)?.inline_keyboard ?? [];
 

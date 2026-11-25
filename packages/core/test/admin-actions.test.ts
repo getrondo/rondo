@@ -10,7 +10,7 @@ import { isAdminOf } from '../src/access/admin-access';
 import { syncMember } from '../src/identity/telegram-user';
 import { notifyPromoted } from '../src/notify/notifier';
 import { createSession, getSession } from '../src/sessions/session.service';
-import { confirmAsOwner } from '../src/testing/confirm-action';
+import { confirmAsOwner, teamsActionAsOwner } from '../src/testing/confirm-action';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 import { updateVenue } from '../src/venues/venue.service';
@@ -112,7 +112,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions, on
                     isGk: false
                 }))
             }));
-            yield* confirmAsOwner(communityId, { _tag: 'publish_teams', sessionId, teams }, -555n);
+            yield* confirmAsOwner(communityId, yield* teamsActionAsOwner(communityId, sessionId, teams, -555n), -555n);
             const lineup = String(postsSince(start).at(-1)?.payload.text);
             const target = Option.getOrThrow(yield* getSession(sessionId));
             yield* notifyPromoted({
@@ -123,7 +123,19 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions, on
             });
             const promoted = String(postsSince(start).at(-1)?.payload.text);
 
-            expect(lineup).toBe('<b>Склади: Нд 06.12 10:00 · North Arena</b>\n📍 <b>North Arena</b>\n🟢 Name1, Name2\n🔵 Name3, Name4');
+            expect(lineup).toBe(
+                [
+                    '<b>Склади: Нд 06.12 10:00 · North Arena</b>',
+                    '',
+                    '🔴 <b>Червоні · 2</b>',
+                    '<a href="tg://user?id=7001">Name1</a>',
+                    '<a href="tg://user?id=7002">Name2</a>',
+                    '',
+                    '🔵 <b>Сині · 2</b>',
+                    '<a href="tg://user?id=7003">Name3</a>',
+                    '<a href="tg://user?id=7004">Name4</a>'
+                ].join('\n')
+            );
             expect(lineup).not.toMatch(/4\.75|9\.5|Σ/u);
             expect(promoted).toBe(
                 '🎉 <a href="tg://user?id=7001">Name1</a>, звільнилося місце — ти в складі! Нд 06.12 10:00 · North Arena'

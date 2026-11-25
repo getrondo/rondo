@@ -5,7 +5,7 @@ import type { Action } from '@rondo/core/actions/action.model';
 
 export const GameDraftSchema = Schema.Struct({
     flow: Schema.Literal('game'),
-    view: Schema.Literals(['time', 'day', 'size', 'place', 'venues', 'venue_name', 'cancel', 'teams', 'confirm']),
+    view: Schema.Literals(['time', 'day', 'size', 'place', 'venues', 'venue_name', 'cancel', 'confirm']),
     page: Schema.Int,
     sessionId: Schema.String,
     action: Schema.NullOr(Schema.Unknown),
@@ -25,8 +25,7 @@ export const listViews: Readonly<Record<string, GameListView>> = {
     vl: 'venues',
     vn: 'venue_name',
     z: 'size',
-    x: 'cancel',
-    k: 'teams'
+    x: 'cancel'
 };
 
 export const awaitingOfView: Partial<Record<GameDraft['view'], string>> = {

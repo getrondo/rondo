@@ -10,6 +10,7 @@ import { account, ledgerEntry, ledgerTxn, priceRule } from '../src/schema/financ
 import { aliasLink, person, personAlias, telegramAccount } from '../src/schema/identity.schema';
 import { activity, community } from '../src/schema/org.schema';
 import { auditLog } from '../src/schema/platform.schema';
+import { team, teamColor } from '../src/schema/play.schema';
 import { session, signup, signupEvent } from '../src/schema/scheduling.schema';
 import { booking, field, venue } from '../src/schema/venue.schema';
 import { Db } from '../src/service/db.service';
@@ -289,6 +290,101 @@ layer(testDbLayer, { timeout: 60_000 })('database invariants', it => {
             expect(Exit.isFailure(direct)).toBe(true);
             expect(Exit.isSuccess(cascaded)).toBe(true);
             expect(left).toHaveLength(1);
+        })
+    );
+
+    it.effect('stores the money red bib as red, keeps its squads on the same row and merges it into an existing red', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const settings = {
+                ingest: {
+                    teamColors: [
+                        { emoji: '💷', name: 'orange' },
+                        { emoji: '💶', name: 'blue' }
+                    ]
+                }
+            };
+            const [moneyId = '', withRedId = ''] = (yield* db
+                .insert(community)
+                .values([
+                    { slug: 'money-red', name: 'Money', settings },
+                    { slug: 'money-red-taken', name: 'Taken', settings }
+                ])
+                .returning({ id: community.id })).map(({ id }) => id);
+            const [activityRow] = yield* db
+                .insert(activity)
+                .values({ communityId: moneyId, sport: 'football', name: 'Football' })
+                .returning({ id: activity.id });
+            const [takenActivity] = yield* db
+                .insert(activity)
+                .values({ communityId: withRedId, sport: 'football', name: 'Football' })
+                .returning({ id: activity.id });
+            const [orange, takenOrange, red] = yield* db
+                .insert(teamColor)
+                .values([
+                    { communityId: moneyId, name: 'orange', emoji: '💷' },
+                    { communityId: withRedId, name: 'orange', emoji: '💷' },
+                    { communityId: withRedId, name: 'red', emoji: '🔴' }
+                ])
+                .returning({ id: teamColor.id });
+            const [takenGame] = yield* db
+                .insert(session)
+                .values({
+                    communityId: withRedId,
+                    activityId: takenActivity?.id ?? '',
+                    localDate: '2026-01-03',
+                    startsAt: new Date('2026-01-03T18:00:00Z')
+                })
+                .returning({ id: session.id });
+            yield* db.insert(team).values({ sessionId: takenGame?.id ?? '', ordinal: 1, colorId: takenOrange?.id });
+            const [game] = yield* db
+                .insert(session)
+                .values({
+                    communityId: moneyId,
+                    activityId: activityRow?.id ?? '',
+                    localDate: '2026-01-02',
+                    startsAt: new Date('2026-01-02T18:00:00Z')
+                })
+                .returning({ id: session.id });
+            yield* db.insert(team).values({ sessionId: game?.id ?? '', ordinal: 1, colorId: orange?.id });
+            const badges = readFileSync(
+                fileURLToPath(new URL('../drizzle/20261125115337_team_badges/migration.sql', import.meta.url)),
+                'utf8'
+            )
+                .split('--> statement-breakpoint')
+                .map(statement => statement.trim());
+
+            for (const statement of [...badges, ...badges]) {
+                yield* db.execute(sql.raw(statement));
+            }
+
+            const colours = yield* db
+                .select({ communityId: teamColor.communityId, name: teamColor.name, emoji: teamColor.emoji })
+                .from(teamColor)
+                .orderBy(teamColor.name);
+            const [squad] = yield* db
+                .select({ colorId: team.colorId })
+                .from(team)
+                .where(eq(team.sessionId, game?.id ?? ''));
+            const [stored] = yield* db.select({ settings: community.settings }).from(community).where(eq(community.id, moneyId));
+
+            expect(colours.filter(colour => colour.communityId === moneyId)).toEqual([{ communityId: moneyId, name: 'red', emoji: '💷' }]);
+            const [takenSquad] = yield* db
+                .select({ colorId: team.colorId })
+                .from(team)
+                .where(eq(team.sessionId, takenGame?.id ?? ''));
+
+            expect(colours.filter(colour => colour.communityId === withRedId).map(({ name }) => name)).toEqual(['red']);
+            expect(squad?.colorId).toBe(orange?.id);
+            expect(takenSquad?.colorId).toBe(red?.id);
+            expect(stored?.settings).toEqual({
+                ingest: {
+                    teamColors: [
+                        { emoji: '💷', name: 'red' },
+                        { emoji: '💶', name: 'blue' }
+                    ]
+                }
+            });
         })
     );
 });

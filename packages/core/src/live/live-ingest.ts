@@ -9,17 +9,18 @@ import { extractLineup } from '@rondo/ingest-telegram/extract/extract-lineup';
 import { extractPoll, makeVenueMatcher } from '@rondo/ingest-telegram/extract/extract-poll';
 import { extractCancellation } from '@rondo/ingest-telegram/extract/extract-signals';
 import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
-import { storeLineup } from '@rondo/ingest-telegram/roster/store-lineup';
 import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { todayIn } from '../sessions/local-time';
 import { createSession, getSession, listSessions } from '../sessions/session.service';
+import { badgeOfEmoji, badgeOfRow } from '../teams/badges';
 import { findVenueByName, withKnownVenues } from '../venues/venue.service';
 
 import { gamesOfChat } from './games-of-chat';
 import { hasMainRoster } from './has-main-roster';
+import { storeHandSquad } from './store-hand-squad';
 
 import type { CancelReason, SessionView } from '../sessions/session.model';
 import type { CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
@@ -193,11 +194,14 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
         fact.teams.map(({ ordinal, emoji }) => ({
             sessionId,
             ordinal,
-            colorId: colors.find(color => color.emoji === emoji)?.id,
+            colorId: (
+                colors.find(color => color.emoji === emoji) ??
+                colors.find(color => badgeOfRow(color)?.colour === badgeOfEmoji(emoji)?.colour)
+            )?.id,
             publishedAt: message.sentAt
         }))
     );
-    yield* storeLineup({ communityId, sessionId, lineup: fact, senderName: message.senderName, chatId: otherChatId });
+    yield* storeHandSquad({ communityId, sessionId, lineup: fact, senderName: message.senderName, chatId: otherChatId });
 
     const status = fact.localDate < todayIn(config.timeZone, message.sentAt) ? 'played' : 'locked';
     yield* db

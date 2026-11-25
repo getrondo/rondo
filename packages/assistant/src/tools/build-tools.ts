@@ -2,6 +2,8 @@ import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { describeAction } from '@rondo/core/actions/describe-action';
 import { requireActionScope } from '@rondo/core/actions/execute-action';
 import { proposeAction } from '@rondo/core/actions/pending-action.service';
+import { groupLocaleOf, mainGroupOf } from '@rondo/core/community/community.repository';
+import { personIdOfTelegramUser } from '@rondo/core/identity/telegram-user';
 import { suggestAliasLinks } from '@rondo/core/people/alias-links.service';
 import { searchPeople, unresolvedAliases } from '@rondo/core/people/people.service';
 import { gamesToReview, listSessions, listVenues, requireSession } from '@rondo/core/sessions/session.service';
@@ -9,7 +11,7 @@ import { signedUpByVotes } from '@rondo/core/signups/signed-up-by-votes';
 import { rosterOf } from '@rondo/core/signups/signup.service';
 import { rankings, topPlayers } from '@rondo/core/stats/participation.service';
 import { communitySummary, inactivePlayers, playerHistory, venueUsage } from '@rondo/core/stats/stats.service';
-import { proposeTeams } from '@rondo/core/teams/team.service';
+import { publishTeamsAction } from '@rondo/core/teams/team.service';
 import { tool } from 'ai';
 import * as Effect from 'effect/Effect';
 import * as Predicate from 'effect/Predicate';
@@ -220,7 +222,7 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
     }),
     propose_publish_teams: tool({
         description:
-            'Balance the players signed in for a game into teams (using confidential levels) and propose posting the line-ups in the group.',
+            'Make teams for the players signed in for a game, the same way as the team editor, and propose posting them where the poll is. Never tell anyone about levels.',
         inputSchema: toolSchema(
             Schema.Struct({ sessionId: Schema.String, teamCount: Schema.Int.check(Schema.isBetween({ minimum: 2, maximum: 4 })) })
         ),
@@ -228,9 +230,17 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
             await run(
                 Effect.gen(function* () {
                     yield* requireSession(scope.communityId, input.sessionId);
-                    const teams = yield* proposeTeams(input.sessionId, input.teamCount);
+                    const action = yield* publishTeamsAction({
+                        ...input,
+                        communityId: scope.communityId,
+                        teams: null,
+                        locale: yield* groupLocaleOf(scope.communityId),
+                        privateChatId: Number(scope.tgUserId),
+                        fallback: yield* mainGroupOf(scope.communityId),
+                        actorPersonId: yield* personIdOfTelegramUser(scope.tgUserId)
+                    });
 
-                    return yield* propose(scope, { _tag: 'publish_teams', sessionId: input.sessionId, teams });
+                    return yield* propose(scope, action);
                 })
             )
     }),

@@ -8,6 +8,7 @@ import { removeUnusedNicknames } from '@rondo/ingest-telegram/load/remove-unused
 import { and, eq, sql, type SQL } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
+import * as Option from 'effect/Option';
 import * as Tracer from 'effect/Tracer';
 
 import { syncMember, upsertTelegramUser } from '../src/identity/telegram-user';
@@ -19,7 +20,7 @@ import { signedUpByVotes } from '../src/signups/signed-up-by-votes';
 import { applyPollAnswer } from '../src/signups/signup.service';
 import { personStatistics, topPlayers } from '../src/stats/participation.service';
 import { inactivePlayers } from '../src/stats/stats.service';
-import { publishTeams } from '../src/teams/team.service';
+import { publishLineup } from '../src/teams/publish-lineup';
 import { recordedTelegramDbLayer } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
@@ -424,7 +425,16 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
                 yield* firstStatementOf(unlinkEntry(entryTarget)),
                 yield* firstStatementOf(mergePeople({ communityId, fromPersonId: other, intoPersonId: account, actorPersonId: null })),
                 yield* firstStatementOf(
-                    publishTeams({ target, teams: [], groups: [{ chatId: -240n, topicId: null }], locale: 'uk', actorPersonId: null })
+                    publishLineup({
+                        communityId: target.communityId,
+                        sessionId: target.id,
+                        version: 0,
+                        fingerprint: '',
+                        locale: 'uk',
+                        actorPersonId: null,
+                        privateChatId: null,
+                        fallback: Option.none()
+                    }).pipe(Effect.ignore)
                 )
             ];
 

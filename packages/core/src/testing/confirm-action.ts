@@ -5,14 +5,43 @@ import * as Option from 'effect/Option';
 import { describeAction } from '../actions/describe-action';
 import { decideAction, proposeAction } from '../actions/pending-action.service';
 import { mainGroupOf } from '../community/community.repository';
+import { publishTeamsAction, type ProposedTeam } from '../teams/team.service';
 
 import type { Action } from '../actions/action.model';
 
-export const confirmAsOwner = Effect.fn('Testing.confirmAsOwner')(function* (communityId: string, action: Action, chatId?: bigint) {
-    const summary = yield* describeAction(action, 'uk', communityId);
-    const actionId = yield* proposeAction({ communityId, tgUserId: 42n, action, summary });
+const groupFor = Effect.fn('Testing.groupFor')(function* (communityId: string, chatId?: bigint) {
     const linked = yield* mainGroupOf(communityId);
-    const group = Option.isSome(linked) || !isDefined(chatId) ? linked : Option.some({ chatId, topicId: null });
+
+    return Option.isSome(linked) || !isDefined(chatId) ? linked : Option.some({ chatId, topicId: null });
+});
+
+export const teamsActionAsOwner = Effect.fn('Testing.teamsActionAsOwner')(function* (
+    communityId: string,
+    sessionId: string,
+    teams: readonly ProposedTeam[] | null,
+    chatId?: bigint
+) {
+    return yield* publishTeamsAction({
+        communityId,
+        sessionId,
+        teams,
+        teamCount: 2,
+        locale: 'uk',
+        privateChatId: null,
+        fallback: yield* groupFor(communityId, chatId),
+        actorPersonId: null
+    });
+});
+
+export const proposeAs = Effect.fn('Testing.proposeAs')(function* (communityId: string, tgUserId: bigint, action: Action) {
+    const summary = yield* describeAction(action, 'uk', communityId);
+
+    return yield* proposeAction({ communityId, tgUserId, action, summary });
+});
+
+export const confirmAsOwner = Effect.fn('Testing.confirmAsOwner')(function* (communityId: string, action: Action, chatId?: bigint) {
+    const actionId = yield* proposeAs(communityId, 42n, action);
+    const group = yield* groupFor(communityId, chatId);
 
     return yield* decideAction({
         actionId,

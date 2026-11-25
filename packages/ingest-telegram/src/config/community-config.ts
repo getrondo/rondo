@@ -27,7 +27,7 @@ const SquadConfigSchema = Schema.Struct({
 
 export const defaultGuestPatterns: readonly string[] = [
     '^(?:друг|подруга|friend)\\s+(?<host>.+)$',
-    '^(?:новый|новенький|новий|новичок|гость|guest)(?:\\s+(?:человек|игрок|player))?$',
+    '^(?:новый|новенький|новий|новичок|гость|гість|guest)(?:\\s+(?:человек|игрок|player))?$',
     '^\\+\\.?\\s*(?<count>\\d{1,2})\\s+(?:с|из|from)\\s'
 ];
 
