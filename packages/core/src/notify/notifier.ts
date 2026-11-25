@@ -42,22 +42,45 @@ const post = Effect.fn('Core.post')(function* (group: GroupTarget, html: string)
     yield* telegram.call('sendMessage', api => api.sendMessage(Number(group.chatId), html, { parse_mode: 'HTML', ...topicOptions(group) }));
 });
 
+export const sessionChangedHtml = Effect.fn('Core.sessionChangedHtml')(function* (input: {
+    readonly before: SessionView;
+    readonly after: SessionView;
+    readonly locale: Locale;
+}) {
+    const mentions = yield* mentionsOf(input.after.id);
+
+    return [
+        `<b>${text(input.locale, 'changed')}</b>`,
+        `<s>${escapeHtml(formatSessionLabel(input.locale, input.before))}</s>`,
+        `➡️ <b>${escapeHtml(formatSessionLabel(input.locale, input.after))}</b>`,
+        ...placeLines(input.after),
+        ...(isEmptyString(mentions) ? [] : [mentions])
+    ].join('\n');
+});
+
 export const notifySessionChanged = Effect.fn('Core.notifySessionChanged')(function* (input: {
     readonly before: SessionView;
     readonly after: SessionView;
     readonly group: GroupTarget;
     readonly locale: Locale;
 }) {
-    const mentions = yield* mentionsOf(input.after.id);
-    const lines = [
-        `<b>${text(input.locale, 'changed')}</b>`,
-        `<s>${escapeHtml(formatSessionLabel(input.locale, input.before))}</s>`,
-        `➡️ <b>${escapeHtml(formatSessionLabel(input.locale, input.after))}</b>`,
-        ...placeLines(input.after),
-        ...(isEmptyString(mentions) ? [] : [mentions])
-    ];
+    const html = yield* sessionChangedHtml(input);
 
-    yield* post(input.group, lines.join('\n'));
+    yield* post(input.group, html);
+});
+
+export const sessionCancelledHtml = Effect.fn('Core.sessionCancelledHtml')(function* (input: {
+    readonly target: SessionView;
+    readonly reason: string;
+    readonly locale: Locale;
+}) {
+    const mentions = yield* mentionsOf(input.target.id);
+
+    return [
+        `<b>${text(input.locale, 'cancelled')}: ${escapeHtml(formatSessionLabel(input.locale, input.target))}</b>`,
+        `${text(input.locale, 'reason')}: ${escapeHtml(cancelReasonText(input.locale, input.reason))}`,
+        ...(isEmptyString(mentions) ? [] : [mentions])
+    ].join('\n');
 });
 
 export const notifySessionCancelled = Effect.fn('Core.notifySessionCancelled')(function* (input: {
@@ -66,14 +89,9 @@ export const notifySessionCancelled = Effect.fn('Core.notifySessionCancelled')(f
     readonly group: GroupTarget;
     readonly locale: Locale;
 }) {
-    const mentions = yield* mentionsOf(input.target.id);
-    const lines = [
-        `<b>${text(input.locale, 'cancelled')}: ${escapeHtml(formatSessionLabel(input.locale, input.target))}</b>`,
-        `${text(input.locale, 'reason')}: ${escapeHtml(cancelReasonText(input.locale, input.reason))}`,
-        ...(isEmptyString(mentions) ? [] : [mentions])
-    ];
+    const html = yield* sessionCancelledHtml(input);
 
-    yield* post(input.group, lines.join('\n'));
+    yield* post(input.group, html);
 });
 
 export const notifyPromoted = Effect.fn('Core.notifyPromoted')(function* (input: {

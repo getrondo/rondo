@@ -15,6 +15,7 @@ import * as Schema from 'effect/Schema';
 import { noFollowUp, type FollowUp } from '../context/follow-up';
 import { sendProposal } from '../context/send-proposal';
 import { toTelegramUser } from '../context/telegram-user.mapper';
+import { handleGameInput } from '../menu/game-actions/game-actions.handler';
 import { gamesScreen } from '../menu/games.screen';
 import { homeScreen } from '../menu/home.screen';
 import { menuUserOf } from '../menu/menu-user';
@@ -58,8 +59,12 @@ const typedInput = Effect.fn('Bot.typedInput')(function* (user: MenuUser, messag
     const state = yield* loadAdminState(user.tgUserId, user.now);
     const draft = state.pipe(Option.flatMap(row => decodeDraft(row.draft)));
 
-    if (Option.isNone(state) || Option.isNone(draft) || !isDefined(state.value.awaiting)) {
+    if (Option.isNone(state) || !isDefined(state.value.awaiting)) {
         return false;
+    }
+
+    if (Option.isNone(draft)) {
+        return yield* handleGameInput(user, state.value, message.text?.trim() ?? '');
     }
 
     const location = isDefined(message.location) ? { lat: message.location.latitude, lng: message.location.longitude } : null;

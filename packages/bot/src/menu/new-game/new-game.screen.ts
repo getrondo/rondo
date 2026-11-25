@@ -61,7 +61,7 @@ const pollOf = Effect.fn('Bot.pollOf')(function* (user: MenuUser, draft: Draft) 
     return yield* pollFor(user.communityId, { ...game, ...display }, draft.note);
 });
 
-const pollHtml = (poll: PollText): string =>
+export const pollHtml = (poll: PollText): string =>
     [
         `<blockquote>${escapeHtml(poll.question)}\n\n${poll.answers.map(answer => `▫️ ${escapeHtml(answer)}`).join('\n')}</blockquote>`,
         ...(isDefined(poll.place) ? [placeHtml(poll.place)] : []),

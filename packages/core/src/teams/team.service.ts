@@ -109,6 +109,23 @@ const lineupText = (locale: Locale, target: SessionView, teams: readonly Balance
     ].join('\n');
 };
 
+const teamColorsOf = Effect.fn('Core.teamColorsOf')(function* (communityId: string) {
+    const db = yield* Db;
+
+    return yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId)).orderBy(asc(teamColor.name));
+});
+
+export const lineupHtml = Effect.fn('Core.lineupHtml')(function* (locale: Locale, target: SessionView, teams: readonly BalancedTeam[]) {
+    const colors = yield* teamColorsOf(target.communityId);
+
+    return lineupText(
+        locale,
+        target,
+        teams,
+        colors.map(color => color.emoji ?? '')
+    );
+});
+
 interface PublishInput {
     readonly target: SessionView;
     readonly teams: readonly BalancedTeam[];
@@ -168,7 +185,7 @@ export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: Pub
     const { communityId } = input.target;
     const isSent = yield* Ref.make(false);
     const publish = Effect.gen(function* () {
-        const colors = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId)).orderBy(asc(teamColor.name));
+        const colors = yield* teamColorsOf(communityId);
         yield* storeTeams(
             input,
             colors.map(color => color.id)
