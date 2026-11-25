@@ -11,6 +11,7 @@
         "test": "vitest run",
         "ingest": "node --env-file-if-exists=../../.env --import tsx src/main.ts",
         "rehearse": "node --import tsx src/rehearsal/rehearse.main.ts",
+        "groups": "node --import tsx src/groups/groups.main.ts",
         "approvals": "node --env-file-if-exists=../../.env --import tsx src/approvals/approvals.main.ts"
     },
     "dependencies": {
