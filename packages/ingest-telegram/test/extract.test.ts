@@ -1,15 +1,15 @@
 import { isDefined } from '@rnw-community/shared';
+import { extractLineup } from '@rondo/core/extract/extract-lineup';
+import { makeVenueMatcher } from '@rondo/core/extract/extract-poll';
+import { makeFixtureExtractor } from '@rondo/core/extract/extract-signals';
+import { findLocalTime, resolveGameDate } from '@rondo/core/extract/game-date';
+import { normalizeAlias } from '@rondo/core/extract/normalize';
+import { zonedToInstant } from '@rondo/core/extract/zoned-time';
+import { aliasesIn } from '@rondo/core/identity/aliases-in';
 import { describe, expect, it } from 'vitest';
 
 import { assemblePlan, type ImportPlan } from '../src/extract/assemble-plan';
 import { extractAll } from '../src/extract/extract-all';
-import { extractLineup } from '../src/extract/extract-lineup';
-import { makeVenueMatcher } from '../src/extract/extract-poll';
-import { makeFixtureExtractor } from '../src/extract/extract-signals';
-import { findLocalTime, resolveGameDate } from '../src/extract/game-date';
-import { normalizeAlias } from '../src/extract/normalize';
-import { zonedToInstant } from '../src/extract/zoned-time';
-import { aliasesIn } from '../src/identity/aliases-in';
 
 import { message, testConfig } from './fixture';
 

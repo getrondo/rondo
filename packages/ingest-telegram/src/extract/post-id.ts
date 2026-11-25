@@ -2,7 +2,7 @@
 import { isDefined } from '@rnw-community/shared';
 import * as Option from 'effect/Option';
 
-import type { CommunityConfig } from '../config/community-config';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
 
 const chatRange = 2 ** 32;
 

@@ -1,13 +1,12 @@
 import { isDefined, isEmptyArray, isNotEmptyString } from '@rnw-community/shared';
+import { syncSessionRoster } from '@rondo/core/roster/sync-session-roster';
 import { activity, community, sportEnum } from '@rondo/db/schema/org.schema';
 import { session, sessionChange } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import { and, eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
-
-import { withCommunityLock } from '../load/with-community-lock';
-import { syncSessionRoster } from '../roster/sync-session-roster';
 
 const DecisionSchema = Schema.Struct({
     date: Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/u)),

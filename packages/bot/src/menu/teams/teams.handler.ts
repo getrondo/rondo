@@ -3,7 +3,7 @@ import { requireSession } from '@rondo/core/sessions/session.service';
 import { guestsOf, joinCandidates, markedNoShows, waitingOf } from '@rondo/core/signups/roster.service';
 import { playersOf } from '@rondo/core/teams/draft-state';
 import { personNames } from '@rondo/core/teams/team-inputs';
-import { recordResult, squadChanged } from '@rondo/core/teams/team-result';
+import { recordResult } from '@rondo/core/teams/team-result';
 import { setTier } from '@rondo/core/teams/team.service';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -161,7 +161,7 @@ const resultTap = Effect.fn('Bot.teamsResult')(function* (user: MenuUser, tap: T
           }).pipe(
               Effect.as(true),
               Effect.catchTag('ActionFailedError', failure =>
-                  failure.reason === squadChanged ? Effect.succeed(false) : Effect.fail(failure)
+                  failure.failure.code === 'squad_changed' ? Effect.succeed(false) : Effect.fail(failure)
               )
           );
     const card = yield* gameCardPage(user, tap.sessionId, null, { page: 0, isChoosing });

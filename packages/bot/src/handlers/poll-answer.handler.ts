@@ -11,7 +11,7 @@ import * as Option from 'effect/Option';
 import { toTelegramUser } from '../context/telegram-user.mapper';
 import { rosterChanged } from '../menu/teams/teams-notify';
 
-import type { PollAnswer } from 'grammy/types';
+import type { PollAnswer } from '@rondo/telegram/webhook/telegram-update.model';
 
 export const handlePollAnswer = Effect.fn('Bot.handlePollAnswer')(function* (answer: PollAnswer) {
     if (!isDefined(answer.user)) {

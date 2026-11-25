@@ -1,5 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
+import { loadEvidence } from '@rondo/core/identity/load-evidence';
 import { aliasLink, personAlias } from '@rondo/db/schema/identity.schema';
 import { community, telegramChat } from '@rondo/db/schema/org.schema';
 import { extraction, importedPoll, messageRef, pollVote, sourceRef, telegramPoll } from '@rondo/db/schema/platform.schema';
@@ -14,12 +15,11 @@ import * as Option from 'effect/Option';
 
 import { compareApprovals, loadApprovals } from '../src/approvals/load-approvals';
 import { parseApprovals } from '../src/approvals/parse-approvals';
-import { loadEvidence } from '../src/identity/load-evidence';
 import { importMessages } from '../src/ingest.effect';
 
 import { accountPerson, message, testConfig } from './fixture';
 
-import type { TelegramSnapshot } from '../src/model/telegram-snapshot.model';
+import type { TelegramSnapshot } from '@rondo/core/model/telegram-snapshot.model';
 
 type Message = ReturnType<typeof message>;
 

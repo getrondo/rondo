@@ -74,7 +74,7 @@ export const requirePreviewed = Effect.fn('Core.requirePreviewed')(function* (ac
     const current = yield* noticeOf(action, context);
 
     if (current.html !== action.preview.html || JSON.stringify(current.targets) !== JSON.stringify(action.preview.targets)) {
-        return yield* ActionFailedError.make({ reason: 'the notice changed after the preview, ask for a new one' });
+        return yield* ActionFailedError.make({ failure: { code: 'preview_changed' } });
     }
 
     return action;

@@ -1,5 +1,5 @@
-import type { TelegramMessage } from '../model/telegram-message.model';
-import type { TelegramSnapshot } from '../model/telegram-snapshot.model';
+import type { TelegramMessage } from '@rondo/core/model/telegram-message.model';
+import type { TelegramSnapshot } from '@rondo/core/model/telegram-snapshot.model';
 import type * as Option from 'effect/Option';
 
 export interface ChatContent {

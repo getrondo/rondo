@@ -4,7 +4,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
     outputFileTracingRoot: path.join(import.meta.dirname, '../../'),
-    transpilePackages: ['@rondo/assistant', '@rondo/bot', '@rondo/core', '@rondo/db', '@rondo/ingest-telegram', '@rondo/telegram'],
+    transpilePackages: ['@rondo/assistant', '@rondo/bot', '@rondo/core', '@rondo/db', '@rondo/telegram'],
     serverExternalPackages: ['pg'],
     poweredByHeader: false
 };

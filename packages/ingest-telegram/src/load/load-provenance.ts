@@ -1,12 +1,12 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { chunks } from '@rondo/core/utils/chunks.util';
+import { insertMany } from '@rondo/core/utils/insert-many.util';
 import { extraction, ingestRun, sourceRef } from '@rondo/db/schema/platform.schema';
 import { eq } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
 import { sourceOf } from '../extract/post-id';
-import { chunks } from '../utils/chunks.util';
-import { insertMany } from '../utils/insert-many.util';
 
 import type { PlannedSession } from '../extract/assemble-plan';
 import type { LoadContext } from '../interface/load-context.interface';

@@ -10,7 +10,7 @@ export interface LinkDecisions {
     readonly hasOtherNickname: (aliasId: string, personId: string) => boolean;
 }
 
-export const loadDecisions = Effect.fn('IngestTelegram.loadDecisions')(function* (communityId: string) {
+export const loadDecisions = Effect.fn('Core.loadDecisions')(function* (communityId: string) {
     const db = yield* Db;
     const rejections = yield* db
         .selectDistinct({ aliasId: aliasLink.aliasId, personId: aliasLink.personId, sessionId: lineupEntry.sessionId })

@@ -2,8 +2,8 @@ import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { rating, ratingEvent, team } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
-import { and, asc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
+import { and, asc, eq, gt, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { recordAudit } from '../audit/record-audit';
@@ -12,13 +12,11 @@ import { requireSession } from '../sessions/session.service';
 import { markedNoShows } from '../signups/roster.service';
 
 import { outAfterSquad, squadFingerprint, squadOf } from './lineup-of-draft';
+import { isPublishing } from './publish-claim';
 import { rateResult } from './rate-result';
 import { ratingsOf } from './team-inputs';
 
 const correctionMs = 12 * 60 * 60_000;
-
-export const squadChanged = 'the teams changed after the card was shown';
-export const resultRecorded = 'the result is already recorded';
 
 // Who played: the squad without sign-ups that are out and without no-shows an admin marked
 const playedSquad = Effect.fn('Core.playedSquad')(function* (sessionId: string) {
@@ -55,12 +53,37 @@ export const isRevertible = Effect.fn('Core.isRevertible')(function* (sessionId:
     return { events, isRevertible: !isNotEmptyArray(later) };
 });
 
+export const hasResult = Effect.fn('Core.hasResult')(function* (sessionId: string) {
+    const db = yield* Db;
+    const ranked = yield* db
+        .select({ id: team.id })
+        .from(team)
+        .where(and(eq(team.sessionId, sessionId), isNotNull(team.rank)))
+        .limit(1);
+    const rated = yield* db.select({ id: ratingEvent.id }).from(ratingEvent).where(eq(ratingEvent.sessionId, sessionId)).limit(1);
+
+    return isNotEmptyArray([...ranked, ...rated]);
+});
+
+// Changes whenever a result is recorded, corrected or cleared
+export const resultMark = Effect.fn('Core.resultMark')(function* (sessionId: string) {
+    const db = yield* Db;
+    const ranks = yield* db.select({ rank: team.rank }).from(team).where(eq(team.sessionId, sessionId)).orderBy(asc(team.ordinal));
+    const events = yield* db
+        .select({ id: ratingEvent.id })
+        .from(ratingEvent)
+        .where(eq(ratingEvent.sessionId, sessionId))
+        .orderBy(asc(ratingEvent.id));
+
+    return JSON.stringify([ranks.filter(row => isDefined(row.rank)), events]);
+});
+
 const revertResult = Effect.fn('Core.revertResult')(function* (sessionId: string, isSameEvening: boolean) {
     const db = yield* Db;
     const { events, isRevertible: canRevert } = yield* isRevertible(sessionId);
 
     if (!isSameEvening || !canRevert) {
-        return yield* ActionFailedError.make({ reason: resultRecorded });
+        return yield* ActionFailedError.make({ failure: { code: 'result_recorded' } });
     }
 
     for (const event of events) {
@@ -101,23 +124,27 @@ export const recordResult = Effect.fn('Core.recordResult')(
                 );
 
                 if (target.status === 'cancelled' || target.status === 'moved') {
-                    return yield* ActionFailedError.make({ reason: 'the game is already over or cancelled' });
+                    return yield* ActionFailedError.make({ failure: { code: 'game_over' } });
+                }
+
+                if (yield* isPublishing(input.sessionId)) {
+                    return yield* ActionFailedError.make({ failure: { code: 'publish_busy' } });
                 }
 
                 if (isDefined(input.squad) && input.squad !== (yield* squadFingerprint(input.sessionId))) {
-                    return yield* ActionFailedError.make({ reason: squadChanged });
+                    return yield* ActionFailedError.make({ failure: { code: 'squad_changed' } });
                 }
 
                 if (input.now.getTime() < target.startsAt.getTime()) {
-                    return yield* ActionFailedError.make({ reason: 'the game has not started yet' });
+                    return yield* ActionFailedError.make({ failure: { code: 'game_not_started' } });
                 }
 
                 if (!isNotEmptyArray(teams)) {
-                    return yield* ActionFailedError.make({ reason: 'the game has no teams' });
+                    return yield* ActionFailedError.make({ failure: { code: 'no_teams' } });
                 }
 
                 if (isDefined(input.winner) && !teams.some(entry => entry.ordinal === input.winner)) {
-                    return yield* ActionFailedError.make({ reason: 'the game has no such team' });
+                    return yield* ActionFailedError.make({ failure: { code: 'team_not_found' } });
                 }
 
                 const ranks = teams.map(entry => (!isDefined(input.winner) || entry.ordinal === input.winner ? 1 : 2));

@@ -1,17 +1,17 @@
 import { describe, expect, it } from '@effect/vitest';
+import { resolvePollDate } from '@rondo/core/extract/game-date';
+import { isPublicHoliday } from '@rondo/core/extract/public-holiday';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
-import { resolvePollDate } from '../src/extract/game-date';
 import { numberPosts, planChats } from '../src/extract/plan-other-chats';
 import { postIdOf, sourceOf } from '../src/extract/post-id';
-import { isPublicHoliday } from '../src/extract/public-holiday';
 import { parseTelethonExport } from '../src/parse/parse-telethon-export';
 
 import { message, testConfig } from './fixture';
 
-import type { TelegramMessage } from '../src/model/telegram-message.model';
-import type { TelegramSnapshot } from '../src/model/telegram-snapshot.model';
+import type { TelegramMessage } from '@rondo/core/model/telegram-message.model';
+import type { TelegramSnapshot } from '@rondo/core/model/telegram-snapshot.model';
 
 const chat = {
     chatId: -1001,

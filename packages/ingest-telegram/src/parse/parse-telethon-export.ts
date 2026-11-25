@@ -4,8 +4,8 @@ import * as Schema from 'effect/Schema';
 
 import { decodeUsers, linesOf, mergeUsers, voteChoice } from './parse-snapshot';
 
-import type { TelegramMessage } from '../model/telegram-message.model';
-import type { SnapshotUser, SnapshotVote, TelegramSnapshot } from '../model/telegram-snapshot.model';
+import type { TelegramMessage } from '@rondo/core/model/telegram-message.model';
+import type { SnapshotUser, SnapshotVote, TelegramSnapshot } from '@rondo/core/model/telegram-snapshot.model';
 
 interface TelethonFiles {
     readonly users: readonly string[];

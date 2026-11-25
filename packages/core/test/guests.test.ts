@@ -114,7 +114,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('guests of one game', it => 
             expect(found).toEqual([]);
             expect(inScope).toBe(false);
             expect(candidates.map(entry => entry.personId)).not.toContain(guestId);
-            expect(elsewhere).toMatchObject({ reason: 'player not found in this community' });
+            expect(elsewhere).toMatchObject({ failure: { code: 'person_not_found' } });
             expect(again).toEqual({ joined: [], waiting: [] });
             expect(attended.map(row => row.personId)).toEqual([host]);
         })

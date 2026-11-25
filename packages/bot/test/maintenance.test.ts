@@ -2,12 +2,12 @@ import { expect, layer } from '@effect/vitest';
 import { syncMember } from '@rondo/core/identity/telegram-user';
 import { recordedTelegramDbLayer, recorder } from '@rondo/core/testing/recorded-telegram.layer';
 import { seedGame as seedBareGame } from '@rondo/core/testing/seed-game';
-import { telegramPoll } from '@rondo/db/schema/platform.schema';
+import { pendingAction, processedUpdate, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { refusal } from '@rondo/telegram/testing/recording-telegram.layer';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { runMaintenance } from '../src/jobs/maintenance.job';
@@ -193,6 +193,91 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('nightly maintenance', it =>
             expect(afterFailure).toBe(false);
             expect(closed).toEqual([true, true, false, true]);
             expect([stopsOf(901), stopsOf(902), stopsOf(903)]).toEqual([2, 2, 0]);
+        })
+    );
+
+    it.effect('removes the text of finished proposals after 30 days and keeps the receipt', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, sessionId } = yield* seedBareGame('scrub-fc');
+            const kept = { _tag: 'create_session', chatId: '-100', topicId: 7 };
+            const receipt = { sessionId };
+            const propose = (status: 'proposed' | 'confirmed' | 'rejected' | 'failed', createdAt: string) =>
+                db
+                    .insert(pendingAction)
+                    .values({
+                        communityId,
+                        requestedByTgUserId: 42n,
+                        kind: 'create_session',
+                        payload: { ...kept, title: 'Secret', note: 'Call Ivan', preview: { html: 'Ivan' } },
+                        summary: 'Game of Ivan',
+                        status,
+                        result: receipt,
+                        createdAt: new Date(createdAt),
+                        expiresAt: new Date(createdAt)
+                    })
+                    .returning({ id: pendingAction.id });
+            const statuses = ['proposed', 'confirmed', 'rejected', 'failed'] as const;
+
+            for (const status of statuses) {
+                yield* propose(status, '2026-11-04T21:59:00Z');
+            }
+
+            const [recent] = yield* propose('confirmed', '2026-11-04T22:01:00Z');
+            yield* runMaintenance(afterTheGame);
+            yield* runMaintenance(afterTheGame);
+            const rows = yield* db.select().from(pendingAction).where(eq(pendingAction.communityId, communityId));
+            const scrubbed = rows.filter(row => row.id !== recent?.id);
+
+            expect(scrubbed.map(row => row.status).toSorted()).toEqual(['confirmed', 'expired', 'failed', 'rejected']);
+            expect(scrubbed.map(({ summary, payload, result }) => ({ summary, payload, result }))).toEqual(
+                scrubbed.map(() => ({ summary: '', payload: kept, result: receipt }))
+            );
+            expect(rows.find(row => row.id === recent?.id)).toMatchObject({ summary: 'Game of Ivan', payload: { note: 'Call Ivan' } });
+        })
+    );
+
+    it.effect('tells the owners once a day how many updates were dropped, and nothing about them', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const ownerNotes = () =>
+                recorder.calls.filter(call => call.method === 'sendMessage' && call.payload.chat_id === 42).map(call => call.payload.text);
+            const row = { attempts: 3, at: new Date('2026-12-04T10:00:00Z') };
+            yield* db.insert(processedUpdate).values([
+                { ...row, updateId: 700_001 },
+                { ...row, updateId: 700_002 },
+                { ...row, updateId: 700_003, attempts: 2 },
+                { ...row, updateId: 700_004, doneAt: row.at },
+                { ...row, updateId: 700_005, at: new Date('2026-12-03T10:00:00Z') }
+            ]);
+            yield* runMaintenance(afterTheGame);
+            yield* runMaintenance(afterTheGame);
+            yield* db.delete(processedUpdate);
+
+            expect(ownerNotes()).toEqual(['⚠️ За добу не оброблено повідомлень: 2. Подивись журнал.']);
+        })
+    );
+
+    it.effect('goes on after a failed step and tells the owners once a day', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { sessionId } = yield* seedGame('finish-broken-fc');
+            const before = recorder.calls.length;
+            const later = new Date('2026-12-05T22:00:00Z');
+            yield* db.execute(sql`alter function analytics.refresh_all() rename to refresh_gone`);
+            const broken = yield* runMaintenance(later);
+            yield* runMaintenance(later);
+            yield* db.execute(sql`alter function analytics.refresh_gone() rename to refresh_all`);
+            const healthy = yield* runMaintenance(new Date('2026-12-06T22:00:00Z'));
+            const [game] = yield* db.select().from(session).where(eq(session.id, sessionId));
+            const notes = recorder.calls.slice(before).filter(call => call.method === 'sendMessage');
+
+            expect(broken.failed).toBe(1);
+            expect(game?.status).toBe('played');
+            expect(healthy.failed).toBe(0);
+            expect(notes.map(call => [call.payload.chat_id, call.payload.text])).toEqual([
+                [42, '⚠️ Нічне обслуговування: збоїв 1. Подивись журнал.']
+            ]);
         })
     );
 });

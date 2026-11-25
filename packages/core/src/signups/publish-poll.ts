@@ -1,8 +1,8 @@
-// Only this poll, the line-up of publishTeams and the stopPoll of deleteSession run inside a transaction. The Telegram client limits each call to 10 seconds
+// This poll and the stopPoll of deleteSession run inside a transaction: each ends within 10 seconds and waits at most 3 for a rate limit
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
+import { maxWaitInTransaction, Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, eq, isNull } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -46,7 +46,7 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
         const open = yield* lockSession(sessionId);
 
         if (Option.isNone(open)) {
-            return yield* ActionFailedError.make({ reason: 'the game is already over or cancelled' });
+            return yield* ActionFailedError.make({ failure: { code: 'game_over' } });
         }
 
         const openPolls = yield* db
@@ -55,32 +55,35 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
             .where(and(eq(telegramPoll.sessionId, sessionId), isNull(telegramPoll.closedAt)));
 
         if (isNotEmptyArray(openPolls)) {
-            return yield* ActionFailedError.make({ reason: 'the game already has an open poll' });
+            return yield* ActionFailedError.make({ failure: { code: 'poll_open' } });
         }
 
         const target = yield* requireSession(input.communityId, sessionId);
 
         if (target.startsAt.getTime() <= (yield* DateTime.nowAsDate).getTime()) {
-            return yield* ActionFailedError.make({ reason: 'the game time has already passed' });
+            return yield* ActionFailedError.make({ failure: { code: 'time_passed' } });
         }
 
         const poll = yield* pollFor(input.communityId, target, input.note);
 
         if (isDefined(input.approvedSummary) && input.approvedSummary.split('\n\n').slice(1).join('\n\n') !== previewOf(poll)) {
-            return yield* ActionFailedError.make({ reason: 'the poll changed after the preview, ask for a new one' });
+            return yield* ActionFailedError.make({ failure: { code: 'preview_changed' } });
         }
 
         const options = poll.answers.map(answer => ({ text: answer }));
-        const sent = yield* telegram.call('sendPoll', api =>
-            api.sendPoll(Number(chatId), poll.question, options, {
-                is_anonymous: false,
-                allows_multiple_answers: false,
-                ...(isDefined(poll.description) ? { description: poll.description, description_parse_mode: 'HTML' } : {}),
-                ...(isDefined(poll.route)
-                    ? { reply_markup: { inline_keyboard: [[{ text: poll.route.label, url: poll.route.url }]] } }
-                    : {}),
-                ...topicOptions(input.group)
-            })
+        const sent = yield* telegram.call(
+            'sendPoll',
+            api =>
+                api.sendPoll(Number(chatId), poll.question, options, {
+                    is_anonymous: false,
+                    allows_multiple_answers: false,
+                    ...(isDefined(poll.description) ? { description: poll.description, description_parse_mode: 'HTML' } : {}),
+                    ...(isDefined(poll.route)
+                        ? { reply_markup: { inline_keyboard: [[{ text: poll.route.label, url: poll.route.url }]] } }
+                        : {}),
+                    ...topicOptions(input.group)
+                }),
+            maxWaitInTransaction
         );
         const messageId = sent.message_id;
         yield* Ref.set(sentMessage, messageId);
@@ -107,7 +110,7 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
                     }
 
                     yield* Effect.logError('[poll] sent but not saved', cause);
-                    const uncertain = ActionFailedError.make({ reason: 'the poll was sent but the result is uncertain, check the group' });
+                    const uncertain = ActionFailedError.make({ failure: { code: 'result_uncertain' } });
                     const saved = yield* db
                         .select({ sessionId: telegramPoll.sessionId })
                         .from(telegramPoll)
@@ -124,9 +127,10 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
                     }
 
                     const stopped = yield* Effect.exit(telegram.call('stopPoll', api => api.stopPoll(Number(chatId), sent)));
-                    const state = Exit.isSuccess(stopped) ? 'so it was closed' : 'and it could not be closed: check the group';
 
-                    return yield* ActionFailedError.make({ reason: `the poll was sent but could not be saved, ${state}` });
+                    return yield* ActionFailedError.make({
+                        failure: { code: Exit.isSuccess(stopped) ? 'poll_unsaved_closed' : 'poll_unsaved_open' }
+                    });
                 })
             )
         );

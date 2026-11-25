@@ -4,7 +4,7 @@ import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
 import * as Effect from 'effect/Effect';
 
-import type { CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
+import type { CommunityConfig } from '../config/community-config';
 
 export const seedConfig = (slug: string): CommunityConfig => ({
     slug,

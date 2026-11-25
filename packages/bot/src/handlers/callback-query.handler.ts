@@ -15,7 +15,7 @@ import { menuText } from '../menu/menu-text';
 import { menuUserOf } from '../menu/menu-user';
 import { showScreen } from '../menu/show-screen';
 
-import type { CallbackQuery } from 'grammy/types';
+import type { CallbackQuery } from '@rondo/telegram/webhook/telegram-update.model';
 
 const actionData = /^act:([\da-f-]{36}):([yn])$/u;
 
@@ -25,7 +25,7 @@ const outcomeText = (locale: Locale, outcome: DecisionOutcome): string => {
             return `${outcome.summary}\n\n${text(locale, 'done')}`;
         }
         case 'failed': {
-            return `${outcome.summary}\n\n${text(locale, 'failed')}: ${outcome.reason}`;
+            return `${outcome.summary}\n\n${failureText(locale, outcome.failure).text}`;
         }
         case 'rejected': {
             return text(locale, 'rejected');
@@ -63,7 +63,7 @@ const handleMenuCallback = Effect.fn('Bot.handleMenuCallback')(function* (query:
     const toast = yield* handleMenuTap(user.value, query.data ?? '', messageId).pipe(
         Effect.catchTag('ActionFailedError', error =>
             Effect.gen(function* () {
-                const { text: reason } = failureText(user.value.locale, error.reason, { where: '', isPrivate: false });
+                const { text: reason } = failureText(user.value.locale, error.failure);
                 yield* showScreen(chatId, messageId, {
                     text: reason,
                     keyboard: [

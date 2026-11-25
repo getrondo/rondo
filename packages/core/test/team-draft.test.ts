@@ -483,9 +483,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the shared team draft', it 
                 now: new Date('2026-12-04T20:30:00Z')
             }).pipe(Effect.flip);
 
-            expect(early).toMatchObject({ reason: 'the game has not started yet' });
-            expect(unknown).toMatchObject({ reason: 'the game has no such team' });
-            expect(cancelled).toMatchObject({ reason: 'the game is already over or cancelled' });
+            expect(early).toMatchObject({ failure: { code: 'game_not_started' } });
+            expect(unknown).toMatchObject({ failure: { code: 'team_not_found' } });
+            expect(cancelled).toMatchObject({ failure: { code: 'game_over' } });
         })
     );
 });

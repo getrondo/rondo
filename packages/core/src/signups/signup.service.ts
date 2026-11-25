@@ -11,9 +11,8 @@ import * as Option from 'effect/Option';
 
 import { primaryAccount } from '../identity/primary-account';
 import { syncMember, type TelegramUser } from '../identity/telegram-user';
+import { closedStatuses, isClosed } from '../sessions/session.model';
 import { isSettledPoll } from '../utils/is-settled-poll.util';
-
-import type { SessionStatus } from '../sessions/session.model';
 
 type PollChoice = 'in' | 'gk' | 'out';
 
@@ -118,8 +117,6 @@ const refreshFullness = Effect.fn('Core.refreshFullness')(function* (sessionId: 
     }
 });
 
-const closedStatuses: SessionStatus[] = ['played', 'cancelled', 'moved'];
-
 export const fillFreeSeats = Effect.fn('Core.fillFreeSeats')(function* (sessionId: string, capacityMax: number | null) {
     const promoted = isDefined(capacityMax)
         ? yield* promoteWaitlisted(sessionId, capacityMax - (yield* fieldPlayersIn(sessionId, null)))
@@ -137,7 +134,7 @@ export const lockSession = Effect.fn('Core.lockSession')(function* (sessionId: s
         .where(eq(session.id, sessionId))
         .for('update');
 
-    return Option.fromNullishOr(row).pipe(Option.filter(({ status }) => !closedStatuses.includes(status)));
+    return Option.fromNullishOr(row).pipe(Option.filter(({ status }) => !isClosed(status)));
 });
 
 const setSignup = Effect.fn('Core.setSignup')(function* (sessionId: string, personId: string, choice: PollChoice, asksGoalkeeper: boolean) {

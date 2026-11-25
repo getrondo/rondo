@@ -18,17 +18,16 @@ import { deleteSession } from '../src/sessions/delete-session';
 import { createSession } from '../src/sessions/session.service';
 import { forwardPoll } from '../src/signups/forward-poll';
 import { applyPollAnswer } from '../src/signups/signup.service';
-import { localPostgresLayer } from '../src/testing/local-postgres.layer';
+import { localPostgresLayer, raceDatabaseUrl } from '../src/testing/local-postgres.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 
 import type { Action } from '../src/actions/action.model';
 
-const databaseUrl = process.env.RONDO_TEST_DATABASE_URL ?? '';
 const now = new Date('2026-11-25T08:00:00Z');
 const racers = 8;
 const rounds = 12;
 const retryToken = '00000000-0000-4000-8000-000000000003';
-const withoutPostgres = isEmptyString(databaseUrl);
+const withoutPostgres = isEmptyString(raceDatabaseUrl);
 const raceRecorder = makeRecorder();
 const withoutGroup = (id: string) =>
     Effect.succeed({ communityId: id, timezone: 'Europe/Vienna', group: Option.none(), groupLocale: 'uk' as const, actorPersonId: null });
@@ -69,10 +68,10 @@ const forwardRace = Effect.fn('test.forwardRace')(function* (
 });
 const unique = () => `${Math.floor(performance.now() * 1000)}-${Math.random().toString(36).slice(2, 8)}`;
 
-const postgresLayer = Layer.mergeAll(localPostgresLayer(databaseUrl), recordingTelegramLayer(raceRecorder), Access.layerFor([42n]));
+const postgresLayer = Layer.mergeAll(localPostgresLayer(raceDatabaseUrl), recordingTelegramLayer(raceRecorder), Access.layerFor([42n]));
 
 layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin state races on a real Postgres', it => {
-    it.effect.skipIf(isEmptyString(databaseUrl))('hands typed input and a confirmation to exactly one of many racers', () =>
+    it.effect.skipIf(isEmptyString(raceDatabaseUrl))('hands typed input and a confirmation to exactly one of many racers', () =>
         Effect.gen(function* () {
             const { communityId } = yield* seedCommunity(seedConfig(`race-state-${performance.now()}`));
             const tgUserId = BigInt(Math.floor(performance.now()));
@@ -92,7 +91,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
         })
     );
 
-    it.effect.skipIf(isEmptyString(databaseUrl))('creates one game when ✅ is tapped many times at once', () =>
+    it.effect.skipIf(isEmptyString(raceDatabaseUrl))('creates one game when ✅ is tapped many times at once', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig(`race-ok-${performance.now()}`));
@@ -176,9 +175,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
 
             expect(games).toHaveLength(1);
             expect(outcomes.filter(outcome => outcome._tag === 'done')).toHaveLength(1);
-            expect(
-                outcomes.filter(outcome => outcome._tag === 'failed' && outcome.reason.startsWith('the game already exists'))
-            ).toHaveLength(5);
+            expect(outcomes.filter(outcome => outcome._tag === 'failed' && outcome.failure.code === 'game_exists')).toHaveLength(5);
         })
     );
 

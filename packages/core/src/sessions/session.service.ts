@@ -12,11 +12,8 @@ import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
 import { addMillis } from '../utils/add-millis.util';
 
-import { instantOf, localTimeOf } from './local-time';
-
-import type { CancelReason, SessionPatch, SessionView } from './session.model';
-
-const sessionMinutes = 90;
+import { gameDurationMinutes, instantOf, localTimeOf } from './local-time';
+import { closedStatuses, type CancelReason, type SessionPatch, type SessionView } from './session.model';
 
 const selection = {
     id: session.id,
@@ -64,7 +61,7 @@ export const requireSession = (communityId: string, sessionId: string) =>
     getSession(sessionId).pipe(
         Effect.map(found => found.pipe(Option.filter(target => target.communityId === communityId))),
         Effect.flatMap(found => Effect.fromOption(found)),
-        Effect.mapError(() => ActionFailedError.make({ reason: `session ${sessionId} not found` }))
+        Effect.mapError(() => ActionFailedError.make({ failure: { code: 'session_not_found' } }))
     );
 
 export const listSessions = Effect.fn('Core.listSessions')(function* (
@@ -141,7 +138,7 @@ export const createSession = Effect.fn('Core.createSession')(function* (input: C
             venueId: input.venueId,
             localDate: input.localDate,
             startsAt,
-            endsAt: addMillis(startsAt, sessionMinutes * 60_000),
+            endsAt: addMillis(startsAt, gameDurationMinutes * 60_000),
             status: 'open',
             capacityMax: input.capacityMax,
             fieldsPlanned: input.fieldsPlanned,
@@ -178,7 +175,7 @@ export const updateSession = Effect.fn('Core.updateSession')(function* (
         .set({
             localDate,
             startsAt,
-            endsAt: addMillis(startsAt, sessionMinutes * 60_000),
+            endsAt: addMillis(startsAt, gameDurationMinutes * 60_000),
             ...(Predicate.isNotUndefined(patch.venueId) ? { venueId: patch.venueId } : {}),
             ...(Predicate.isNotUndefined(patch.capacityMax) ? { capacityMax: patch.capacityMax } : {}),
             ...(Predicate.isNotUndefined(patch.fieldsPlanned) ? { fieldsPlanned: patch.fieldsPlanned } : {})
@@ -207,11 +204,11 @@ export const cancelSession = Effect.fn('Core.cancelSession')(function* (
             const cancelled = yield* db
                 .update(session)
                 .set({ status: 'cancelled', cancelReason: reason })
-                .where(and(eq(session.id, target.id), notInArray(session.status, ['played', 'cancelled', 'moved'])))
+                .where(and(eq(session.id, target.id), notInArray(session.status, [...closedStatuses])))
                 .returning({ id: session.id });
 
             if (!isNotEmptyArray(cancelled)) {
-                return yield* ActionFailedError.make({ reason: 'the game is already over or cancelled' });
+                return yield* ActionFailedError.make({ failure: { code: 'game_over' } });
             }
 
             yield* db.delete(attendance).where(eq(attendance.sessionId, target.id));

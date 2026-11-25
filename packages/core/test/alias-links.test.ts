@@ -4,7 +4,6 @@ import { auditLog, pollVote } from '@rondo/db/schema/platform.schema';
 import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { removeUnusedNicknames } from '@rondo/ingest-telegram/load/remove-unused-nicknames';
 import { and, eq, sql, type SQL } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
@@ -210,7 +209,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
             expect(once).toHaveLength(3);
             expect(twice).toHaveLength(2);
             expect(Object.keys(ranked).toSorted()).toEqual(['Org', 'Олег']);
-            expect(refused).toMatchObject({ _tag: 'ActionFailedError', reason: 'several players share this nickname, link it per game' });
+            expect(refused).toMatchObject({ _tag: 'ActionFailedError', failure: { code: 'nickname_shared' } });
             expect(review.filter(entry => entry.shared)).toHaveLength(4);
             expect(offered?.candidatePersonIds).toEqual([account]);
             expect(sameGame._tag).toBe('ActionFailedError');
@@ -344,8 +343,8 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
             const { communityId } = yield* seeded('orphan-fc', 200n, '🟢Я, Гонзо\n🔵Олег, Семён');
             const [orphan] = yield* db.insert(person).values({ displayName: 'Сирота', source: 'import' }).returning({ id: person.id });
             const name = { communityId, personId: orphan?.id, guestPersonId: orphan?.id, alias: 'Сирота', aliasNorm: 'сирота' };
-            yield* db.insert(personAlias).values(name);
-            yield* db.transaction(transaction => removeUnusedNicknames({ transaction, communityId }));
+            const [nickname] = yield* db.insert(personAlias).values(name).returning({ id: personAlias.id });
+            yield* db.delete(personAlias).where(eq(personAlias.id, nickname?.id ?? ''));
             const [stored] = yield* db
                 .select()
                 .from(person)
@@ -448,7 +447,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
             const { communityId, account } = yield* seeded('gone-alias-fc', 250n, '🟢Я, Гонзо\n🔵Олег, Семён');
             const [unused] = yield* db.insert(personAlias).values({ communityId, alias: 'Лишний', aliasNorm: 'лишний' }).returning();
             const link = linkAlias({ communityId, aliasId: unused?.id ?? '', personId: account, actorPersonId: null });
-            yield* db.transaction(transaction => removeUnusedNicknames({ transaction, communityId }));
+            yield* db.delete(personAlias).where(eq(personAlias.id, unused?.id ?? ''));
             const refused = yield* Effect.flip(link);
 
             expect(refused._tag).toBe('ActionFailedError');
@@ -497,7 +496,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
             ]);
             expect(relinked._tag).toBe('ActionFailedError');
             expect(rejected.map(({ status, personId }) => [status, personId])).toEqual([['rejected', account]]);
-            expect(overwritten).toMatchObject({ reason: 'another player has a period under this nickname, undo that first' });
+            expect(overwritten).toMatchObject({ failure: { code: 'other_period' } });
         })
     );
 
@@ -607,7 +606,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
             });
             const refused = yield* Effect.flip(linkAlias({ communityId, aliasId: id, personId: second, actorPersonId: null }));
 
-            expect(refused).toMatchObject({ reason: 'another player has a period under this nickname, undo that first' });
+            expect(refused).toMatchObject({ failure: { code: 'other_period' } });
         })
     );
 
@@ -640,7 +639,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
                 .where(eq(aliasLink.aliasId, aliasId('гонзо')));
 
             expect(links.map(({ status, personId, during }) => [status, personId, during])).toEqual([['approved', account, '(,)']]);
-            expect(refused).toMatchObject({ reason: 'one of these nicknames was rejected for this player' });
+            expect(refused).toMatchObject({ failure: { code: 'nickname_rejected' } });
         })
     );
 

@@ -24,7 +24,7 @@ import { handleNewGameInput, openNewGame, showNotUnderstood } from '../menu/new-
 import { showScreen } from '../menu/show-screen';
 
 import type { MenuUser } from '../menu/screen.interface';
-import type { Message } from 'grammy/types';
+import type { Message } from '@rondo/telegram/webhook/telegram-update.model';
 
 const telegramMessageLimit = 4000;
 const commandPattern = /^\/(\w+)(?:@\w+)?/u;

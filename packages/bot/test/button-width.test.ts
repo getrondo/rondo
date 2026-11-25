@@ -9,7 +9,7 @@ import * as Effect from 'effect/Effect';
 import { buttonBudget } from '../src/utils/button-budget.util';
 import { labelWidth } from '../src/utils/label-width.util';
 
-import { conversation } from './support/conversation';
+import { conversation, keyboardOf } from './support/conversation';
 import { seedSecondGroup, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
@@ -63,7 +63,7 @@ const steps: readonly Step[] = [
 
 const overflowing = () =>
     recorder.calls.flatMap(call => {
-        const rows = (call.payload.reply_markup as { inline_keyboard?: { text: string }[][] } | undefined)?.inline_keyboard ?? [];
+        const rows = keyboardOf(call.payload.reply_markup);
 
         return rows.flatMap(row =>
             row.filter(button => labelWidth(button.text) > buttonBudget(row.length)).map(button => `${button.text} (${row.length})`)

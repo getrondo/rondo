@@ -8,7 +8,7 @@ import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
 import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { conversation, deliver } from './support/conversation';
+import { conversation, deliver, lastPollId } from './support/conversation';
 import { seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
@@ -25,15 +25,12 @@ const postedGame = Effect.fn('test.postedGame')(function* (slug: string, chatId:
     yield* admin.tap('👥 22');
     yield* admin.type(places);
     yield* admin.tap('✅ Надіслати');
-    const sent = recorder.calls.findLast(call => call.method === 'sendPoll' && call.payload.chat_id === chatId)?.result as {
-        poll: { id: string };
-    };
     const [game] = yield* db
         .select()
         .from(session)
         .where(and(eq(session.communityId, communityId), eq(session.localDate, '2026-11-27')));
 
-    return { communityId, admin, pollId: sent.poll.id, sessionId: game?.id ?? '' };
+    return { communityId, admin, pollId: lastPollId(recorder, chatId), sessionId: game?.id ?? '' };
 });
 
 const statusesOf = Effect.fn('test.statusesOf')(function* (sessionId: string) {

@@ -1,6 +1,7 @@
 import * as NodeRuntime from '@effect/platform-node/NodeRuntime';
 import * as NodeServices from '@effect/platform-node/NodeServices';
 import { isEmptyArray } from '@rnw-community/shared';
+import { assertLocal } from '@rondo/core/testing/assert-local';
 import { runMigrations } from '@rondo/db/migration/migrate.effect';
 import { Db } from '@rondo/db/service/db.service';
 import * as Config from 'effect/Config';
@@ -10,7 +11,6 @@ import * as Layer from 'effect/Layer';
 import { importSettings } from '../import-settings';
 import { ingest } from '../ingest.effect';
 
-import { assertLocal } from './assert-local';
 import { takeCounts, takeCountsBeforeMigration } from './take-counts';
 
 const rehearsal = Effect.gen(function* () {

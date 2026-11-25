@@ -3,8 +3,8 @@ import { Db } from '@rondo/db/service/db.service';
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import type { CommunityConfig } from '../src/config/community-config';
-import type { TelegramMessage } from '../src/model/telegram-message.model';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
+import type { TelegramMessage } from '@rondo/core/model/telegram-message.model';
 
 export const testConfig: CommunityConfig = {
     slug: 'test-fc',

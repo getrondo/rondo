@@ -1,12 +1,12 @@
 import { isDefined } from '@rnw-community/shared';
+import { chatRules } from '@rondo/core/extract/chat-rules';
 
-import { chatRules } from './chat-rules';
 import { extractAll } from './extract-all';
 
-import type { CommunityConfig, OtherChatConfig } from '../config/community-config';
-import type { TelegramMessage } from '../model/telegram-message.model';
 import type { ImportPlan } from './assemble-plan';
-import type { ExtractedFacts } from './fact.model';
+import type { CommunityConfig, OtherChatConfig } from '@rondo/core/config/community-config';
+import type { ExtractedFacts } from '@rondo/core/extract/fact.model';
+import type { TelegramMessage } from '@rondo/core/model/telegram-message.model';
 
 interface OtherChat {
     readonly chat: OtherChatConfig;

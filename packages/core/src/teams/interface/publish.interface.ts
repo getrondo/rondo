@@ -1,3 +1,4 @@
+import type { ActionFailure } from '../../error/action-failed.error';
 import type { PostTeam } from './lineup-post.interface';
 
 type DeliveryStatus = 'sent' | 'edited' | 'unchanged' | 'refused' | 'uncertain' | 'busy';
@@ -28,7 +29,7 @@ export interface DeliveryOutcome {
     readonly chatId: bigint;
     readonly title: string | null;
     readonly status: DeliveryStatus;
-    readonly reason: string | null;
+    readonly failure: ActionFailure | null;
     readonly isEdit: boolean;
 }
 

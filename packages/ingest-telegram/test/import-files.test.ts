@@ -1,6 +1,7 @@
 import * as NodeServices from '@effect/platform-node/NodeServices';
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
+import { CommunityConfigSchema } from '@rondo/core/config/community-config';
 import { community } from '@rondo/db/schema/org.schema';
 import { sourceRef } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
@@ -14,7 +15,6 @@ import * as Option from 'effect/Option';
 import * as Result from 'effect/Result';
 import * as Schema from 'effect/Schema';
 
-import { CommunityConfigSchema } from '../src/config/community-config';
 import { ingest } from '../src/ingest.effect';
 
 import { testConfig } from './fixture';

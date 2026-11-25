@@ -4,19 +4,20 @@ import { verifyWebhookSecret, webhookSecretHeader } from '@rondo/telegram/webhoo
 import * as Config from 'effect/Config';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
+import * as Schema from 'effect/Schema';
 import { after } from 'next/server';
 
-import type { Update } from 'grammy/types';
-
 export const maxDuration = 60;
+
+const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
 
 const accept = (request: Request) =>
     Effect.gen(function* () {
         const secret = yield* Config.Redacted('TELEGRAM_WEBHOOK_SECRET');
         yield* verifyWebhookSecret(request.headers.get(webhookSecretHeader), secret);
-        const update = yield* Effect.tryPromise(async () => (await request.json()) as Update);
+        const body = yield* Effect.tryPromise(async () => await request.text());
         // The model is slow, so the assistant and venue proposals run after the reply. Commands, menu taps and typed menu input run first: a failure answers 500 and Telegram retries in order.
-        const followUp = yield* handleUpdate(update);
+        const followUp = yield* handleUpdate(Option.getOrNull(decodeJson(body)));
 
         if (Option.isSome(followUp)) {
             after(async () => {

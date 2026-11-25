@@ -2,11 +2,12 @@ import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import { and, eq, inArray, isNotNull, lt, ne } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { outAfterSquad } from '../teams/lineup-of-draft';
+import { isPublishing } from '../teams/publish-claim';
 
 import type { SessionStatus } from './session.model';
 
@@ -45,7 +46,7 @@ const finishSession = Effect.fn('Core.finishSession')(function* (sessionId: stri
         .where(and(eq(session.id, sessionId), isOver(startedBefore)))
         .for('update');
 
-    if (!isNotEmptyArray(locked)) {
+    if (!isNotEmptyArray(locked) || (yield* isPublishing(sessionId))) {
         return false;
     }
 
@@ -76,10 +77,13 @@ export const finishPastSessions = Effect.fn('Core.finishPastSessions')(function*
         over.map(({ id, communityId }) =>
             withCommunityLock({ id: communityId }, finishSession(id, startedBefore)).pipe(
                 Effect.tapCause(cause => Effect.logError(`[maintenance] game ${id} not finished`, cause)),
-                Effect.catchCause(() => Effect.succeed(false))
+                Effect.catchCause(() => Effect.succeed(null))
             )
         )
     );
 
-    return finished.filter(Boolean).length;
+    return {
+        finished: finished.filter(outcome => outcome === true).length,
+        failed: finished.filter(outcome => !isDefined(outcome)).length
+    };
 });

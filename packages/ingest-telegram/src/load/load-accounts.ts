@@ -1,11 +1,10 @@
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
+import { chunks } from '@rondo/core/utils/chunks.util';
+import { insertMany } from '@rondo/core/utils/insert-many.util';
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { membership } from '@rondo/db/schema/org.schema';
 import { inArray, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
-
-import { chunks } from '../utils/chunks.util';
-import { insertMany } from '../utils/insert-many.util';
 
 import type { LoadContext } from '../interface/load-context.interface';
 

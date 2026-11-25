@@ -3,9 +3,13 @@ import { isEmptyString } from '@rnw-community/shared';
 import { lineupDelivery, teamDraft } from '@rondo/db/schema/play.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
+import { Telegram } from '@rondo/telegram/service/telegram.service';
 import { makeRecorder, recordingTelegramLayer } from '@rondo/telegram/testing/recording-telegram.layer';
 import { and, eq } from 'drizzle-orm';
+import * as Deferred from 'effect/Deferred';
 import * as Effect from 'effect/Effect';
+import * as Fiber from 'effect/Fiber';
 import * as Layer from 'effect/Layer';
 import * as Option from 'effect/Option';
 
@@ -17,12 +21,11 @@ import { planLineup } from '../src/teams/lineup-plan';
 import { publishLineup } from '../src/teams/publish-lineup';
 import { changeDraft, openDraft } from '../src/teams/team-draft.service';
 import { claimNotice, claimProposal } from '../src/teams/team-schedule';
-import { localPostgresLayer } from '../src/testing/local-postgres.layer';
+import { localPostgresLayer, raceDatabaseUrl } from '../src/testing/local-postgres.layer';
 import { seedGame } from '../src/testing/seed-game';
 
 const racers = 8;
-const databaseUrl = process.env.RONDO_TEST_DATABASE_URL ?? '';
-const withoutPostgres = isEmptyString(databaseUrl);
+const withoutPostgres = isEmptyString(raceDatabaseUrl);
 const raceRecorder = makeRecorder();
 
 const gameWithPlayers = Effect.fn('test.gameWithPlayers')(function* (slug: string, base: number) {
@@ -37,7 +40,23 @@ const gameWithPlayers = Effect.fn('test.gameWithPlayers')(function* (slug: strin
     return { communityId, sessionId };
 });
 
-const postgresLayer = Layer.mergeAll(localPostgresLayer(databaseUrl), recordingTelegramLayer(raceRecorder), Access.layerFor([42n]));
+const plannedGame = Effect.fn('test.plannedGame')(function* (slug: string, offset: number) {
+    const game = yield* gameWithPlayers(slug, Math.floor(performance.now()) * 100 + offset);
+    const { row } = yield* openDraft(game.communityId, game.sessionId, null);
+    const raceChat = -9_600_000n - BigInt(Math.floor(performance.now()));
+    const input = {
+        ...game,
+        locale: 'uk' as const,
+        actorPersonId: null,
+        privateChatId: null,
+        fallback: Option.some({ chatId: raceChat, topicId: null })
+    };
+    const plan = yield* planLineup(input);
+
+    return { ...game, raceChat, input, publish: publishLineup({ ...input, version: row.version, fingerprint: plan.fingerprint }) };
+});
+
+const postgresLayer = Layer.mergeAll(localPostgresLayer(raceDatabaseUrl), recordingTelegramLayer(raceRecorder), Access.layerFor([42n]));
 
 layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('team drafts on a real Postgres', it => {
     it.effect.skipIf(withoutPostgres)('lets one of two admins win a change of the same version and tells the other', () =>
@@ -69,22 +88,10 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('team draf
         () =>
             Effect.gen(function* () {
                 const db = yield* Db;
-                const { communityId, sessionId } = yield* gameWithPlayers('race-post', Math.floor(performance.now()) * 100 + 50);
-                const { row } = yield* openDraft(communityId, sessionId, null);
-                const raceChat = -9_600_000n - BigInt(Math.floor(performance.now()));
+                const { sessionId, raceChat, publish } = yield* plannedGame('race-post', 50);
                 const now = new Date('2026-12-04T17:30:00Z');
-                const input = {
-                    communityId,
-                    sessionId,
-                    locale: 'uk' as const,
-                    actorPersonId: null,
-                    privateChatId: null,
-                    fallback: Option.some({ chatId: raceChat, topicId: null })
-                };
-                const plan = yield* planLineup(input);
-                const publish = publishLineup({ ...input, version: row.version, fingerprint: plan.fingerprint }).pipe(Effect.result);
                 const results = yield* Effect.all(
-                    Array.from({ length: racers }, () => publish),
+                    Array.from({ length: racers }, () => publish.pipe(Effect.result)),
                     { concurrency: 'unbounded' }
                 );
                 const posts = yield* db
@@ -120,6 +127,45 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('team draf
                 expect(proposals.filter(Boolean)).toHaveLength(1);
                 expect(notices.filter(Boolean)).toHaveLength(1);
             })
+    );
+
+    it.effect.skipIf(withoutPostgres)('leaves the community lock free during a send, and the claim alone keeps the line-up single', () =>
+        Effect.gen(function* () {
+            const telegram = yield* Telegram;
+            const { communityId, raceChat, input, publish } = yield* plannedGame('race-unlocked', 90);
+            const started = yield* Deferred.make<boolean>();
+            const release = yield* Deferred.make<boolean>();
+            const sending = yield* Effect.forkChild(
+                publish.pipe(
+                    Effect.provideService(Telegram, {
+                        ...telegram,
+                        call: (method, request) =>
+                            Deferred.succeed(started, true).pipe(
+                                Effect.andThen(Deferred.await(release)),
+                                Effect.andThen(telegram.call(method, request))
+                            )
+                    })
+                )
+            );
+            yield* Deferred.await(started);
+            const locked = yield* withCommunityLock({ id: communityId }, Effect.succeed('free')).pipe(Effect.timeoutOption('2 seconds'));
+            const others = yield* Effect.all(
+                Array.from({ length: racers }, () => publish.pipe(Effect.timeout('5 seconds'), Effect.result)),
+                { concurrency: 'unbounded' }
+            );
+            const during = yield* planLineup(input);
+            const late = yield* publishLineup({ ...input, version: during.version, fingerprint: during.fingerprint }).pipe(
+                Effect.timeoutOption('2 seconds')
+            );
+            yield* Deferred.succeed(release, true);
+            const published = yield* Fiber.join(sending);
+
+            expect(locked).toEqual(Option.some('free'));
+            expect(others.every(result => result._tag === 'Failure')).toBe(true);
+            expect(late.pipe(Option.map(result => result.deliveries.map(entry => entry.status)))).toEqual(Option.some(['busy']));
+            expect(published.deliveries.map(entry => entry.status)).toEqual(['sent']);
+            expect(raceRecorder.calls.filter(call => call.payload.chat_id === Number(raceChat))).toHaveLength(1);
+        })
     );
 
     it.effect.skipIf(withoutPostgres)('commits a roster change only together with the draft change that won', () =>

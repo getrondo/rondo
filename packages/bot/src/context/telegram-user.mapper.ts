@@ -1,7 +1,7 @@
 import { isDefined } from '@rnw-community/shared';
 
 import type { TelegramUser } from '@rondo/core/identity/telegram-user';
-import type { User } from 'grammy/types';
+import type { User } from '@rondo/telegram/webhook/telegram-update.model';
 
 export const toTelegramUser = (user: User): TelegramUser => ({
     id: BigInt(user.id),

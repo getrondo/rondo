@@ -13,11 +13,11 @@ them outside the repository (e.g. `~/getrondo/rondo-data/`); `.gitignore` blocks
 Telegram Desktop → group → ⋮ → **Export chat history**. Untick photos, videos, voice and files
 (they aren't used). Choose **JSON** (`result.json`): it carries author ids. HTML still works, without ids.
 
-Optional snapshot files in the same folder, read from the owner's account, add accounts, polls and voters: `messages.jsonl` (polls with `poll.id` and answers), `votes*.jsonl` and `users*.json` (schemas in `packages/ingest-telegram/src/model/telegram-snapshot.model.ts`). Without `messages.jsonl` the import runs without them.
+Optional snapshot files in the same folder, read from the owner's account, add accounts, polls and voters: `messages.jsonl` (polls with `poll.id` and answers), `votes*.jsonl` and `users*.json` (schemas in `packages/core/src/model/telegram-snapshot.model.ts`). Without `messages.jsonl` the import runs without them.
 
 ## 2. Write the community config
 
-A JSON file validated by `CommunityConfigSchema` (`packages/ingest-telegram/src/config/community-config.ts`):
+A JSON file validated by `CommunityConfigSchema` (`packages/core/src/config/community-config.ts`):
 
 ```json
 {
@@ -46,7 +46,7 @@ A JSON file validated by `CommunityConfigSchema` (`packages/ingest-telegram/src/
 ## 3. Run
 
 ```bash
-pnpm db:up                       # local Postgres 17 (docker compose, port 54329)
+pnpm db:up                       # local Postgres 18 (docker compose, port 54329)
 pnpm db:migrate                  # DATABASE_URL from .env
 DATABASE_URL=postgres://rondo:rondo@localhost:54329/rondo \
 RONDO_EXPORT_DIR=/path/to/ChatExport_... \

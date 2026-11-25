@@ -7,7 +7,7 @@ import { syncSessionRoster } from './sync-session-roster';
 
 const ChangedSchema = Schema.Struct({ rows: Schema.Array(Schema.Struct({ session_id: Schema.String })) });
 
-export const markUndecidedTeams = Effect.fn('IngestTelegram.markUndecidedTeams')(function* (communityId: string) {
+export const markUndecidedTeams = Effect.fn('Core.markUndecidedTeams')(function* (communityId: string) {
     const db = yield* Db;
     const result = yield* db.execute(sql`
         update play.lineup_entry entry set is_team_undecided = not entry.is_team_undecided

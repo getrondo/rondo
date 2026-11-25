@@ -1,14 +1,13 @@
 import { isDefined } from '@rnw-community/shared';
+import { applyApproved } from '@rondo/core/identity/apply-approved';
+import { countOccurrences } from '@rondo/core/identity/count-occurrences';
+import { loadDirectory } from '@rondo/core/identity/load-directory';
+import { refreshNames } from '@rondo/core/identity/refresh-names';
+import { linkByVotes, releaseVoteLinks } from '@rondo/core/identity/vote-links';
+import { alignGuests } from '@rondo/core/roster/align-guests';
+import { markUndecidedTeams } from '@rondo/core/roster/mark-undecided-teams';
 import { Db } from '@rondo/db/service/db.service';
 import * as Effect from 'effect/Effect';
-
-import { applyApproved } from '../identity/apply-approved';
-import { countOccurrences } from '../identity/count-occurrences';
-import { loadDirectory } from '../identity/load-directory';
-import { refreshNames } from '../identity/refresh-names';
-import { linkByVotes, releaseVoteLinks } from '../identity/vote-links';
-import { alignGuests } from '../roster/align-guests';
-import { markUndecidedTeams } from '../roster/mark-undecided-teams';
 
 import { loadAccounts } from './load-accounts';
 import { assertUniqueVenueNames, purgePreviousImport, upsertCommunity, upsertReference } from './load-community';
@@ -19,9 +18,9 @@ import { loadSessions } from './load-sessions';
 import { insertVotes } from './load-votes';
 import { removeUnusedNicknames } from './remove-unused-nicknames';
 
-import type { CommunityConfig } from '../config/community-config';
 import type { ImportPlan } from '../extract/assemble-plan';
-import type { TelegramSnapshot } from '../model/telegram-snapshot.model';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
+import type { TelegramSnapshot } from '@rondo/core/model/telegram-snapshot.model';
 
 interface LoadOptions {
     readonly fileSha256: string;

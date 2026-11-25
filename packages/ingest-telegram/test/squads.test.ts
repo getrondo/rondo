@@ -1,16 +1,16 @@
 import { describe, expect, it } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
+import { extractLineup } from '@rondo/core/extract/extract-lineup';
+import { extractPoll, makeVenueMatcher } from '@rondo/core/extract/extract-poll';
+import { extractCancellation } from '@rondo/core/extract/extract-signals';
+import { answerChoice } from '@rondo/core/extract/poll-answers';
 
 import { assemblePlan } from '../src/extract/assemble-plan';
 import { extractAll } from '../src/extract/extract-all';
-import { extractLineup } from '../src/extract/extract-lineup';
-import { extractPoll, makeVenueMatcher } from '../src/extract/extract-poll';
-import { extractCancellation } from '../src/extract/extract-signals';
-import { answerChoice } from '../src/extract/poll-answers';
 
 import { message, testConfig } from './fixture';
 
-import type { TelegramMessage } from '../src/model/telegram-message.model';
+import type { TelegramMessage } from '@rondo/core/model/telegram-message.model';
 
 const venueOf = makeVenueMatcher(testConfig);
 const squad = (text: string) => extractLineup(message(1, '2025-05-05T15:00:00Z', text), testConfig, venueOf);

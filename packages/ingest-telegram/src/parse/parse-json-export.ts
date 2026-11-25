@@ -4,7 +4,7 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 
-import type { TelegramMessage } from '../model/telegram-message.model';
+import type { TelegramMessage } from '@rondo/core/model/telegram-message.model';
 
 const TextPartSchema = Schema.Struct({ type: Schema.String, text: Schema.String, user_id: Schema.optional(Schema.Int) });
 const TextSchema = Schema.Union([Schema.String, Schema.Array(Schema.Union([Schema.String, TextPartSchema]))]);

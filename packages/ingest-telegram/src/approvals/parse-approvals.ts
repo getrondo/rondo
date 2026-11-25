@@ -1,10 +1,9 @@
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
+import { nicknameOf } from '@rondo/core/extract/extract-lineup';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
-import { nicknameOf } from '../extract/extract-lineup';
-
-import type { CommunityConfig } from '../config/community-config';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
 
 const RowSchema = Schema.Struct({
     raw: Schema.NonEmptyString,

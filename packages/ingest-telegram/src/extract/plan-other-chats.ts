@@ -10,11 +10,11 @@ import { isOtherGame, mergePlans } from './merge-plans';
 import { originalPolls } from './original-polls';
 import { postIdOf, sourceOf } from './post-id';
 
-import type { CommunityConfig } from '../config/community-config';
 import type { ChatContent } from '../interface/chat-content.interface';
-import type { TelegramMessage } from '../model/telegram-message.model';
-import type { TelegramSnapshot } from '../model/telegram-snapshot.model';
-import type { ExtractedFacts, PollFact } from './fact.model';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
+import type { ExtractedFacts, PollFact } from '@rondo/core/extract/fact.model';
+import type { TelegramMessage } from '@rondo/core/model/telegram-message.model';
+import type { TelegramSnapshot } from '@rondo/core/model/telegram-snapshot.model';
 
 interface Chats {
     readonly config: CommunityConfig;
@@ -66,7 +66,7 @@ const mergeSnapshots = (main: TelegramSnapshot, other: TelegramSnapshot, isOrigi
     };
 };
 
-// A copy in the main chat of a game 90 minutes from the main one only refers to it
+// A copy in the main chat of a game separateGamesMinutes from the main one only refers to it
 const separateCopies = (facts: ExtractedFacts, asOf: string, isCopy: (poll: PollFact) => boolean) => {
     const own = assemblePlan({ ...facts, polls: facts.polls.filter(poll => !isCopy(poll)) }, asOf);
     const apart = facts.polls.filter(poll => {

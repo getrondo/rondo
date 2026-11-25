@@ -1,14 +1,13 @@
 import { isDefined } from '@rnw-community/shared';
+import { aliasesIn } from '@rondo/core/identity/aliases-in';
+import { ensureAliases } from '@rondo/core/identity/ensure-aliases';
+import { insertMany } from '@rondo/core/utils/insert-many.util';
 import { personAlias, telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { and, eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { aliasesIn } from '../identity/aliases-in';
-import { ensureAliases } from '../identity/ensure-aliases';
-import { insertMany } from '../utils/insert-many.util';
-
-import type { Directory } from '../interface/directory.interface';
 import type { LoadContext } from '../interface/load-context.interface';
+import type { Directory } from '@rondo/core/interface/directory.interface';
 
 export const insertPeople = Effect.fn('IngestTelegram.insertPeople')(function* (context: LoadContext, directory: Directory) {
     const { transaction, communityId, config, plan } = context;

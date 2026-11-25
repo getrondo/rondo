@@ -1,4 +1,5 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { separateGamesMinutes } from '@rondo/core/sessions/local-time';
 import { extraction, sourceRef } from '@rondo/db/schema/platform.schema';
 import { session, sessionChange } from '@rondo/db/schema/scheduling.schema';
 import { and, eq, sql } from 'drizzle-orm';
@@ -9,12 +10,12 @@ import { postIdIn, sourceOf } from '../extract/post-id';
 
 import { sessionEntity } from './load-provenance';
 import { mainChatId } from './main-chat-id';
-import { sessionMillis, startOf } from './start-of';
+import { startOf } from './start-of';
 
-import type { CommunityConfig } from '../config/community-config';
 import type { PlannedSession } from '../extract/assemble-plan';
 import type { LoadContext } from '../interface/load-context.interface';
 import type { liveMessages } from './live-messages';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
 
 type LiveMessages = Effect.Success<ReturnType<typeof liveMessages>>;
 
@@ -125,6 +126,6 @@ export const matchOf = (planned: PlannedSession, { otherChats, timeZone }: Commu
         messageIds: messageIdsOf(planned),
         isMain: isMainPost(planned.pollMessageIds[0]) || isMainPost(planned.lineup?.messageId),
         isNear: (startsAt: Date): boolean =>
-            !isNotEmptyArray(times) || times.some(time => Math.abs(time - startsAt.getTime()) < sessionMillis)
+            !isNotEmptyArray(times) || times.some(time => Math.abs(time - startsAt.getTime()) < separateGamesMinutes * 60_000)
     };
 };

@@ -1,14 +1,16 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { telegramAccount } from '@rondo/db/schema/identity.schema';
 import { roleGrant } from '@rondo/db/schema/org.schema';
+import { auditLog } from '@rondo/db/schema/platform.schema';
 import { team, teamDraft } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import { and, desc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { Access } from '../access/admin-access';
+import { recipientsOf } from '../access/recipients-of';
 import { resolveLocale } from '../i18n/locale';
 import { addMillis } from '../utils/add-millis.util';
 
@@ -16,6 +18,7 @@ const minute = 60_000;
 const longestLeadMs = 6 * 60 * minute;
 export const afterStartMs = 15 * minute;
 const debounceMs = 5 * minute;
+const takeOverMs = 15 * minute;
 const lastCallMs = 15 * minute;
 
 export const gamesNearStart = Effect.fn('Core.gamesNearStart')(function* (now: Date) {
@@ -42,12 +45,40 @@ export const hasStoredTeams = Effect.fn('Core.hasStoredTeams')(function* (sessio
     return isDefined(row);
 });
 
+// A job that was cut off leaves its claim behind: without a reached admin it is taken over
+const isProposable = (sessionId: string, now: Date) =>
+    and(
+        eq(teamDraft.sessionId, sessionId),
+        or(
+            isNull(teamDraft.proposedAt),
+            and(
+                lte(teamDraft.proposedAt, addMillis(now, -takeOverMs)),
+                sql`not exists (select 1 from audit.log where action = 'teams.proposed' and entity_id = ${sessionId} and at >= ${teamDraft.proposedAt})`
+            )
+        )
+    );
+
+export const canPropose = Effect.fn('Core.canPropose')(function* (sessionId: string, now: Date) {
+    const db = yield* Db;
+    const found = yield* db.select({ id: teamDraft.sessionId }).from(teamDraft).where(isProposable(sessionId, now));
+
+    return isNotEmptyArray(found);
+});
+
+export const recordProposalReached = Effect.fn('Core.recordProposalReached')(function* (communityId: string, sessionId: string, at: Date) {
+    const db = yield* Db;
+
+    yield* db
+        .insert(auditLog)
+        .values({ actorKind: 'bot', communityId, action: 'teams.proposed', entityType: 'session', entityId: sessionId, at });
+});
+
 export const claimProposal = Effect.fn('Core.claimProposal')(function* (sessionId: string, now: Date) {
     const db = yield* Db;
     const claimed = yield* db
         .update(teamDraft)
         .set({ proposedAt: now })
-        .where(and(eq(teamDraft.sessionId, sessionId), isNull(teamDraft.proposedAt)))
+        .where(isProposable(sessionId, now))
         .returning({ sessionId: teamDraft.sessionId });
 
     return isNotEmptyArray(claimed);
@@ -135,18 +166,9 @@ export const communityAdmins = Effect.fn('Core.communityAdmins')(function* (comm
         .orderBy(telegramAccount.personId, desc(telegramAccount.lastSeenAt));
 
     const ownerIds = [...access.ownerTgUserIds].filter(tgUserId => !granted.some(row => row.tgUserId === tgUserId));
-    const known = isNotEmptyArray(ownerIds)
-        ? yield* db
-              .select({ tgUserId: telegramAccount.tgUserId, languageCode: telegramAccount.languageCode })
-              .from(telegramAccount)
-              .where(inArray(telegramAccount.tgUserId, ownerIds))
-        : [];
-    const owners = ownerIds.map(tgUserId => ({
-        tgUserId,
-        languageCode: known.find(row => row.tgUserId === tgUserId)?.languageCode ?? null
-    }));
+    const admins = granted.map(row => ({ tgUserId: row.tgUserId, locale: resolveLocale(row.languageCode) }));
 
-    return [...granted, ...owners].map(row => ({ tgUserId: row.tgUserId, locale: resolveLocale(row.languageCode) }));
+    return [...admins, ...(yield* recipientsOf(ownerIds))];
 });
 
 const offerPauseMs = 30 * 24 * 60 * minute;

@@ -25,13 +25,7 @@ interface LiveLineup {
     readonly chatId?: number;
 }
 
-export const storeLineup = Effect.fn('IngestTelegram.storeLineup')(function* ({
-    communityId,
-    sessionId,
-    lineup,
-    senderName,
-    chatId
-}: LiveLineup) {
+export const storeLineup = Effect.fn('Core.storeLineup')(function* ({ communityId, sessionId, lineup, senderName, chatId }: LiveLineup) {
     const db = yield* Db;
     const known = yield* loadDirectory(communityId);
 

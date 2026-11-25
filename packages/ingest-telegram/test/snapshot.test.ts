@@ -1,5 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
+import { applyApproved } from '@rondo/core/identity/apply-approved';
+import { loadEvidence } from '@rondo/core/identity/load-evidence';
 import { aliasLink, person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { activity, community, membership, telegramChat } from '@rondo/db/schema/org.schema';
 import { importedPoll, messageRef, pollVote, telegramPoll } from '@rondo/db/schema/platform.schema';
@@ -18,8 +20,6 @@ import { compareApprovals, loadApprovals } from '../src/approvals/load-approvals
 import { parseApprovals } from '../src/approvals/parse-approvals';
 import { assemblePlan } from '../src/extract/assemble-plan';
 import { extractAll } from '../src/extract/extract-all';
-import { applyApproved } from '../src/identity/apply-approved';
-import { loadEvidence } from '../src/identity/load-evidence';
 import { importMessages } from '../src/ingest.effect';
 import { loadPlan } from '../src/load/load-plan';
 import { parseSnapshot } from '../src/parse/parse-snapshot';
@@ -509,7 +509,7 @@ layer(testDbLayer, { timeout: 60_000 })('loading a snapshot', it => {
                 .where(eq(telegramAccount.tgUserId, BigInt(ids.other)));
 
             expect(squads.find(({ date }) => date === '2025-05-04')?.yes?.size).toBe(1);
-            expect(loads.filter(name => name === 'IngestTelegram.loadEvidence')).toHaveLength(1);
+            expect(loads.filter(name => name === 'Core.loadEvidence')).toHaveLength(1);
         })
     );
 

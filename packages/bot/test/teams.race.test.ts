@@ -1,5 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { isEmptyString } from '@rnw-community/shared';
+import { raceDatabaseUrl } from '@rondo/core/testing/local-postgres.layer';
 import { adminState } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -11,7 +12,7 @@ import * as Random from 'effect/Random';
 import { conversation, startUpdatesAt } from './support/conversation';
 import { teamsGame } from './support/teams-game';
 import { buttonData, guestSignups, openEditor, pasteWithStranger } from './support/teams-screen';
-import { adminNumbered, raceDatabaseUrl, raceMenuLayer } from './support/test-layer';
+import { adminNumbered, raceMenuLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
 const withoutPostgres = isEmptyString(raceDatabaseUrl);

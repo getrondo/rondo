@@ -4,7 +4,7 @@ import { importedPoll, messageRef, pendingAction, pollVote, telegramPoll } from 
 import { lineupEntry, teamMember } from '@rondo/db/schema/play.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
+import { maxWaitInTransaction, Telegram } from '@rondo/telegram/service/telegram.service';
 import { and, count, eq, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -74,19 +74,17 @@ export const isDeletableSession = Effect.fn('Core.isDeletableSession')(function*
     return yield* isDeletableGame(communityId, sessionId, today);
 });
 
-const refusedDelete = ActionFailedError.make({ reason: 'only a future game made by the bot without votes of players can be deleted' });
+const refusedDelete = ActionFailedError.make({ failure: { code: 'not_deletable' } });
 
 const stopForDelete = Effect.fn('Core.stopForDelete')(function* (poll: typeof telegramPoll.$inferSelect) {
     const db = yield* Db;
     const telegram = yield* Telegram;
     const stopped = yield* telegram
-        .call('stopPoll', api => api.stopPoll(Number(poll.chatId), poll.messageId))
+        .call('stopPoll', api => api.stopPoll(Number(poll.chatId), poll.messageId), maxWaitInTransaction)
         .pipe(
             Effect.map(result => (Predicate.isNumber(result.total_voter_count) ? result.total_voter_count : null)),
             Effect.catch(error =>
-                isSettledPoll(error.description)
-                    ? Effect.succeed(null)
-                    : ActionFailedError.make({ reason: 'the poll could not be closed, so the game is kept' })
+                isSettledPoll(error.description) ? Effect.succeed(null) : ActionFailedError.make({ failure: { code: 'poll_not_closed' } })
             )
         );
     const closedAt = yield* DateTime.nowAsDate;
@@ -151,13 +149,13 @@ export const deleteSession = Effect.fn('Core.deleteSession')(function* (input: {
 
     if (outcome === 'unseen') {
         return yield* ActionFailedError.make({
-            reason: 'the poll has votes the bot has not seen, so the game is kept and the poll is closed'
+            failure: { code: 'votes_unseen' }
         });
     }
 
     if (outcome === 'uncounted') {
         return yield* ActionFailedError.make({
-            reason: 'the poll was already closed, so its voters cannot be counted and the game is kept'
+            failure: { code: 'votes_uncounted' }
         });
     }
 

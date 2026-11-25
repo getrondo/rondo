@@ -1,34 +1,27 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { lineupDelivery, team, teamColor, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
-import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
-import { Telegram } from '@rondo/telegram/service/telegram.service';
-import { and, eq, gt, isNull, lte, or, sql } from 'drizzle-orm';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
+import { and, eq, gt, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
+import * as Ref from 'effect/Ref';
 
 import { recordAudit } from '../audit/record-audit';
 import { ActionFailedError } from '../error/action-failed.error';
-import { addMillis } from '../utils/add-millis.util';
-import { topicOptions } from '../utils/topic-options.util';
 
 import { badgeOfColour, badgeOfRow } from './badges';
+import { deliverOne, isGameOpen, type Claim } from './deliver-lineup';
 import { syncRoster } from './draft-state';
 import { planLineup, type PlanInput } from './lineup-plan';
+import { claimPublish, ownPublish } from './publish-claim';
 import { loadDraft } from './team-draft.service';
 import { loadTeamInputs } from './team-inputs';
-import { clearResult, isRevertible, resultRecorded } from './team-result';
+import { clearResult, isRevertible, resultMark } from './team-result';
 
 import type { PostTeam } from './interface/lineup-post.interface';
 import type { DeliveryOutcome, LineupPlan, PlannedDelivery, PublishOutcome } from './interface/publish.interface';
-
-export const lineupChanged = 'the teams post changed after the preview';
-
-const notModified = /message is not modified/iu;
-const notFound = /message to edit not found/iu;
-const htmlOptions = { parse_mode: 'HTML' as const, link_preview_options: { is_disabled: true } };
 
 const colourIdOf = Effect.fn('Core.colourIdOf')(function* (communityId: string, colour: string) {
     const db = yield* Db;
@@ -75,37 +68,6 @@ const storeSquad = Effect.fn('Core.storeSquad')(function* (communityId: string, 
             );
         }
     }
-
-    return publishedAt;
-});
-
-const busyMs = 60_000;
-const gameOver = 'the game is already over or cancelled';
-const closedStatuses = new Set(['cancelled', 'played', 'moved']);
-
-interface Claim {
-    readonly delivery: PlannedDelivery;
-    readonly token: string;
-}
-
-const isGameOpen = Effect.fn('Core.isGameOpenForLineup')(function* (sessionId: string) {
-    const db = yield* Db;
-    const [game] = yield* db.select({ status: session.status }).from(session).where(eq(session.id, sessionId));
-
-    return isDefined(game) && !closedStatuses.has(game.status);
-});
-
-const claimPublish = Effect.fn('Core.claimPublish')(function* (sessionId: string, now: Date) {
-    const db = yield* Db;
-    const [claimed] = yield* db
-        .update(teamDraft)
-        .set({ publishToken: sql`gen_random_uuid()`, publishAt: now })
-        .where(
-            and(eq(teamDraft.sessionId, sessionId), or(isNull(teamDraft.publishToken), lte(teamDraft.publishAt, addMillis(now, -busyMs))))
-        )
-        .returning({ token: teamDraft.publishToken });
-
-    return claimed?.token ?? null;
 });
 
 const claimDelivery = Effect.fn('Core.claimLineupDelivery')(function* (sessionId: string, delivery: PlannedDelivery, now: Date) {
@@ -134,94 +96,6 @@ const claimDelivery = Effect.fn('Core.claimLineupDelivery')(function* (sessionId
         .returning({ token: lineupDelivery.token });
 
     return claimed?.token ?? null;
-});
-
-const sendOne = (delivery: PlannedDelivery) =>
-    Effect.gen(function* () {
-        const telegram = yield* Telegram;
-        const chatId = Number(delivery.chatId);
-        const { messageId } = delivery;
-
-        if (isDefined(messageId)) {
-            yield* telegram.call('editMessageText', api => api.editMessageText(chatId, messageId, delivery.html, htmlOptions));
-
-            return { messageId, status: 'edited' as const };
-        }
-
-        const sent = yield* telegram.call('sendMessage', api =>
-            api.sendMessage(chatId, delivery.html, { ...htmlOptions, ...topicOptions(delivery) })
-        );
-
-        return { messageId: sent.message_id, status: 'sent' as const };
-    });
-
-const deliverOne = Effect.fn('Core.deliverLineup')(function* (communityId: string, sessionId: string, claim: Claim, publishToken: string) {
-    const db = yield* Db;
-    const { delivery } = claim;
-    const where = and(
-        eq(lineupDelivery.sessionId, sessionId),
-        eq(lineupDelivery.chatId, delivery.chatId),
-        eq(lineupDelivery.token, claim.token)
-    );
-    const outcome = (status: DeliveryOutcome['status'], reason: string | null): DeliveryOutcome => ({
-        chatId: delivery.chatId,
-        title: delivery.title,
-        status,
-        reason,
-        isEdit: isDefined(delivery.messageId)
-    });
-    const send = sendOne(delivery).pipe(
-        Effect.flatMap(done =>
-            db
-                .update(lineupDelivery)
-                .set({ status: 'sent', messageId: done.messageId, text: delivery.text, topicId: delivery.topicId })
-                .where(where)
-                .pipe(Effect.as(outcome(done.status, null)))
-        ),
-        Effect.catchTag('TelegramApiError', error => {
-            if (notModified.test(error.description)) {
-                return db
-                    .update(lineupDelivery)
-                    .set({ status: 'sent', text: delivery.text })
-                    .where(where)
-                    .pipe(Effect.as(outcome('edited', null)));
-            }
-
-            const status = error.isUncertain ? 'uncertain' : 'refused';
-            const isGone = notFound.test(error.description);
-            const isKept = status === 'refused' && isDefined(delivery.messageId) && !isGone;
-
-            // A refused send as a new message keeps the id of the message that is still in the group
-            return db
-                .update(lineupDelivery)
-                .set({ status: isKept ? 'sent' : status, ...(isGone ? { messageId: null } : {}) })
-                .where(where)
-                .pipe(Effect.as(outcome(status, error.description)));
-        })
-    );
-    const checked = Effect.gen(function* () {
-        const [draft] = yield* db.select({ token: teamDraft.publishToken }).from(teamDraft).where(eq(teamDraft.sessionId, sessionId));
-        const [own] = yield* db.select({ token: lineupDelivery.token }).from(lineupDelivery).where(where);
-
-        if (draft?.token !== publishToken || !isDefined(own)) {
-            return outcome('busy', null);
-        }
-
-        if (!(yield* isGameOpen(sessionId))) {
-            yield* db
-                .update(lineupDelivery)
-                .set({ status: isDefined(delivery.messageId) ? 'sent' : 'refused' })
-                .where(where);
-
-            return outcome('refused', gameOver);
-        }
-
-        return yield* send;
-    });
-
-    return yield* withCommunityLock({ id: communityId }, checked).pipe(
-        Effect.catchCause(cause => Effect.logError('[teams] lineup receipt not saved', cause).pipe(Effect.as(outcome('uncertain', null))))
-    );
 });
 
 // Someone joined or left since the screen was drawn, or a newcomer is not placed yet: the admin sees the change first
@@ -255,15 +129,15 @@ const startPublish = Effect.fn('Core.startPublish')(function* (
         plan.fingerprint !== input.fingerprint ||
         (yield* isRosterMoved(input.communityId, input.sessionId))
     ) {
-        return yield* ActionFailedError.make({ reason: lineupChanged });
+        return yield* ActionFailedError.make({ failure: { code: 'lineup_changed' } });
     }
 
     if (!(yield* isGameOpen(input.sessionId))) {
-        return yield* ActionFailedError.make({ reason: gameOver });
+        return yield* ActionFailedError.make({ failure: { code: 'game_over' } });
     }
 
     if (plan.clearsResult && !(yield* isRevertible(input.sessionId)).isRevertible) {
-        return yield* ActionFailedError.make({ reason: resultRecorded });
+        return yield* ActionFailedError.make({ failure: { code: 'result_recorded' } });
     }
 
     const token = yield* claimPublish(input.sessionId, now);
@@ -277,7 +151,7 @@ const startPublish = Effect.fn('Core.startPublish')(function* (
         }
     }
 
-    return { plan, claims, token };
+    return { plan, claims, token, before: yield* resultMark(input.sessionId) };
 });
 
 const waitingOutcome = (delivery: PlannedDelivery): DeliveryOutcome => {
@@ -287,63 +161,98 @@ const waitingOutcome = (delivery: PlannedDelivery): DeliveryOutcome => {
         chatId: delivery.chatId,
         title: delivery.title,
         status: delivery.isDue || delivery.stored === 'busy' ? 'busy' : quiet,
-        reason: null,
+        failure: null,
         isEdit: false
     };
 };
 
-const finishPublish = Effect.fn('Core.finishPublish')(function* (
+interface Approval {
+    readonly plan: LineupPlan;
+    readonly token: string;
+    readonly before: string;
+}
+
+type ApprovalOutcome = 'stored' | 'taken' | 'closed' | 'changed';
+
+// Runs in the transaction of the first receipt, so a posted line-up and its squad are never one without the other
+const storeApproved = Effect.fn('Core.storeApprovedSquad')(function* (
     input: { readonly communityId: string; readonly sessionId: string; readonly actorPersonId: string | null },
-    published: { readonly plan: LineupPlan; readonly token: string; readonly delivered: readonly DeliveryOutcome[] }
+    { plan, token, before }: Approval
 ) {
     const db = yield* Db;
-    const released = yield* db
-        .update(teamDraft)
-        .set({ publishToken: null, publishAt: null })
-        .where(and(eq(teamDraft.sessionId, input.sessionId), eq(teamDraft.publishToken, published.token)))
-        .returning({ sessionId: teamDraft.sessionId });
-    const isStored = isNotEmptyArray(released) && published.delivered.some(entry => entry.status === 'sent' || entry.status === 'edited');
+    const now = yield* DateTime.nowAsDate;
+    const [own] = yield* db.select({ sessionId: teamDraft.sessionId }).from(teamDraft).where(ownPublish(input.sessionId, token));
 
-    if (!isStored) {
-        return;
+    if (!isDefined(own)) {
+        return 'taken' satisfies ApprovalOutcome;
     }
 
-    if (published.plan.clearsResult) {
+    if (!(yield* isGameOpen(input.sessionId))) {
+        return 'closed' satisfies ApprovalOutcome;
+    }
+
+    if ((yield* resultMark(input.sessionId)) !== before || (plan.clearsResult && !(yield* isRevertible(input.sessionId)).isRevertible)) {
+        return 'changed' satisfies ApprovalOutcome;
+    }
+
+    if (plan.clearsResult) {
         yield* clearResult(input.sessionId);
     }
 
-    const publishedAt = yield* storeSquad(input.communityId, input.sessionId, published.plan.teams);
-    yield* db.update(teamDraft).set({ publishedAt }).where(eq(teamDraft.sessionId, input.sessionId));
+    yield* storeSquad(input.communityId, input.sessionId, plan.teams);
+    yield* db.update(teamDraft).set({ publishedAt: now }).where(eq(teamDraft.sessionId, input.sessionId));
     yield* recordAudit({
         communityId: input.communityId,
         actorPersonId: input.actorPersonId,
         action: 'teams.publish',
         entityType: 'session',
         entityId: input.sessionId,
-        diff: { delivered: published.delivered.map(entry => entry.status) }
+        diff: { due: plan.deliveries.filter(entry => entry.isDue).length }
     });
+
+    return 'stored' satisfies ApprovalOutcome;
+});
+
+const releasePublish = Effect.fn('Core.releasePublish')(function* (sessionId: string, token: string) {
+    const db = yield* Db;
+    yield* db.update(teamDraft).set({ publishToken: null, publishAt: null }).where(ownPublish(sessionId, token));
+});
+
+const isPosted = (outcome: DeliveryOutcome): boolean => outcome.status === 'sent' || outcome.status === 'edited';
+
+const deliverAll = Effect.fn('Core.deliverLineups')(function* (
+    input: { readonly communityId: string; readonly sessionId: string; readonly actorPersonId: string | null },
+    approval: Approval,
+    claims: readonly Claim[]
+) {
+    const approved = yield* Ref.make<ApprovalOutcome | null>(null);
+    const approve = storeApproved(input, approval).pipe(Effect.flatMap(outcome => Ref.set(approved, outcome)));
+    const delivered: DeliveryOutcome[] = [];
+
+    for (const claim of claims) {
+        const outcome = yield* deliverOne({
+            ...input,
+            claim,
+            publishToken: approval.token,
+            onPosted: delivered.some(entry => isPosted(entry)) ? Effect.void : approve
+        });
+        delivered.push(outcome);
+    }
+
+    yield* releasePublish(input.sessionId, approval.token).pipe(
+        Effect.catchCause(cause => Effect.logError('[teams] claim not released', cause))
+    );
+
+    return delivered.some(entry => isPosted(entry)) && (yield* Ref.get(approved)) === 'changed'
+        ? yield* ActionFailedError.make({ failure: { code: 'teams_unsaved' } })
+        : delivered;
 });
 
 export const publishLineup = Effect.fn('Core.publishLineup')(function* (
     input: PlanInput & { readonly version: number; readonly fingerprint: string; readonly actorPersonId: string | null }
 ) {
-    const { plan, claims, token } = yield* withCommunityLock({ id: input.communityId }, startPublish(input));
-    const delivered: DeliveryOutcome[] = [];
-
-    for (const claim of isDefined(token) ? claims : []) {
-        const outcome = yield* deliverOne(input.communityId, input.sessionId, claim, token ?? '');
-        delivered.push(outcome);
-    }
-
-    if (isDefined(token)) {
-        yield* withCommunityLock({ id: input.communityId }, finishPublish(input, { plan, token, delivered })).pipe(
-            Effect.catchCause(cause =>
-                Effect.logError('[teams] sent but not saved', cause).pipe(
-                    Effect.andThen(ActionFailedError.make({ reason: 'the teams were sent but may not be saved, check the chat' }))
-                )
-            )
-        );
-    }
+    const { plan, claims, token, before } = yield* withCommunityLock({ id: input.communityId }, startPublish(input));
+    const delivered = isDefined(token) ? yield* deliverAll(input, { plan, token, before }, claims) : [];
 
     return {
         deliveries: plan.deliveries.map(

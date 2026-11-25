@@ -14,7 +14,7 @@ interface EnsureAliasesInput {
     readonly aliases: readonly SeenAlias[];
 }
 
-export const ensureAliases = Effect.fn('IngestTelegram.ensureAliases')(function* ({ communityId, source, aliases }: EnsureAliasesInput) {
+export const ensureAliases = Effect.fn('Core.ensureAliases')(function* ({ communityId, source, aliases }: EnsureAliasesInput) {
     const db = yield* Db;
 
     yield* insertMany(aliases, batch =>

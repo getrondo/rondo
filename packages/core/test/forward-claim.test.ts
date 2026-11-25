@@ -62,15 +62,15 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('forward claims', it => {
             const sent = yield* forwardPoll(sessionId, second, yield* tokenNow()).pipe(Effect.exit);
             const [claim] = yield* db.select().from(pollForward).where(eq(pollForward.pollId, 'claim-poll'));
 
-            expect(reasonOf(unknown)).toContain('the forward result is uncertain');
-            expect(reasonOf(again)).toContain('the forward result is uncertain');
+            expect(reasonOf(unknown)).toContain('forward_uncertain');
+            expect(reasonOf(again)).toContain('forward_uncertain');
             expect(afterAgain).toBe(1);
             expect(refused._tag).toBe('Failure');
             expect(claimsAfterRefusal).toEqual([]);
             expect(ghost._tag).toBe('Failure');
             expect(afterGhost).toBe(2);
             expect(second2).not.toBe(first);
-            expect(reasonOf(stale)).toContain('the forward result is uncertain');
+            expect(reasonOf(stale)).toContain('forward_uncertain');
             expect(afterStale).toBe(4);
             expect(sent._tag).toBe('Success');
             expect(claim?.messageId).toBeTypeOf('number');

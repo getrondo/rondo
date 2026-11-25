@@ -4,28 +4,28 @@ import { messageRef } from '@rondo/db/schema/platform.schema';
 import { team, teamColor } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { chatRules } from '@rondo/ingest-telegram/extract/chat-rules';
-import { extractLineup } from '@rondo/ingest-telegram/extract/extract-lineup';
-import { extractPoll, makeVenueMatcher } from '@rondo/ingest-telegram/extract/extract-poll';
-import { extractCancellation } from '@rondo/ingest-telegram/extract/extract-signals';
-import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
+import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
-import { todayIn } from '../sessions/local-time';
+import { chatRules } from '../extract/chat-rules';
+import { extractLineup } from '../extract/extract-lineup';
+import { extractPoll, makeVenueMatcher } from '../extract/extract-poll';
+import { extractCancellation } from '../extract/extract-signals';
+import { separateGamesMinutes, todayIn } from '../sessions/local-time';
 import { createSession, getSession, listSessions } from '../sessions/session.service';
 import { badgeOfEmoji, badgeOfRow } from '../teams/badges';
 import { findVenueByName, withKnownVenues } from '../venues/venue.service';
 
 import { gamesOfChat } from './games-of-chat';
 import { hasMainRoster } from './has-main-roster';
-import { storeHandSquad } from './store-hand-squad';
+import { isSquadFixed, storeHandSquad } from './store-hand-squad';
 
+import type { CommunityConfig } from '../config/community-config';
+import type { LineupFact, PollFact } from '../extract/fact.model';
+import type { TelegramMessage } from '../model/telegram-message.model';
 import type { CancelReason, SessionView } from '../sessions/session.model';
-import type { CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
-import type { LineupFact, PollFact } from '@rondo/ingest-telegram/extract/fact.model';
-import type { TelegramMessage } from '@rondo/ingest-telegram/model/telegram-message.model';
 
 export interface GroupMessage {
     readonly chatId: bigint;
@@ -83,8 +83,6 @@ const venueIdFor = Effect.fn('Core.venueIdFor')(function* (communityId: string, 
     return found?.status === 'active' ? found.id : null;
 });
 
-const gameMinutes = 90;
-
 const minutesOf = (time: string): number => {
     const [hour = 0, minute = 0] = time.split(':').map(Number);
 
@@ -117,7 +115,7 @@ const ensureSession = Effect.fn('Core.ensureSession')(function* (
         Number(isDefined(venueId) && isDefined(game.venueId) && venueId !== game.venueId) +
         Number(isDefined(fact.localTime) && fact.localTime !== game.localTime);
     const isOtherGame = (game: SessionView): boolean =>
-        countConflicts(game) > 1 || (isDefined(fact.localTime) && minutesApart(fact.localTime, game.localTime) >= gameMinutes);
+        countConflicts(game) > 1 || (isDefined(fact.localTime) && minutesApart(fact.localTime, game.localTime) >= separateGamesMinutes);
     const possible = games.filter(game => !isOtherGame(game));
     const exact = possible.filter(game => countConflicts(game) === 0);
     const [match, ...others] = isNotEmptyArray(exact) ? exact : possible;
@@ -187,6 +185,11 @@ const applyLineup = Effect.fn('Core.applyLineup')(function* (
     }
 
     const sessionId = found.value;
+
+    if (yield* isSquadFixed(sessionId)) {
+        return;
+    }
+
     const colors = yield* db.select().from(teamColor).where(eq(teamColor.communityId, communityId));
 
     yield* db.delete(team).where(eq(team.sessionId, sessionId));

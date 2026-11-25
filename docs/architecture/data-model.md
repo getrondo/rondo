@@ -2,7 +2,7 @@
 
 Rondo's relational model, derived from 3.5 years of real community history (see
 [community analysis](../research/community-analysis.md)) and the [epics](../epics/README.md).
-PostgreSQL 17 is the single source of truth. The schema is code: `packages/db/src/schema/*.schema.ts` (Drizzle), migrations in `packages/db/drizzle/`.
+PostgreSQL 18 is the single source of truth. The schema is code: `packages/db/src/schema/*.schema.ts` (Drizzle), migrations in `packages/db/drizzle/`.
 
 ## Design principles
 
@@ -17,7 +17,7 @@ PostgreSQL 17 is the single source of truth. The schema is code: `packages/db/sr
 | **Enums as types, vocabularies as tables** | Small closed sets are Postgres enums (`signup_status`). Community-extensible sets are tables (activities, team colours, award kinds).                                                                                                                          |
 | **Privacy by design** | Personal data is concentrated in `identity`; analytics use `person_id`. `person.anonymized_at` plus a scrub job implement GDPR erasure without breaking aggregates. Ratings, peer ratings and incident reports live in `play_private` / `feedback_private`, granted only to the `rondo_admin` role. Row-level tenant isolation is planned with the second tenant (no epic yet). |
 | **Provenance**                             | Every imported or derived row has `source` (`bot`, `import`, `manual`) and optional `ingest.source_ref_id`, so imported history can be re-run idempotently and told apart.                                                                                     |
-| **Integrations via outbox**                | Domain events are written to `comms.outbox` in the same transaction; workers deliver them (Telegram messages, notifications). This gives exactly-once business effects with at-least-once delivery.                                                            |
+| **Messages outside transactions** | A Telegram message is claimed in the database, sent, and its receipt stored. An unknown result is never sent again by itself. Polls and the end of a poll are the exception: they run inside a short transaction. There is no outbox worker. |
 
 ## Entity–relationship overview
 
@@ -166,7 +166,7 @@ erDiagram
 `imported_poll(poll_id, community_id, session_id?, chat_id?, message_id, posted_at, kind (participation/reserve/other), answers)`: every public poll of the history, once per poll id;
 `poll_vote(poll_id, tg_user_id, session_id?, choice (yes/no/other), voted_at?)`: answers in imported polls and in the bot's polls (a retracted one is removed), signed up but not attended, `other` is unreadable; `session_id` only for participation polls; primary key `(poll_id, tg_user_id)`, forwards share one poll;
 `notification_pref(person_id, channel (dm/group), kind, enabled)`;
-`outbox(id, aggregate_type, aggregate_id, event_type, payload jsonb, created_at, dispatched_at?, attempts)`.
+`outbox(id, aggregate_type, aggregate_id, event_type, payload jsonb, created_at, dispatched_at?, attempts)`: not used, nothing is written or delivered.
 
 ### `ingest`: imported history (data minimization)
 

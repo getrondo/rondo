@@ -8,7 +8,7 @@ import * as Effect from 'effect/Effect';
 
 import { ActionFailedError } from '../error/action-failed.error';
 
-import type { Alias } from '@rondo/ingest-telegram/interface/directory.interface';
+import type { Alias } from '../interface/directory.interface';
 
 interface Decision {
     readonly alias: Pick<Alias, 'id' | 'communityId'>;
@@ -60,7 +60,7 @@ export const requireNoOtherPeriod = Effect.fn('Core.requireNoOtherPeriod')(funct
         .where(and(eq(aliasLink.aliasId, alias.id), eq(aliasLink.status, 'approved'), ne(aliasLink.personId, personId)));
 
     if (isNotEmptyArray(approved) || (isNotEmptyArray(persons) && !isWhole)) {
-        return yield* ActionFailedError.make({ reason: 'another player has a period under this nickname, undo that first' });
+        return yield* ActionFailedError.make({ failure: { code: 'other_period' } });
     }
 
     return personId;

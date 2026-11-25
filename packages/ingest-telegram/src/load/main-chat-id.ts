@@ -4,7 +4,7 @@ import { and, asc, eq, notInArray } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
-import type { CommunityConfig } from '../config/community-config';
+import type { CommunityConfig } from '@rondo/core/config/community-config';
 
 export const mainChatId = Effect.fn('IngestTelegram.mainChatId')(function* ({ slug, otherChats = [] }: CommunityConfig) {
     const db = yield* Db;

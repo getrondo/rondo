@@ -3,12 +3,12 @@ import { community, telegramChat } from '@rondo/db/schema/org.schema';
 import { messageRef, pollForward, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupDelivery } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { CommunityConfigSchema, type CommunityConfig } from '@rondo/ingest-telegram/config/community-config';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 
+import { CommunityConfigSchema, type CommunityConfig } from '../config/community-config';
 import { resolveLocale, type Locale } from '../i18n/locale';
 
 import { moveImportedChat } from './move-imported-chat';

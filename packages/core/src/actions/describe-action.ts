@@ -71,7 +71,7 @@ const requireDisplay = Effect.fn('Core.requireDisplay')(function* (venueId: stri
     const display = yield* displayOfVenue(venueId, communityId);
 
     return isDefined(venueId) && !isDefined(display.venueName)
-        ? yield* ActionFailedError.make({ reason: 'this place is no longer available' })
+        ? yield* ActionFailedError.make({ failure: { code: 'place_gone' } })
         : display;
 });
 

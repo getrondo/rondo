@@ -29,7 +29,7 @@ import { topicOf } from '../context/topic-of';
 import { syncGroupUsers } from './chat-member.handler';
 import { proposeUnknownPlace } from './unknown-place.handler';
 
-import type { Message } from 'grammy/types';
+import type { Message } from '@rondo/telegram/webhook/telegram-update.model';
 
 const linkCommand = /^\/link(?:@\w+)?\s+(\S+)/u;
 
@@ -62,7 +62,7 @@ const handleLink = Effect.fn('Bot.handleLink')(function* (message: Message, slug
         chatId: BigInt(message.chat.id),
         topicId: topicOf(message),
         kind: message.chat.type,
-        title: message.chat.title
+        title: message.chat.title ?? ''
     });
     const locale = yield* groupLocaleOf(communityId.value);
     yield* reply(`${text(locale, 'linked')}: ${slug}`);
@@ -75,7 +75,7 @@ const recordBotCopy = Effect.fn('Bot.recordBotCopy')(function* (communityId: str
         return yield* recordPollCopy({ communityId, pollId: message.poll.id, chatId, messageId: message.message_id });
     }
 
-    if (message.forward_origin?.type === 'user' && message.forward_origin.sender_user.is_bot) {
+    if (message.forward_origin?.sender_user?.is_bot === true) {
         yield* recordLineupCopy({ communityId, chatId, messageId: message.message_id, text: body });
 
         return true;
@@ -164,7 +164,12 @@ export const handleGroupMessage = Effect.fn('Bot.handleGroupMessage')(function* 
     }
 
     if (result.poll || result.lineup || isDefined(result.cancellation)) {
-        yield* Effect.logInfo('[group] extracted', result);
+        yield* Effect.logInfo('[group] extracted', {
+            poll: result.poll,
+            lineup: result.lineup,
+            cancellation: isDefined(result.cancellation),
+            unknownPlace: isDefined(result.unknownPlace)
+        });
     }
 
     const followUp: FollowUp = Option.fromNullishOr(result.unknownPlace).pipe(

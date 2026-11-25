@@ -19,18 +19,17 @@ import { describeAction } from '../src/actions/describe-action';
 import { syncMember } from '../src/identity/telegram-user';
 import { setColour, swapPlayers } from '../src/teams/draft-state';
 import { planLineup } from '../src/teams/lineup-plan';
-import { lineupChanged, publishLineup } from '../src/teams/publish-lineup';
+import { publishLineup } from '../src/teams/publish-lineup';
 import { changeDraft, openDraft } from '../src/teams/team-draft.service';
 import { recordResult } from '../src/teams/team-result';
 import { confirmAsOwner, teamsActionAsOwner } from '../src/testing/confirm-action';
-import { seedGame } from '../src/testing/seed-game';
+
+import { publishPlanned, publishWhile, twoGroupGame } from './support/two-group-game';
 
 const blocked = new Map<number, Error>();
-const afterSend = new Map<number, () => void>();
 let messageId = 50_000;
 const recorder = makeRecorder((method, payload) => {
     const failure = blocked.get(Number(payload.chat_id));
-    afterSend.get(Number(payload.chat_id))?.();
 
     if (isDefined(failure)) {
         throw failure;
@@ -41,37 +40,6 @@ const recorder = makeRecorder((method, payload) => {
     return method === 'sendMessage' ? { message_id: messageId, date: 0, chat: { id: payload.chat_id, type: 'supergroup' } } : true;
 });
 const sendsTo = (chatId: number) => recorder.calls.filter(call => call.payload.chat_id === chatId).map(call => call.method);
-
-const twoGroupGame = Effect.fn('test.twoGroupGame')(function* (slug: string, chats: readonly [number, number], base: number) {
-    const db = yield* Db;
-    const { communityId, sessionId } = yield* seedGame(slug);
-
-    for (const [index, chatId] of chats.entries()) {
-        yield* db.insert(telegramChat).values({ chatId: BigInt(chatId), communityId, kind: 'supergroup', title: `Group ${index + 1}` });
-        yield* db
-            .insert(messageRef)
-            .values({ chatId: BigInt(chatId), messageId: index + 1, purpose: 'poll', entityType: 'session', entityId: sessionId });
-    }
-
-    for (let index = 0; index < 8; index += 1) {
-        const personId = yield* syncMember(communityId, { id: BigInt(base + index), firstName: `Player${index}` }, 'active');
-        yield* db.insert(signup).values({ sessionId, personId, status: 'in' });
-    }
-
-    yield* openDraft(communityId, sessionId, null);
-
-    return { communityId, sessionId };
-});
-
-const publishPlanned = Effect.fn('test.publishPlanned')(function* (
-    game: { readonly communityId: string; readonly sessionId: string },
-    retryToken: string | null = null
-) {
-    const input = { ...game, locale: 'uk' as const, actorPersonId: null, privateChatId: null, fallback: Option.none(), retryToken };
-    const plan = yield* planLineup(input);
-
-    return yield* publishLineup({ ...input, version: plan.version, fingerprint: plan.fingerprint });
-});
 
 const swapFirsts = Effect.fn('test.swapFirsts')(function* (game: { readonly communityId: string; readonly sessionId: string }) {
     const { row } = yield* openDraft(game.communityId, game.sessionId, null);
@@ -172,8 +140,8 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             const current = yield* planLineup(input);
             const sent = yield* publishLineup({ ...input, version: current.version, fingerprint: current.fingerprint });
 
-            expect(moved).toMatchObject({ reason: lineupChanged });
-            expect(renamed).toMatchObject({ reason: lineupChanged });
+            expect(moved).toMatchObject({ failure: { code: 'lineup_changed' } });
+            expect(renamed).toMatchObject({ failure: { code: 'lineup_changed' } });
             expect(sent.deliveries.map(delivery => delivery.status)).toEqual(['sent', 'sent']);
             expect(recorder.calls.filter(call => call.payload.chat_id === -7302).map(call => call.payload.message_thread_id)).toEqual([9]);
         })
@@ -288,7 +256,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
         Effect.gen(function* () {
             const db = yield* Db;
             const game = yield* twoGroupGame('delivery-not-revertible', [-7991, -7992], 79_900);
-            const later = yield* seedGame('delivery-not-revertible-later');
+            const later = yield* twoGroupGame('delivery-not-revertible-later', [-79_931, -79_932], 799_300);
             yield* publishPlanned(game);
             yield* resultThenSwap(game);
             const [event] = yield* db.select().from(ratingEvent).where(eq(ratingEvent.sessionId, game.sessionId));
@@ -305,7 +273,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             });
             const refused = yield* publishPlanned(game).pipe(Effect.flip);
 
-            expect(refused).toMatchObject({ reason: 'the result is already recorded' });
+            expect(refused).toMatchObject({ failure: { code: 'result_recorded' } });
             expect(sendsTo(-7991)).toEqual(['sendMessage']);
         })
     );
@@ -386,25 +354,15 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             const db = yield* Db;
             const game = yield* twoGroupGame('delivery-taken-over', [-7901, -7902], 79_000);
             const newer = '00000000-0000-4000-8000-000000000002';
-            const run = Effect.runPromiseWith(yield* Effect.context());
-            const writes: Promise<unknown>[] = [];
-            afterSend.set(-7901, () => {
-                writes.push(
-                    run(
-                        db
-                            .update(teamDraft)
-                            .set({ publishToken: newer, publishAt: new Date(0) })
-                            .where(eq(teamDraft.sessionId, game.sessionId))
-                    )
-                );
-            });
-            const published = yield* publishPlanned(game);
-            afterSend.delete(-7901);
-            yield* Effect.promise(() => Promise.all(writes));
+            const takeOver = db
+                .update(teamDraft)
+                .set({ publishToken: newer, publishAt: new Date(0) })
+                .where(eq(teamDraft.sessionId, game.sessionId));
+            const { published } = yield* publishWhile(game, takeOver);
             const [draft] = yield* db.select().from(teamDraft).where(eq(teamDraft.sessionId, game.sessionId));
             const members = yield* db.select().from(teamMember).where(eq(teamMember.sessionId, game.sessionId));
 
-            expect(published.deliveries.map(delivery => delivery.status)).toEqual(['sent', 'busy']);
+            expect(published).toMatchObject({ _tag: 'Success', success: { deliveries: [{ status: 'sent' }, { status: 'busy' }] } });
             expect(sendsTo(-7902)).toEqual([]);
             expect(draft?.publishToken).toBe(newer);
             expect(draft?.publishedAt).toBeNull();
@@ -416,17 +374,13 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
         Effect.gen(function* () {
             const db = yield* Db;
             const game = yield* twoGroupGame('delivery-cancelled-midway', [-7911, -7912], 79_100);
-            const run = Effect.runPromiseWith(yield* Effect.context());
-            const writes: Promise<unknown>[] = [];
-            afterSend.set(-7911, () => {
-                writes.push(run(db.update(session).set({ status: 'cancelled' }).where(eq(session.id, game.sessionId))));
-            });
-            const published = yield* publishPlanned(game);
-            afterSend.delete(-7911);
-            yield* Effect.promise(() => Promise.all(writes));
+            const cancel = db.update(session).set({ status: 'cancelled' }).where(eq(session.id, game.sessionId));
+            const { published } = yield* publishWhile(game, cancel);
 
-            expect(published.deliveries.map(delivery => delivery.status)).toEqual(['sent', 'refused']);
-            expect(published.deliveries[1]?.reason).toBe('the game is already over or cancelled');
+            expect(published).toMatchObject({
+                _tag: 'Success',
+                success: { deliveries: [{ status: 'sent' }, { status: 'refused', failure: { code: 'game_over' } }] }
+            });
             expect(sendsTo(-7912)).toEqual([]);
         })
     );
@@ -530,7 +484,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             expect(busy.deliveries.map(delivery => delivery.status)).toEqual(['unchanged', 'busy']);
             expect(retried.deliveries.map(delivery => delivery.status)).toEqual(['unchanged', 'sent']);
             expect(sendsTo(-7701)).toEqual(['sendMessage']);
-            expect(cancelled).toMatchObject({ reason: 'the game is already over or cancelled' });
+            expect(cancelled).toMatchObject({ failure: { code: 'game_over' } });
         })
     );
 

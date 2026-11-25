@@ -2,6 +2,7 @@ import { expect, layer } from '@effect/vitest';
 import { syncMember } from '@rondo/core/identity/telegram-user';
 import { swapPlayers } from '@rondo/core/teams/draft-state';
 import { changeDraft, loadDraft, markRosterChanged, openDraft } from '@rondo/core/teams/team-draft.service';
+import { claimProposal } from '@rondo/core/teams/team-schedule';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
@@ -86,6 +87,21 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(Option.getOrNull(placed)?.state.teams.flat()).toContain(joined);
             expect(Option.getOrNull(placed)?.state.teams[1]).toContain(first);
             expect(text).not.toContain('🆕');
+        })
+    );
+
+    it.effect('takes over a proposal nobody got after 15 minutes, and never one that reached an admin', () =>
+        Effect.gen(function* () {
+            const cut = yield* teamsGame('teams-due-cut', { groupChatId: -3505, adminId: 355, players: 10 });
+            const game = { id: cut.sessionId, communityId: cut.communityId, startsAt: at('18:00') };
+            yield* openDraft(cut.communityId, cut.sessionId, null);
+            const isClaimed = yield* claimProposal(cut.sessionId, at('17:05'));
+            const fresh = yield* proposeTeamsFor(game, at('17:19'));
+            const stale = yield* proposeTeamsFor(game, at('17:20'));
+            const reached = yield* proposeTeamsFor(game, at('17:50'));
+
+            expect(isClaimed).toBe(true);
+            expect([fresh, stale, reached]).toEqual(['skipped', 'proposed', 'skipped']);
         })
     );
 });

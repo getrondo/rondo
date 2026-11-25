@@ -1,6 +1,6 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { groupLocaleOf, mainGroupOf } from '@rondo/core/community/community.repository';
-import { lineupChanged, publishLineup } from '@rondo/core/teams/publish-lineup';
+import { publishLineup } from '@rondo/core/teams/publish-lineup';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
 
@@ -15,7 +15,6 @@ import type { MenuButton, MenuUser, Screen } from '../screen.interface';
 import type { EditorView } from './teams-view.interface';
 import type { DeliveryOutcome, PlannedDelivery } from '@rondo/core/teams/interface/publish.interface';
 
-const notFound = /message to edit not found/iu;
 // Second argument of a send tap: a ticket of an unknown delivery, or this mark for a new message instead of an edit
 const asNewMessage = 'n';
 
@@ -97,7 +96,7 @@ export const overviewScreen = Effect.fn('Bot.teamsOverview')(function* (user: Me
 });
 
 const refusedKey = (outcome: DeliveryOutcome) => {
-    if (notFound.test(outcome.reason ?? '')) {
+    if (outcome.failure?.code === 'message_gone') {
         return 'refusedGone' as const;
     }
 
@@ -133,7 +132,9 @@ export const publishAndShow = Effect.fn('Bot.publishAndShow')(function* (user: M
         privateChatId: user.chatId,
         fallback: yield* mainGroupOf(user.communityId)
     }).pipe(
-        Effect.catchTag('ActionFailedError', failure => (failure.reason === lineupChanged ? Effect.succeed(null) : Effect.fail(failure)))
+        Effect.catchTag('ActionFailedError', failure =>
+            failure.failure.code === 'lineup_changed' ? Effect.succeed(null) : Effect.fail(failure)
+        )
     );
 
     if (!isDefined(published)) {

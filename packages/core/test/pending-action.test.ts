@@ -1,5 +1,6 @@
 import { expect, layer } from '@effect/vitest';
 import { person } from '@rondo/db/schema/identity.schema';
+import { pendingAction } from '@rondo/db/schema/platform.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, eq } from 'drizzle-orm';
@@ -103,11 +104,37 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
             const lateTap = yield* decideAction({ actionId: stale, tgUserId: admin, confirm: true, context: contextFor(null) });
             const declined = yield* decideAction({ actionId: rejected, tgUserId: admin, confirm: false, context: contextFor(null) });
 
-            expect(notCreated).toMatchObject({ _tag: 'failed', reason: 'no group is linked to this community yet' });
+            expect(notCreated).toMatchObject({ _tag: 'failed', failure: { code: 'no_group' } });
             expect(sessions).toEqual([]);
             expect(failed).toMatchObject({ _tag: 'failed' });
             expect([expired._tag, lateTap._tag]).toEqual(['expired', 'expired']);
             expect(declined._tag).toBe('rejected');
+        })
+    );
+
+    it.effect('fails a proposal it cannot read once, with a code, and still lets the admin reject one', () =>
+        Effect.gen(function* () {
+            const { communityId } = yield* seedCommunity(seedConfig('actions-unreadable-fc'));
+            const db = yield* Db;
+            const row = {
+                communityId,
+                requestedByTgUserId: admin,
+                kind: 'create_session',
+                payload: { _tag: 'create_session', localDate: 7 },
+                summary: 'old',
+                expiresAt: new Date('2036-01-01T00:00:00Z')
+            };
+            const ids = (yield* db.insert(pendingAction).values([row, row]).returning({ id: pendingAction.id })).map(({ id }) => id);
+            const [confirmId = '', rejectId = ''] = ids;
+            const failed = yield* decideAction({ actionId: confirmId, tgUserId: admin, confirm: true, context: contextFor(null) });
+            const again = yield* decideAction({ actionId: confirmId, tgUserId: admin, confirm: true, context: contextFor(null) });
+            const rejected = yield* decideAction({ actionId: rejectId, tgUserId: admin, confirm: false, context: contextFor(null) });
+            const [stored] = yield* db.select().from(pendingAction).where(eq(pendingAction.id, confirmId));
+
+            expect(failed).toEqual({ _tag: 'failed', summary: 'old', failure: { code: 'unexpected' } });
+            expect(stored).toMatchObject({ status: 'failed', result: { failure: { code: 'unexpected' } } });
+            expect(again._tag).toBe('missing');
+            expect(rejected._tag).toBe('rejected');
         })
     );
 
@@ -186,9 +213,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
             const over = yield* decide(ownId, admin);
             const statuses = yield* db.select({ status: session.status }).from(session).where(eq(session.id, foreignId));
 
-            expect(formerAdmin).toMatchObject({ _tag: 'failed', reason: 'not an admin any more' });
+            expect(formerAdmin).toMatchObject({ _tag: 'failed', failure: { code: 'not_admin' } });
             expect(otherCommunity).toMatchObject({ _tag: 'failed' });
-            expect(over).toMatchObject({ _tag: 'failed', reason: 'the game is already over or cancelled' });
+            expect(over).toMatchObject({ _tag: 'failed', failure: { code: 'game_over' } });
             expect(statuses).toEqual([{ status: 'open' }]);
         })
     );

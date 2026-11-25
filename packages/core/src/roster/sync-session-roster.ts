@@ -5,7 +5,7 @@ import { Db } from '@rondo/db/service/db.service';
 import { and, inArray, ne, not, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-export const syncSessionRoster = Effect.fn('IngestTelegram.syncSessionRoster')(function* (sessionIds: readonly string[]) {
+export const syncSessionRoster = Effect.fn('Core.syncSessionRoster')(function* (sessionIds: readonly string[]) {
     const db = yield* Db;
 
     if (!isNotEmptyArray(sessionIds)) {

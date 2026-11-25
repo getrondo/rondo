@@ -1,4 +1,10 @@
 import { isDefined } from '@rnw-community/shared';
+import { markShared } from '@rondo/core/identity/mark-shared';
+import { entriesOf } from '@rondo/core/roster/entries-of';
+import { syncSessionRoster } from '@rondo/core/roster/sync-session-roster';
+import { gameDurationMinutes } from '@rondo/core/sessions/local-time';
+import { chunks } from '@rondo/core/utils/chunks.util';
+import { insertMany } from '@rondo/core/utils/insert-many.util';
 import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -6,22 +12,17 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { postIdIn, sourceOf } from '../extract/post-id';
-import { markShared } from '../identity/mark-shared';
-import { entriesOf } from '../roster/entries-of';
-import { syncSessionRoster } from '../roster/sync-session-roster';
-import { chunks } from '../utils/chunks.util';
-import { insertMany } from '../utils/insert-many.util';
 import { lookupId } from '../utils/lookup-id.util';
 
 import { deleteStaleSessions } from './delete-stale-sessions';
 import { liveMessages } from './live-messages';
 import { mainChatId } from './main-chat-id';
 import { existingSessions, matchOf, matchSessions } from './match-sessions';
-import { sessionMillis, startOf } from './start-of';
+import { startOf } from './start-of';
 
-import type { LineupFact } from '../extract/fact.model';
-import type { Directory, EntryRow } from '../interface/directory.interface';
 import type { LoadContext, ReferenceIds, SessionLoadResult } from '../interface/load-context.interface';
+import type { LineupFact } from '@rondo/core/extract/fact.model';
+import type { Directory, EntryRow } from '@rondo/core/interface/directory.interface';
 
 const unassignedTeam = 0;
 
@@ -59,7 +60,7 @@ const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function
                 venueId: lookupId(reference.venueIdByKey, item.venueKey) ?? null,
                 localDate: item.localDate,
                 startsAt,
-                endsAt: new Date(startsAt.getTime() + sessionMillis),
+                endsAt: new Date(startsAt.getTime() + gameDurationMinutes * 60_000),
                 status: item.status,
                 capacityMax: item.capacityMax,
                 fieldsPlanned: item.fieldsPlanned,

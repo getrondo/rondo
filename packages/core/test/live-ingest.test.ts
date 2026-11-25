@@ -2,11 +2,13 @@ import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { personAlias } from '@rondo/db/schema/identity.schema';
 import { extraction, ingestRun, messageRef, sourceRef } from '@rondo/db/schema/platform.schema';
-import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
+import { lineupEntry, ratingEvent, team, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, eq } from 'drizzle-orm';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
+import * as TestClock from 'effect/testing/TestClock';
 
 import { upsertTelegramUser } from '../src/identity/telegram-user';
 import { ingestGroupMessage } from '../src/live/live-ingest';
@@ -478,6 +480,67 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             expect(squadGames).toHaveLength(2);
             expect(squadGames).toContainEqual({ sessionId: second?.id, chatId: -970 });
             expect(main.cancellation?.sessionId).toBe(mainGame?.sessionId);
+        })
+    );
+
+    it.effect('never replaces the teams or the draft of a game with a result or a line-up being sent by a hand-posted squad', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId, post } = yield* seedMatchChat('live-fixed-fc', -9301);
+            const postSquad = (messageId: number, text: string) =>
+                post(-930, messageId, '2026-05-04T15:00:00Z', { text: `Составы на сегодня, North:\n${text}` });
+            yield* post(-930, 1, '2026-05-03T18:00:00Z', { question: 'Понедельник, 4 мая, 19.00 North' });
+            yield* postSquad(2, '🟢Я, Иван\n🔵Олег, Семён');
+            const [game] = yield* db.select().from(session).where(eq(session.communityId, communityId));
+            const sessionId = game?.id ?? '';
+            yield* db.insert(teamDraft).values({ sessionId, communityId, state: {}, version: 7 });
+            const entries = () => db.select({ raw: lineupEntry.raw }).from(lineupEntry).where(eq(lineupEntry.sessionId, sessionId));
+            const teams = () =>
+                db.select({ id: team.id, rank: team.rank }).from(team).where(eq(team.sessionId, sessionId)).orderBy(team.id);
+            const version = () => db.select({ version: teamDraft.version }).from(teamDraft).where(eq(teamDraft.sessionId, sessionId));
+            const refs = () =>
+                db
+                    .select()
+                    .from(messageRef)
+                    .where(and(eq(messageRef.entityId, sessionId), eq(messageRef.purpose, 'lineup')));
+            const snapshot = Effect.all([entries(), teams(), version(), refs()]);
+            const attempt = (messageId: number) =>
+                Effect.gen(function* () {
+                    const before = yield* snapshot;
+                    const result = yield* Effect.exit(postSquad(messageId, '🟢Я, Олег\n🔵Иван, Семён'));
+
+                    return { before, after: yield* snapshot, result };
+                });
+            yield* db.update(team).set({ rank: 1 }).where(eq(team.sessionId, sessionId));
+            const ranked = yield* attempt(3);
+            yield* db.update(team).set({ rank: null }).where(eq(team.sessionId, sessionId));
+            const [activityRow] = yield* db.select().from(session).where(eq(session.id, sessionId));
+            const player = yield* upsertTelegramUser({ id: 931n, firstName: 'Rated' });
+            yield* db.insert(ratingEvent).values({
+                personId: player,
+                activityId: activityRow?.activityId ?? '',
+                model: 'openskill_pl',
+                sessionId,
+                muBefore: 25,
+                muAfter: 26,
+                sigmaBefore: 8,
+                sigmaAfter: 8
+            });
+            const rated = yield* attempt(4);
+            yield* db.delete(ratingEvent).where(eq(ratingEvent.sessionId, sessionId));
+            const now = yield* DateTime.nowAsDate;
+            const publishToken = '00000000-0000-4000-8000-000000000004';
+            yield* db.update(teamDraft).set({ publishToken, publishAt: now }).where(eq(teamDraft.sessionId, sessionId));
+            const sending = yield* attempt(5);
+            yield* TestClock.adjust('60 seconds');
+            const abandoned = yield* attempt(6);
+
+            for (const kept of [ranked, rated, sending]) {
+                expect(kept.result._tag).toBe('Success');
+                expect(kept.after).toEqual(kept.before);
+            }
+
+            expect(abandoned.after).not.toEqual(abandoned.before);
         })
     );
 });

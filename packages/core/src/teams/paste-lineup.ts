@@ -3,13 +3,13 @@ import { person, personAlias, telegramAccount } from '@rondo/db/schema/identity.
 import { membership } from '@rondo/db/schema/org.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { extractLineup } from '@rondo/ingest-telegram/extract/extract-lineup';
-import { makeVenueMatcher } from '@rondo/ingest-telegram/extract/extract-poll';
-import { normalizeAlias } from '@rondo/ingest-telegram/extract/normalize';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
+import { extractLineup } from '../extract/extract-lineup';
+import { makeVenueMatcher } from '../extract/extract-poll';
+import { normalizeAlias } from '../extract/normalize';
 import { addGuests, guestsOf, joinGame } from '../signups/roster.service';
 
 import { badgeOfEmoji } from './badges';

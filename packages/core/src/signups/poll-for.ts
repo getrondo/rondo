@@ -60,7 +60,7 @@ export const pollFor = Effect.fn('Core.pollFor')(function* (communityId: string,
         .where(eq(community.id, communityId));
     const locale = resolveLocale(row?.defaultLocale);
     const settings = yield* decodeSettings(row?.settings).pipe(
-        Effect.mapError(() => ActionFailedError.make({ reason: 'the poll template in the community settings is not valid' }))
+        Effect.mapError(() => ActionFailedError.make({ failure: { code: 'poll_template_invalid' } }))
     );
     const template = settings.poll ?? defaultTemplate(locale);
     const lastLine = note
@@ -71,17 +71,17 @@ export const pollFor = Effect.fn('Core.pollFor')(function* (communityId: string,
     const question = [fillQuestion(template.question, valuesOf(locale, game)), lastLine].filter(part => isNotEmptyString(part)).join('\n');
 
     if (!isNotEmptyString(question)) {
-        return yield* ActionFailedError.make({ reason: 'the poll question is empty' });
+        return yield* ActionFailedError.make({ failure: { code: 'poll_empty' } });
     }
 
     if (question.length > questionLimit) {
         return yield* ActionFailedError.make({
-            reason: `the poll question has ${question.length} characters, 1 to ${questionLimit} are allowed`
+            failure: { code: 'poll_too_long', count: question.length, limit: questionLimit }
         });
     }
 
     if (template.answers.some(answer => answer.length > answerLimit)) {
-        return yield* ActionFailedError.make({ reason: `a poll answer is longer than ${answerLimit} characters` });
+        return yield* ActionFailedError.make({ failure: { code: 'answer_too_long', limit: answerLimit } });
     }
 
     const place = placeOf(game);

@@ -82,6 +82,7 @@
             }
         ],
         "func-style": "off",
+        "import/no-unassigned-import": ["error", { "allow": ["server-only"] }],
         "grouped-accessor-pairs": "error",
         "guard-for-in": "error",
         "id-denylist": "error",
@@ -878,6 +879,32 @@
                             {
                                 "name": "zod",
                                 "message": "Use effect/Schema."
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "files": ["packages/core/**/*.ts", "packages/db/**/*.ts"],
+            "rules": {
+                "no-restricted-imports": [
+                    "error",
+                    {
+                        "paths": [
+                            {
+                                "name": "effect",
+                                "message": "Import Effect modules by subpath, e.g. import * as Effect from 'effect/Effect'"
+                            },
+                            {
+                                "name": "zod",
+                                "message": "Use effect/Schema."
+                            }
+                        ],
+                        "patterns": [
+                            {
+                                "group": ["**/ingest-telegram", "**/ingest-telegram/**"],
+                                "message": "ingest-telegram depends on core and db, never the reverse."
                             }
                         ]
                     }

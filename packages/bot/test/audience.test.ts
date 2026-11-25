@@ -9,7 +9,7 @@ import { makeRecorder, refusal } from '@rondo/telegram/testing/recording-telegra
 import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
-import { conversation, deliver } from './support/conversation';
+import { conversation, deliver, lastPollId } from './support/conversation';
 import { setNow } from './support/fixed-clock';
 import { gamesOn, seedSeason, seedSecondGroup } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
@@ -19,11 +19,7 @@ const callsTo = (chatId: number, method: string) =>
     recorder.calls.filter(call => call.method === method && call.payload.chat_id === chatId);
 const voter = (id: number) => ({ id, is_bot: false as const, first_name: `Voter ${id}` });
 
-const pollIdIn = (chatId: number) => {
-    const sent = callsTo(chatId, 'sendPoll').at(-1)?.result as { poll?: { id?: string } } | undefined;
-
-    return sent?.poll?.id ?? '';
-};
+const pollIdIn = (chatId: number) => lastPollId(recorder, chatId);
 
 const importPosts = Effect.fn('test.importPosts')(function* (communityId: string, posted: readonly (typeof messageRef.$inferSelect)[]) {
     const db = yield* Db;

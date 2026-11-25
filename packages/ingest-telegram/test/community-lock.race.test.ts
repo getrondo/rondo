@@ -1,8 +1,11 @@
 import { expect, layer } from '@effect/vitest';
 import { isEmptyString, isNotEmptyArray } from '@rnw-community/shared';
+import { syncMember } from '@rondo/core/identity/telegram-user';
+import { linkAlias, unlinkAlias } from '@rondo/core/people/alias-links.service';
+import { localPostgresLayer, raceDatabaseUrl } from '@rondo/core/testing/local-postgres.layer';
+import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
 import { personAlias } from '@rondo/db/schema/identity.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { importMessages } from '@rondo/ingest-telegram/ingest.effect';
 import { and, eq, sql } from 'drizzle-orm';
 import * as Deferred from 'effect/Deferred';
 import * as Effect from 'effect/Effect';
@@ -11,14 +14,9 @@ import * as Fiber from 'effect/Fiber';
 import * as Option from 'effect/Option';
 import * as Schedule from 'effect/Schedule';
 
-import { syncMember } from '../src/identity/telegram-user';
-import { linkAlias, unlinkAlias } from '../src/people/alias-links.service';
-import { localPostgresLayer } from '../src/testing/local-postgres.layer';
-import { seedCommunity, seedConfig } from '../src/testing/seed-community';
+import { importMessages } from '../src/ingest.effect';
 
-import type { TelegramMessage } from '@rondo/ingest-telegram/model/telegram-message.model';
-
-const databaseUrl = process.env.RONDO_TEST_DATABASE_URL ?? '';
+import type { TelegramMessage } from '@rondo/core/model/telegram-message.model';
 
 const days = Array.from({ length: 12 }, (_, index) => `2025-05-${String(index + 1).padStart(2, '0')}`);
 const striker = 7_000_001;
@@ -100,10 +98,10 @@ const aliasNamed = Effect.fn('test.aliasNamed')(function* (communityId: string, 
     return alias;
 });
 
-layer(localPostgresLayer(databaseUrl), { timeout: 60_000, excludeTestServices: true })(
+layer(localPostgresLayer(raceDatabaseUrl), { timeout: 60_000, excludeTestServices: true })(
     'admin work during an import, on a real Postgres',
     it => {
-        it.effect.skipIf(isEmptyString(databaseUrl))('lets an undo wait for the import and win', () =>
+        it.effect.skipIf(isEmptyString(raceDatabaseUrl))('lets an undo wait for the import and win', () =>
             Effect.gen(function* () {
                 const slug = `lock-undo-${performance.now()}`;
                 const { communityId } = yield* seedCommunity(seedConfig(slug));
@@ -122,7 +120,7 @@ layer(localPostgresLayer(databaseUrl), { timeout: 60_000, excludeTestServices: t
             })
         );
 
-        it.effect.skipIf(isEmptyString(databaseUrl))('refuses a link to a nickname the import has just removed', () =>
+        it.effect.skipIf(isEmptyString(raceDatabaseUrl))('refuses a link to a nickname the import has just removed', () =>
             Effect.gen(function* () {
                 const db = yield* Db;
                 const slug = `lock-gone-${performance.now()}`;

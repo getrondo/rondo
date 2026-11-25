@@ -1,8 +1,7 @@
 import { expect, it } from '@effect/vitest';
+import { assertLocal } from '@rondo/core/testing/assert-local';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
-
-import { assertLocal } from '../src/rehearsal/assert-local';
 
 it.effect('rehearses only on a local database', () =>
     Effect.gen(function* () {

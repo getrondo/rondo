@@ -1,20 +1,21 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { pendingAction } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { TelegramApiError } from '@rondo/telegram/error/telegram-api.error';
-import { and, eq, isNull, lt } from 'drizzle-orm';
+import { and, eq, isNull, lt, ne, sql } from 'drizzle-orm';
 import * as Cause from 'effect/Cause';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
+import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 
-import { ActionFailedError } from '../error/action-failed.error';
+import { failureOf, type ActionFailure } from '../error/action-failed.error';
 import { addMillis } from '../utils/add-millis.util';
 
 import { ActionSchema, type Action } from './action.model';
 import { runAdminAction, type ActionContext } from './execute-action';
 
+const decodeAction = Schema.decodeUnknownOption(ActionSchema);
 const confirmationWindowMs = 30 * 60_000;
 // A second tap must not report an action that is still running
 const runningMs = 65_000;
@@ -24,7 +25,7 @@ export type DecisionOutcome =
     | { readonly _tag: 'expired' }
     | { readonly _tag: 'rejected' }
     | { readonly _tag: 'done'; readonly summary: string }
-    | { readonly _tag: 'failed'; readonly summary: string; readonly reason: string };
+    | { readonly _tag: 'failed'; readonly summary: string; readonly failure: ActionFailure };
 
 export const proposeAction = Effect.fn('Core.proposeAction')(function* (input: {
     readonly communityId: string;
@@ -51,21 +52,13 @@ export const proposeAction = Effect.fn('Core.proposeAction')(function* (input: {
     return row?.id ?? '';
 });
 
-const uncertainReason = 'the result is uncertain, check the group before you try again';
-
-const reasonOf = (failure: unknown): string => {
-    if (Schema.is(TelegramApiError)(failure)) {
-        return failure.isUncertain ? uncertainReason : `Telegram refused: ${failure.description}`;
-    }
-
-    return Schema.is(ActionFailedError)(failure) ? failure.reason : 'unexpected error';
-};
+const uncertain: ActionFailure = { code: 'result_uncertain' };
 
 const reportCutOff = Effect.fn('Core.reportCutOff')(function* (actionId: string, tgUserId: bigint, now: Date) {
     const db = yield* Db;
     const [cutOff] = yield* db
         .update(pendingAction)
-        .set({ status: 'failed', result: { reason: uncertainReason } })
+        .set({ status: 'failed', result: { failure: uncertain } })
         .where(
             and(
                 eq(pendingAction.id, actionId),
@@ -78,7 +71,7 @@ const reportCutOff = Effect.fn('Core.reportCutOff')(function* (actionId: string,
         .returning({ summary: pendingAction.summary });
 
     if (isDefined(cutOff)) {
-        return { _tag: 'failed', summary: cutOff.summary, reason: uncertainReason } as const;
+        return { _tag: 'failed', summary: cutOff.summary, failure: uncertain } as const;
     }
 
     const [row] = yield* db
@@ -98,16 +91,18 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
 }) {
     const db = yield* Db;
     const now = input.now ?? (yield* DateTime.nowAsDate);
+    const open = and(
+        eq(pendingAction.id, input.actionId),
+        eq(pendingAction.requestedByTgUserId, input.tgUserId),
+        eq(pendingAction.status, 'proposed')
+    );
+    const [proposed] = yield* db.select({ payload: pendingAction.payload }).from(pendingAction).where(open);
+    const action = decodeAction(proposed?.payload);
+    const decision = Option.isSome(action) ? ('confirmed' as const) : ('failed' as const);
     const [claimed] = yield* db
         .update(pendingAction)
-        .set({ status: input.confirm ? 'confirmed' : 'rejected', decidedAt: now })
-        .where(
-            and(
-                eq(pendingAction.id, input.actionId),
-                eq(pendingAction.requestedByTgUserId, input.tgUserId),
-                eq(pendingAction.status, 'proposed')
-            )
-        )
+        .set({ status: input.confirm ? decision : 'rejected', decidedAt: now })
+        .where(open)
         .returning();
 
     if (!isDefined(claimed)) {
@@ -124,10 +119,17 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
         return { _tag: 'rejected' } as const;
     }
 
-    const action = yield* Schema.decodeUnknownEffect(ActionSchema)(claimed.payload).pipe(Effect.orDie);
+    if (Option.isNone(action)) {
+        const failure: ActionFailure = { code: 'unexpected' };
+        yield* Effect.logError('[action] payload not readable', { kind: claimed.kind });
+        yield* db.update(pendingAction).set({ result: { failure } }).where(eq(pendingAction.id, claimed.id));
+
+        return { _tag: 'failed', summary: claimed.summary, failure } as const;
+    }
+
     const context = yield* input.context(claimed.communityId);
     const exit = yield* Effect.exit(
-        runAdminAction(input.tgUserId, action, context, {
+        runAdminAction(input.tgUserId, action.value, context, {
             summary: claimed.summary,
             settle: result => db.update(pendingAction).set({ result }).where(eq(pendingAction.id, claimed.id))
         })
@@ -137,11 +139,11 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
         return { _tag: 'done', summary: claimed.summary } as const;
     }
 
-    const reason = reasonOf(Cause.squash(exit.cause));
+    const failure = failureOf(Cause.squash(exit.cause));
     yield* Effect.logError('[action] failed', exit.cause);
     const failed = yield* db
         .update(pendingAction)
-        .set({ status: 'failed', result: { reason } })
+        .set({ status: 'failed', result: { failure } })
         .where(and(eq(pendingAction.id, claimed.id), isNull(pendingAction.result)))
         .returning({ id: pendingAction.id });
 
@@ -150,7 +152,7 @@ export const decideAction = Effect.fn('Core.decideAction')(function* (input: {
         return { _tag: 'done', summary: claimed.summary } as const;
     }
 
-    return { _tag: 'failed', summary: claimed.summary, reason } as const;
+    return { _tag: 'failed', summary: claimed.summary, failure } as const;
 });
 
 export const expireStaleActions = Effect.fn('Core.expireStaleActions')(function* (now: Date) {
@@ -160,4 +162,18 @@ export const expireStaleActions = Effect.fn('Core.expireStaleActions')(function*
         .update(pendingAction)
         .set({ status: 'expired' })
         .where(and(eq(pendingAction.status, 'proposed'), lt(pendingAction.expiresAt, now)));
+});
+
+export const removeActionTexts = Effect.fn('Core.removeActionTexts')(function* (createdBefore: Date) {
+    const db = yield* Db;
+    const kept = sql`(
+        select coalesce(jsonb_object_agg(key, value), '{}'::jsonb)
+        from jsonb_each(${pendingAction.payload})
+        where key in ('_tag', 'chatId', 'topicId', 'sessionId')
+    )`;
+
+    yield* db
+        .update(pendingAction)
+        .set({ summary: '', payload: kept })
+        .where(and(ne(pendingAction.status, 'proposed'), ne(pendingAction.summary, ''), lt(pendingAction.createdAt, createdBefore)));
 });

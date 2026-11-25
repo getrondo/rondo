@@ -8,6 +8,7 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, notInArray, or, sq
 import * as Effect from 'effect/Effect';
 
 import { localTimeOf } from '../sessions/local-time';
+import { closedStatuses } from '../sessions/session.model';
 
 import type { PastGame, PlannedGame } from './past-game.interface';
 
@@ -87,7 +88,7 @@ export const plannedFootball = Effect.fn('Core.plannedFootball')(function* (comm
                 eq(session.communityId, communityId),
                 eq(activity.sport, 'football'),
                 gte(session.localDate, from),
-                notInArray(session.status, ['cancelled', 'moved', 'played', 'draft'])
+                notInArray(session.status, [...closedStatuses, 'draft'])
             )
         )
         .orderBy(asc(session.startsAt));
