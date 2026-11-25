@@ -149,6 +149,17 @@ describe('posts of several chats', () => {
         expect(plan.sessions.map(({ localTime }) => localTime)).toEqual(['20:00', '18:30']);
     });
 
+    it('keeps a forward in its game when the main chat corrected the time', () => {
+        const plan = planOf(
+            [pollOf(1, '2025-05-07T08:00:00Z', 'Сегодня, 19.00 North'), pollOf(2, '2025-05-07T09:00:00Z', 'Сегодня, 20.00 North')],
+            [pollOf(101, '2025-05-07T08:30:00Z', 'Сегодня, 19.00 North')],
+            { shared: [1, 101] }
+        );
+
+        expect(summaryOf(plan)).toEqual([['2025-05-07', 'played', [1, 2, 101], 0]]);
+        expect(plan.sessions[0]?.localTime).toBe('20:00');
+    });
+
     it('joins a poll about several days only to a game of its own chat', () => {
         const choice = ['Среда 19.00', 'Четверг 19.00', 'Не буду'];
         const plan = planOf(
