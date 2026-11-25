@@ -79,6 +79,7 @@ export const pollForward = comms.table(
             .references(() => telegramPoll.pollId, { onDelete: 'cascade' }),
         chatId: bigint('chat_id', { mode: 'bigint' }).notNull(),
         messageId: bigint('message_id', { mode: 'number' }),
+        generation: integer('generation').notNull().default(1),
         claimedAt: instant('claimed_at').notNull().defaultNow()
     },
     t => [primaryKey({ columns: [t.pollId, t.chatId] })]

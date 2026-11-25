@@ -45,4 +45,29 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(labelsOf(resent).some(label => label.includes('Second'))).toBe(false);
         })
     );
+
+    it.effect('sends again only once per resend button, even when the old button is tapped after another unknown result', () =>
+        Effect.gen(function* () {
+            const { communityId } = yield* seedSeason('r4-forward-once', { groupChatId: -24_011, adminId: 2411 });
+            const admin = conversation(recorder, adminNumbered(2411));
+            yield* admin.type('/newgame');
+            yield* admin.tap('✅ Надіслати');
+            yield* bindChat({ communityId, chatId: -24_012n, topicId: null, kind: 'supergroup', title: 'Second' });
+            yield* admin.type('/games');
+            yield* admin.tap('Пт 27.11 19:00');
+            yield* admin.tap('📣 Надіслати ще в «Second»');
+            recorder.failures.set('forwardMessage', new Error('socket hang up'));
+            yield* admin.tap('✅ Надіслати в «Second»');
+            const card = admin.screen();
+            yield* admin.tapOn(card, '✅ Немає, надіслати в «Second»');
+            recorder.failures.delete('forwardMessage');
+            yield* admin.tapOn(card, '✅ Немає, надіслати в «Second»');
+            const latest = admin.screen();
+            yield* admin.tap('✅ Немає, надіслати в «Second»');
+
+            expect(forwardsTo(-24_012)).toHaveLength(3);
+            expect(latest.text.split('\n')[0]).toContain('Не знаю, чи дійшло опитування в «Second»');
+            expect(admin.screen().text.split('\n')[0]).toBe('✅ Опитування тепер і в «Second».');
+        })
+    );
 });

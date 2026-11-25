@@ -35,15 +35,21 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('forward claims', it => {
                 .insert(telegramPoll)
                 .values({ pollId: 'claim-poll', chatId: -7300n, messageId: 5, sessionId, options: ['in', 'out'] });
             recorder.failures.set('forwardMessage', new Error('socket hang up'));
-            const unknown = yield* forwardPoll(sessionId, second, false).pipe(Effect.exit);
+            const unknown = yield* forwardPoll(sessionId, second, null).pipe(Effect.exit);
             recorder.failures.delete('forwardMessage');
-            const again = yield* forwardPoll(sessionId, second, false).pipe(Effect.exit);
+            const again = yield* forwardPoll(sessionId, second, null).pipe(Effect.exit);
             const afterAgain = forwardsTo(second.chatId);
             recorder.failures.set('forwardMessage', refusal('forwardMessage', 'Bad Request: not enough rights'));
-            const refused = yield* forwardPoll(sessionId, second, true).pipe(Effect.exit);
+            const refused = yield* forwardPoll(sessionId, second, 1).pipe(Effect.exit);
             recorder.failures.delete('forwardMessage');
             const claimsAfterRefusal = yield* db.select().from(pollForward).where(eq(pollForward.pollId, 'claim-poll'));
-            const sent = yield* forwardPoll(sessionId, second, false).pipe(Effect.exit);
+            recorder.failures.set('forwardMessage', new Error('socket hang up'));
+            yield* forwardPoll(sessionId, second, null).pipe(Effect.exit);
+            yield* forwardPoll(sessionId, second, 1).pipe(Effect.exit);
+            recorder.failures.delete('forwardMessage');
+            const stale = yield* forwardPoll(sessionId, second, 1).pipe(Effect.exit);
+            const afterStale = forwardsTo(second.chatId);
+            const sent = yield* forwardPoll(sessionId, second, 2).pipe(Effect.exit);
             const [claim] = yield* db.select().from(pollForward).where(eq(pollForward.pollId, 'claim-poll'));
 
             expect(reasonOf(unknown)).toContain('the forward result is uncertain');
@@ -51,9 +57,11 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('forward claims', it => {
             expect(afterAgain).toBe(1);
             expect(refused._tag).toBe('Failure');
             expect(claimsAfterRefusal).toEqual([]);
+            expect(reasonOf(stale)).toContain('the forward result is uncertain');
+            expect(afterStale).toBe(4);
             expect(sent._tag).toBe('Success');
             expect(claim?.messageId).toBeTypeOf('number');
-            expect(forwardsTo(second.chatId)).toBe(3);
+            expect(forwardsTo(second.chatId)).toBe(5);
         })
     );
 });

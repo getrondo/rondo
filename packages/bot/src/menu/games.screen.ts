@@ -90,7 +90,12 @@ interface CardState {
     readonly signed: number;
     readonly chats: readonly { readonly chatId: bigint; readonly title: string }[];
     readonly closedTo: readonly { readonly chatId: bigint; readonly title: string }[];
-    readonly unknownTo: readonly { readonly chatId: bigint; readonly title: string }[];
+    readonly unknownTo: readonly {
+        readonly chatId: bigint;
+        readonly title: string;
+        readonly topicId: number | null;
+        readonly generation: number;
+    }[];
     readonly retry: 'group' | 'me' | null;
     readonly page: number;
 }
@@ -133,7 +138,7 @@ const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuBu
             text: menuText(user.locale, 'resendTo', {
                 where: `«${fitLabel(chat.title, retryRoom(user))}»`
             }),
-            callback_data: `c:fr:${id}:${chat.chatId}`
+            callback_data: `c:fr:${id}:${chat.chatId}:${chat.generation}:${chat.topicId ?? ''}`
         }
     ]);
     const openRows = state.closedTo.map(chat => [
@@ -216,8 +221,16 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
         privateOnly: isOpen && onlyAdmins && isNotEmptyArray(audience) && audience.every(chatId => chatId > 0n),
         signed: signed.length,
         chats,
-        closedTo: isOpen ? chats.filter(chat => !audience.includes(chat.chatId) && !unknown.includes(chat.chatId)) : [],
-        unknownTo: isOpen ? chats.filter(chat => unknown.includes(chat.chatId)) : [],
+        closedTo: isOpen
+            ? chats.filter(chat => !audience.includes(chat.chatId) && !unknown.some(claim => claim.chatId === chat.chatId))
+            : [],
+        unknownTo: isOpen
+            ? chats.flatMap(chat =>
+                  unknown
+                      .filter(claim => claim.chatId === chat.chatId)
+                      .map(claim => ({ chatId: chat.chatId, title: chat.title, topicId: chat.topicId, generation: claim.generation }))
+              )
+            : [],
         retry: header?.retry ?? null,
         page
     };

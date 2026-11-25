@@ -1,7 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined, isEmptyString } from '@rnw-community/shared';
 import { runMigrations } from '@rondo/db/migration/migrate.effect';
-import { pendingAction, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { pendingAction, pollForward, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { assertLocal } from '@rondo/ingest-telegram/rehearsal/assert-local';
@@ -192,7 +192,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
             const target = { chatId: -9_400_000n - BigInt(Math.floor(performance.now())), topicId: null };
             yield* db.insert(telegramPoll).values({ pollId, chatId: -1n, messageId: 1, sessionId, options: ['in', 'out'] });
             const outcomes = yield* Effect.all(
-                Array.from({ length: 8 }, () => forwardPoll(sessionId, target, false).pipe(Effect.exit)),
+                Array.from({ length: 8 }, () => forwardPoll(sessionId, target, null).pipe(Effect.exit)),
                 { concurrency: 'unbounded' }
             );
             const forwards = raceRecorder.calls.filter(
@@ -247,6 +247,28 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('admin sta
 
             expect(outcomes.filter(outcome => outcome._tag === 'Success')).toHaveLength(1);
             expect(stops).toHaveLength(1);
+        })
+    );
+
+    it.effect.skipIf(withoutPostgres)('sends a retried forward once when its button is tapped many times at once', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { communityId } = yield* seedCommunity(seedConfig(`race-resend-${unique()}`));
+            const sessionId = yield* menuGame(communityId, '20:00');
+            const pollId = `race-resend-${unique()}`;
+            const target = { chatId: -9_500_000n - BigInt(Math.floor(performance.now())), topicId: null };
+            yield* db.insert(telegramPoll).values({ pollId, chatId: -1n, messageId: 1, sessionId, options: ['in', 'out'] });
+            yield* db.insert(pollForward).values({ pollId, chatId: target.chatId, generation: 3 });
+            const outcomes = yield* Effect.all(
+                Array.from({ length: 8 }, () => forwardPoll(sessionId, target, 3).pipe(Effect.exit)),
+                { concurrency: 'unbounded' }
+            );
+            const forwards = raceRecorder.calls.filter(
+                call => call.method === 'forwardMessage' && call.payload.chat_id === Number(target.chatId)
+            );
+
+            expect(outcomes.filter(outcome => outcome._tag === 'Success')).toHaveLength(1);
+            expect(forwards).toHaveLength(1);
         })
     );
 });

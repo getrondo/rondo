@@ -206,7 +206,7 @@ const listTap = Effect.fn('Bot.gameListTap')(function* (
 });
 
 export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: MenuUser, parts: readonly string[], messageId: number) {
-    const [, op = '', id = '', arg = ''] = parts;
+    const [, op = '', id = '', arg = '', generation = '', topic = ''] = parts;
 
     if (op === 'ok') {
         return yield* confirmTap(user, id, arg === '1', messageId);
@@ -223,10 +223,12 @@ export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: Men
         return Option.none<string>();
     }
 
-    if (op === 'fr' && /^-\d+$/u.test(arg)) {
+    if (op === 'fr' && /^-\d+$/u.test(arg) && /^\d+$/u.test(generation)) {
+        const topicId = /^\d+$/u.test(topic) ? Number(topic) : null;
+
         return yield* runGameAction(
             user,
-            { _tag: 'forward_poll', sessionId: game.value.id, chatId: arg, resend: true },
+            { _tag: 'forward_poll', sessionId: game.value.id, chatId: arg, topicId, resend: Number(generation) },
             { messageId, revision: '', expected: null }
         );
     }
