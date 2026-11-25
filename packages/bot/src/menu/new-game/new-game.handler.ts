@@ -17,7 +17,7 @@ import { runConfirmed } from '../run-confirmed';
 import { showScreen } from '../show-screen';
 
 import { loadNewGameData } from './new-game.data';
-import { applyOp, applyText, awaitingOf, startDraft } from './new-game.flow';
+import { applyOp, applyText, audienceOfDraft, awaitingOf, startDraft } from './new-game.flow';
 import { newGameKeyboard } from './new-game.keyboard';
 import { actionOf, newGameText, withSummary } from './new-game.screen';
 import { applyPlaceInput } from './place-input';
@@ -73,7 +73,7 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
     const data = yield* loadNewGameData(user);
     const { messageId } = tap;
     const announce = tap.withPoll && data.hasGroup;
-    const outcome = yield* runConfirmed(user, actionOf(draft, announce), announce ? draft.summary : null);
+    const outcome = yield* runConfirmed(user, actionOf(draft, announce, data), announce ? draft.summary : null);
 
     if (outcome._tag === 'failed' || !isDefined(outcome.sessionId)) {
         yield* restoreAdminState(consumed.value, user.now);
@@ -83,7 +83,19 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
     }
 
     const created = announce ? 'created' : 'createdQuiet';
-    const card = yield* gameCardScreen(user, outcome.sessionId, menuText(user.locale, isDefined(draft.sessionId) ? 'announced' : created));
+    const forwards = announce && data.chats.length > 1 ? audienceOfDraft(draft, data).slice(1) : [];
+    const failures: string[] = [];
+
+    for (const chatId of forwards) {
+        const forwarded = yield* runConfirmed(user, { _tag: 'forward_poll', sessionId: outcome.sessionId, chatId }, null);
+
+        if (forwarded._tag === 'failed') {
+            failures.push(forwarded.text);
+        }
+    }
+
+    const header = [menuText(user.locale, isDefined(draft.sessionId) ? 'announced' : created), ...failures].join('\n');
+    const card = yield* gameCardScreen(user, outcome.sessionId, header);
     yield* showScreen(user.chatId, messageId, card);
 
     return Option.none<string>();

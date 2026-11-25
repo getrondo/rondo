@@ -52,6 +52,9 @@ const changeOf = (sessionId: string, op: string, arg: string): Action | null => 
         case 'p': {
             return { _tag: 'announce_session', sessionId };
         }
+        case 'f': {
+            return /^-?\d+$/u.test(arg) ? { _tag: 'forward_poll', sessionId, chatId: arg } : null;
+        }
         case 'ts': {
             return { _tag: 'update_session', sessionId, localTime: `${arg.slice(0, 2)}:${arg.slice(2, 4)}`, notify: true };
         }

@@ -5,7 +5,7 @@ import { dayLabel } from '../../utils/day-label.util';
 import { toShortId } from '../../utils/to-short-id.util';
 import { menuText } from '../menu-text';
 
-import { candidatesOf } from './new-game.flow';
+import { audienceOfDraft, candidatesOf } from './new-game.flow';
 
 import type { MenuButton } from '../screen.interface';
 import type { Draft, NewGameData, VenueChoice } from './draft';
@@ -47,7 +47,15 @@ const mainRows = (
                   ]
               ]
             : [];
-    const first = data.hasGroup ? [button(menuText(locale, isDefined(draft.sessionId) ? 'postExisting' : 'post'), 'ok')] : [];
+    const audience = audienceOfDraft(draft, data);
+    const audienceLabel = data.chats
+        .filter(chat => audience.includes(chat.id))
+        .map(chat => chat.title.slice(0, 12))
+        .join(' + ');
+    const audienceButton = data.chats.length > 1 ? [button(`➡️ ${audienceLabel}`, 'au')] : [];
+    const first = data.hasGroup
+        ? [button(menuText(locale, isDefined(draft.sessionId) ? 'postExisting' : 'post'), 'ok'), ...audienceButton]
+        : [];
     const closing = [button(menuText(locale, 'manual'), 'm'), button('✖️', 'x')];
 
     if (isDefined(draft.sessionId)) {

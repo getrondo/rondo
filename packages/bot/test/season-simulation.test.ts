@@ -137,7 +137,8 @@ const simulate = () => {
                 .map(id => named(id)),
             today,
             nowTime: '12:00',
-            hasGroup: true
+            hasGroup: true,
+            chats: [{ id: '-1', title: 'Main' }]
         };
 
         return { game, effort: planGame(game, data), warm: history.length >= 4 };

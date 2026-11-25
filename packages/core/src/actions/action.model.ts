@@ -16,7 +16,8 @@ const CreateSessionAction = Schema.TaggedStruct('create_session', {
     fieldsPlanned: Schema.optional(Schema.NullOr(FieldCount)),
     title: Schema.NullOr(Schema.String),
     note: Schema.optional(Schema.NullOr(Schema.String)),
-    announce: Schema.Boolean
+    announce: Schema.Boolean,
+    chatId: Schema.optional(Schema.String)
 });
 
 const UpdateSessionAction = Schema.TaggedStruct('update_session', {
@@ -37,8 +38,11 @@ const CancelSessionAction = Schema.TaggedStruct('cancel_session', {
 
 const AnnounceSessionAction = Schema.TaggedStruct('announce_session', {
     sessionId: Schema.String,
-    note: Schema.optional(Schema.NullOr(Schema.String))
+    note: Schema.optional(Schema.NullOr(Schema.String)),
+    chatId: Schema.optional(Schema.String)
 });
+
+const ForwardPollAction = Schema.TaggedStruct('forward_poll', { sessionId: Schema.String, chatId: Schema.String });
 
 const PublishTeamsAction = Schema.TaggedStruct('publish_teams', { sessionId: Schema.String, teams: Schema.Array(Team) });
 
@@ -86,6 +90,7 @@ export const ActionSchema = Schema.Union([
     UpdateSessionAction,
     CancelSessionAction,
     AnnounceSessionAction,
+    ForwardPollAction,
     PublishTeamsAction,
     MergePeopleAction,
     LinkAliasAction,

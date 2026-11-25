@@ -1,13 +1,13 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
-import { mainGroupOf } from '@rondo/core/community/community.repository';
+import { linkedChatsOf } from '@rondo/core/community/community.repository';
 import { countOf, formatSessionLabel } from '@rondo/core/i18n/messages';
-import { hasPollFor } from '@rondo/core/menu/game-history.repository';
+import { hasOpenPoll, hasPollFor } from '@rondo/core/menu/game-history.repository';
 import { listSessions, requireSession } from '@rondo/core/sessions/session.service';
+import { audienceOf } from '@rondo/core/signups/audience';
 import { rosterOf } from '@rondo/core/signups/signup.service';
 import { addDays } from '@rondo/core/utils/add-days.util';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
-import * as Option from 'effect/Option';
 
 import { toShortId } from '../utils/to-short-id.util';
 
@@ -84,16 +84,28 @@ export const gamesScreen = Effect.fn('Bot.gamesScreen')(function* (user: MenuUse
 const names = (entries: readonly { readonly displayName: string }[]) =>
     isNotEmptyArray(entries) ? entries.map(entry => escapeHtml(entry.displayName)).join(', ') : '—';
 
-const actionRows = (user: MenuUser, game: SessionView, canPost: boolean, signed: number): MenuButton[][] => {
+const actionRows = (
+    user: MenuUser,
+    game: SessionView,
+    state: {
+        readonly canPost: boolean;
+        readonly signed: number;
+        readonly closedTo: readonly { readonly chatId: bigint; readonly title: string }[];
+    }
+): MenuButton[][] => {
     const id = toShortId(game.id);
     const button = (key: Parameters<typeof menuText>[1], op: string): MenuButton => ({
         text: menuText(user.locale, key),
         callback_data: `c:${op}:${id}`
     });
-    const first = [...(canPost ? [button('postPoll', 'p')] : []), ...(signed >= 2 ? [button('teams', 'k')] : [])];
+    const first = [...(state.canPost ? [button('postPoll', 'p')] : []), ...(state.signed >= 2 ? [button('teams', 'k')] : [])];
+    const openRows = state.closedTo.map(chat => [
+        { text: menuText(user.locale, 'openFor', { title: chat.title.slice(0, 24) }), callback_data: `c:f:${id}:${chat.chatId}` }
+    ]);
 
     return [
         ...(isNotEmptyArray(first) ? [first] : []),
+        ...openRows,
         [button('time', 't'), button('place', 'v'), button('size', 'z')],
         [button('cancelGame', 'x')]
     ];
@@ -105,7 +117,13 @@ export const gameCardScreen = Effect.fn('Bot.gameCardScreen')(function* (user: M
     const signed = roster.filter(entry => entry.status === 'in' && entry.role === 'field');
     const hasPoll = yield* hasPollFor(sessionId);
     const isUpcoming = game.localDate >= user.today && ['open', 'full', 'locked', 'draft'].includes(game.status);
-    const group = yield* mainGroupOf(user.communityId);
+    const chats = yield* linkedChatsOf(user.communityId);
+    const audience = yield* audienceOf(sessionId);
+    const isOpen = yield* hasOpenPoll(sessionId);
+    const closedTo = isOpen ? chats.filter(chat => !audience.some(target => target.chatId === chat.chatId)) : [];
+    const free = isDefined(game.capacityMax)
+        ? [menuText(user.locale, 'free', { free: Math.max(0, game.capacityMax - signed.length), max: game.capacityMax })]
+        : [];
     const size = [
         ...(isDefined(game.fieldsPlanned) ? [countOf(user.locale, 'field', game.fieldsPlanned)] : []),
         ...(isDefined(game.capacityMax) ? [countOf(user.locale, 'place', game.capacityMax)] : []),
@@ -116,7 +134,7 @@ export const gameCardScreen = Effect.fn('Bot.gameCardScreen')(function* (user: M
         `⚽ <b>${escapeHtml(formatSessionLabel(user.locale, game))}</b>`,
         size.join(' · '),
         menuText(user.locale, hasPoll ? 'pollPosted' : 'pollMissing'),
-        `${menuText(user.locale, 'signed')}: ${yield* signedUpLine(user, game)}`,
+        [`${menuText(user.locale, 'signed')}: ${yield* signedUpLine(user, game)}`, ...free].join(' · '),
         names(signed),
         `${menuText(user.locale, 'waiting')}: ${names(roster.filter(entry => entry.status === 'waitlisted'))}`,
         `${menuText(user.locale, 'keepers')}: ${names(roster.filter(entry => entry.status === 'in' && entry.role === 'gk'))}`
@@ -125,7 +143,7 @@ export const gameCardScreen = Effect.fn('Bot.gameCardScreen')(function* (user: M
     return {
         text: lines.join('\n'),
         keyboard: [
-            ...(isUpcoming ? actionRows(user, game, !hasPoll && Option.isSome(group), signed.length) : []),
+            ...(isUpcoming ? actionRows(user, game, { canPost: !hasPoll && isNotEmptyArray(chats), signed: signed.length, closedTo }) : []),
             navRow(user.locale, 'm:gl')
         ]
     } satisfies Screen;

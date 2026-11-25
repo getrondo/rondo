@@ -45,7 +45,8 @@ isec run getrondo prod -- sh -c 'RONDO_WEBHOOK_URL=https://<production-domain>/a
    Give it the right to pin messages: without it the polls are posted but not pinned.
 3. An owner sends `/link <community-slug>` (the slug from the import config) in the topic where games are organized.
    The bot posts there and reads games only there. In General, or in a group without topics, the whole
-   group outside other topics counts. Send `/link` again in another topic to move. Turning topics on can turn
+   group outside other topics counts. Send `/link` again in another topic to move. `/link` in a second group
+   adds it to the community: a game's poll is then posted to one group and forwarded to the others. Turning topics on can turn
    a group into a supergroup with a new id: then link again.
 4. Set the language of the group and the poll template once (`isec`, production database, ask the owner first).
    Placeholders: `{weekday}`, `{date}`, `{time}`, `{place}`, `{station}`, `{fields}`, `{places}`. One without a value

@@ -18,7 +18,8 @@ export const DraftSchema = Schema.Struct({
     note: Schema.NullOr(Schema.String),
     sessionId: Schema.NullOr(Schema.String),
     summary: Schema.NullOr(Schema.String),
-    notice: Schema.NullOr(Schema.String)
+    notice: Schema.NullOr(Schema.String),
+    audience: Schema.Array(Schema.String)
 });
 
 export type Draft = typeof DraftSchema.Type;
@@ -39,6 +40,7 @@ export interface NewGameData {
     readonly today: string;
     readonly nowTime: string;
     readonly hasGroup: boolean;
+    readonly chats: readonly { readonly id: string; readonly title: string }[];
 }
 
 export interface TypedInput {
@@ -60,5 +62,6 @@ export const emptyDraft: Draft = {
     note: null,
     sessionId: null,
     summary: null,
-    notice: null
+    notice: null,
+    audience: []
 };

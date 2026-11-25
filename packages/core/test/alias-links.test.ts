@@ -424,7 +424,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('alias links', it => {
                 yield* firstStatementOf(unlinkEntry(entryTarget)),
                 yield* firstStatementOf(mergePeople({ communityId, fromPersonId: other, intoPersonId: account, actorPersonId: null })),
                 yield* firstStatementOf(
-                    publishTeams({ target, teams: [], group: { chatId: -240n, topicId: null }, locale: 'uk', actorPersonId: null })
+                    publishTeams({ target, teams: [], groups: [{ chatId: -240n, topicId: null }], locale: 'uk', actorPersonId: null })
                 )
             ];
 

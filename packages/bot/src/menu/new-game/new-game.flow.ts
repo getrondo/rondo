@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { predictGames, sizeAt, sizeOfPlace } from '@rondo/core/menu/game-suggestions';
 
 import { fromShortId } from '../../utils/from-short-id.util';
@@ -29,8 +29,10 @@ export const awaitingOf = (draft: Draft): string | null => awaitingByView[draft.
 
 export const candidatesOf = (data: NewGameData): GameCandidate[] => predictGames(data.history, data.planned, data.today);
 
-const fromCandidate = (candidate: GameCandidate): Draft =>
-    candidate._tag === 'new'
+const fromCandidate = (candidate: GameCandidate, data: NewGameData): Draft => {
+    const audience = candidate.audience.filter(chatId => data.chats.some(chat => chat.id === chatId));
+
+    return candidate._tag === 'new'
         ? {
               ...emptyDraft,
               localDate: candidate.localDate,
@@ -38,14 +40,30 @@ const fromCandidate = (candidate: GameCandidate): Draft =>
               venueId: candidate.venueId,
               fields: candidate.fields,
               places: candidate.places,
-              sized: true
+              sized: true,
+              audience
           }
-        : { ...emptyDraft, localDate: candidate.localDate, sessionId: candidate.sessionId };
+        : { ...emptyDraft, localDate: candidate.localDate, sessionId: candidate.sessionId, audience };
+};
+
+const audienceChoices = (data: NewGameData): string[][] =>
+    data.chats.length > 1 ? [...data.chats.map(chat => [chat.id]), data.chats.map(chat => chat.id)] : [];
+
+export const audienceOfDraft = (draft: Draft, data: NewGameData): readonly string[] =>
+    isNotEmptyArray(draft.audience) ? draft.audience : data.chats.slice(0, 1).map(chat => chat.id);
+
+const nextAudience = (draft: Draft, data: NewGameData): Draft => {
+    const choices = audienceChoices(data);
+    const current = audienceOfDraft(draft, data).join(',');
+    const position = choices.findIndex(choice => choice.join(',') === current);
+
+    return { ...draft, audience: choices[(position + 1) % choices.length] ?? [], summary: null, notice: null };
+};
 
 export const startDraft = (data: NewGameData): Draft => {
     const [first] = candidatesOf(data);
 
-    return isDefined(first) ? fromCandidate(first) : { ...emptyDraft, manual: true, view: 'day', notice: 'tooLittle' };
+    return isDefined(first) ? fromCandidate(first, data) : { ...emptyDraft, manual: true, view: 'day', notice: 'tooLittle' };
 };
 
 const nextView = (draft: Draft): DraftView => {
@@ -105,7 +123,7 @@ const ops: Readonly<Record<string, (draft: Draft, arg: string, data: NewGameData
     a: (draft, arg, data) => {
         const picked = candidatesOf(data).find(candidate => candidate.localDate === compact(arg));
 
-        return isDefined(picked) ? fromCandidate(picked) : draft;
+        return isDefined(picked) ? fromCandidate(picked, data) : draft;
     },
     'p-': (draft, _arg, data) => stepPlaces(draft, data, -1),
     'p+': (draft, _arg, data) => stepPlaces(draft, data, 1),
@@ -132,7 +150,8 @@ const ops: Readonly<Record<string, (draft: Draft, arg: string, data: NewGameData
         isPastToday(data, compact(arg), draft.localTime)
             ? { ...draft, notice: 'pastTime' }
             : advance({ ...draft, localDate: compact(arg) }),
-    m: () => ({ ...emptyDraft, manual: true, view: 'day' }),
+    m: draft => ({ ...emptyDraft, manual: true, view: 'day', audience: draft.audience }),
+    au: (draft, _arg, data) => nextAudience(draft, data),
     ad: draft => ({ ...draft, view: 'address', notice: null }),
     nt: draft => ({ ...draft, view: 'note', notice: null }),
     nn: draft => advance({ ...draft, note: null }),

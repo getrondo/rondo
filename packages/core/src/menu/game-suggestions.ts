@@ -20,14 +20,17 @@ const daysBetween = (from: string, to: string): number =>
 const latestFirst = (games: readonly PastGame[]) =>
     games.toSorted((left, right) => `${right.localDate}${right.localTime}`.localeCompare(`${left.localDate}${left.localTime}`));
 
-const heldGames = (games: readonly PastGame[]): PastGame[] =>
-    latestFirst([
-        ...new Map(
-            games
-                .filter(game => heldStatuses.has(game.status) && isDefined(game.venueId))
-                .map(game => [`${game.localDate}|${game.venueId}|${game.localTime}`, game])
-        ).values()
-    ]);
+const heldGames = (games: readonly PastGame[]): PastGame[] => {
+    const merged = new Map<string, PastGame>();
+
+    for (const game of games.filter(entry => heldStatuses.has(entry.status) && isDefined(entry.venueId))) {
+        const key = `${game.localDate}|${game.venueId}|${game.localTime}`;
+        const known = merged.get(key);
+        merged.set(key, isDefined(known) ? { ...known, chatIds: [...new Set([...(known.chatIds ?? []), ...(game.chatIds ?? [])])] } : game);
+    }
+
+    return latestFirst([...merged.values()]);
+};
 
 const patternOf = (games: readonly PastGame[], today: string): PastGame[] =>
     heldGames(games).filter(game => game.localDate >= addDays(today, -patternDays) && game.localDate <= today);
@@ -100,12 +103,21 @@ export const sizeAt = (games: readonly PastGame[], venueId: string | null, local
     return { fields: pick(game => game.fieldsPlanned), places: pick(game => game.capacityMax) };
 };
 
+const audienceOn = (pattern: readonly PastGame[], localDate: string): readonly string[] =>
+    onWeekdayOf(pattern, localDate).find(game => isNotEmptyArray(game.chatIds ?? []))?.chatIds ?? [];
+
 const usualGameOn = (games: readonly PastGame[], pattern: readonly PastGame[], localDate: string, today: string): GamePlan | null => {
     const [combination] = rankBy(onWeekdayOf(pattern, localDate), today, game => `${game.venueId}|${game.localTime}`);
     const sample = pattern.find(game => `${game.venueId}|${game.localTime}` === combination);
 
     return isDefined(sample)
-        ? { localDate, localTime: sample.localTime, venueId: sample.venueId, ...sizeAt(games, sample.venueId, localDate) }
+        ? {
+              localDate,
+              localTime: sample.localTime,
+              venueId: sample.venueId,
+              ...sizeAt(games, sample.venueId, localDate),
+              audience: audienceOn(pattern, localDate)
+          }
         : null;
 };
 
@@ -118,7 +130,7 @@ const candidateOn = (games: readonly PastGame[], planned: readonly PlannedGame[]
         const unannounced = existing.find(game => !game.hasPoll);
 
         if (isDefined(unannounced)) {
-            return { _tag: 'announce', sessionId: unannounced.sessionId, localDate };
+            return { _tag: 'announce', sessionId: unannounced.sessionId, localDate, audience: audienceOn(pattern, localDate) };
         }
 
         const usual = isEmptyArray(existing) ? usualGameOn(games, pattern, localDate, today) : null;

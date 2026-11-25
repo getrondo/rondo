@@ -3,11 +3,14 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { grantAdmin, isAdminOf } from '../access/admin-access';
+import { linkedChatsOf } from '../community/community.repository';
 import { ActionFailedError } from '../error/action-failed.error';
 import { notifySessionCancelled, notifySessionChanged } from '../notify/notifier';
 import { linkAlias, requireAlias, unlinkAlias } from '../people/alias-links.service';
 import { arePeopleOf, createPerson, mergePeople, renamePerson } from '../people/people.service';
 import { cancelSession, createSession, requireSession, updateSession } from '../sessions/session.service';
+import { noticeTargets } from '../signups/audience';
+import { forwardPoll } from '../signups/forward-poll';
 import { publishPoll } from '../signups/publish-poll';
 import { closePollsOf } from '../signups/signup.service';
 import { publishTeams, setSeedRating } from '../teams/team.service';
@@ -30,11 +33,30 @@ const requireGroup = (context: ActionContext) =>
         ? Effect.succeed(context.group.value)
         : Effect.fail(ActionFailedError.make({ reason: 'no group is linked to this community yet' }));
 
-const whenGroup = <Value, Failure, Requirements>(
+const toAudience = Effect.fn('Core.toAudience')(function* <Value, Failure, Requirements>(
     context: ActionContext,
-    enabled: boolean,
+    sessionId: string,
     effect: (group: GroupTarget) => Effect.Effect<Value, Failure, Requirements>
-) => (enabled && Option.isSome(context.group) ? Effect.asVoid(effect(context.group.value)) : Effect.void);
+) {
+    const targets = yield* noticeTargets(sessionId, context.group);
+
+    for (const group of targets) {
+        yield* effect(group);
+    }
+});
+
+const linkedTarget = Effect.fn('Core.linkedTarget')(function* (context: ActionContext, chatId: string | undefined) {
+    if (!isDefined(chatId)) {
+        return yield* requireGroup(context);
+    }
+
+    const chats = yield* linkedChatsOf(context.communityId);
+    const found = chats.find(chat => String(chat.chatId) === chatId);
+
+    return isDefined(found)
+        ? { chatId: found.chatId, topicId: found.topicId }
+        : yield* ActionFailedError.make({ reason: 'this chat is not linked to the community' });
+});
 
 type ActionResult = Readonly<Record<string, string | number>>;
 
@@ -60,7 +82,9 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
                 const before = yield* requireSession(communityId, action.sessionId);
                 yield* updateSession(before, action, context.timezone, actorPersonId);
                 const after = yield* requireSession(communityId, action.sessionId);
-                yield* whenGroup(context, action.notify, group => notifySessionChanged({ before, after, group, locale }));
+                if (action.notify) {
+                    yield* toAudience(context, action.sessionId, group => notifySessionChanged({ before, after, group, locale }));
+                }
 
                 return { sessionId: action.sessionId };
             }).pipe(asResult);
@@ -70,7 +94,11 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
                 const target = yield* requireSession(communityId, action.sessionId);
                 yield* cancelSession(target, action.reason, actorPersonId);
                 yield* closePollsOf(target.id);
-                yield* whenGroup(context, action.notify, group => notifySessionCancelled({ target, reason: action.reason, group, locale }));
+                if (action.notify) {
+                    yield* toAudience(context, action.sessionId, group =>
+                        notifySessionCancelled({ target, reason: action.reason, group, locale })
+                    );
+                }
 
                 return { sessionId: action.sessionId };
             }).pipe(asResult);
@@ -78,9 +106,19 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
         case 'publish_teams': {
             return yield* Effect.gen(function* () {
                 const target = yield* requireSession(communityId, action.sessionId);
-                yield* publishTeams({ target, teams: action.teams, group: yield* requireGroup(context), locale, actorPersonId });
+                yield* requireGroup(context);
+                const groups = yield* noticeTargets(action.sessionId, context.group);
+                yield* publishTeams({ target, teams: action.teams, groups, locale, actorPersonId });
 
                 return { sessionId: action.sessionId };
+            }).pipe(asResult);
+        }
+        case 'forward_poll': {
+            return yield* Effect.gen(function* () {
+                const target = yield* linkedTarget(context, action.chatId);
+                const forwarded = yield* forwardPoll(action.sessionId, target);
+
+                return { sessionId: action.sessionId, messageId: forwarded.messageId };
             }).pipe(asResult);
         }
         case 'merge_people': {
@@ -151,7 +189,8 @@ const peopleIn = (action: Action): readonly string[] => {
         case 'create_session':
         case 'update_session':
         case 'cancel_session':
-        case 'announce_session': {
+        case 'announce_session':
+        case 'forward_poll': {
             return [];
         }
         default: {
@@ -196,8 +235,12 @@ export const runAdminAction = Effect.fn('Core.runAdminAction')(function* <Failur
 
     yield* requireActionScope(action, context.communityId);
 
+    if ('chatId' in action && isDefined(action.chatId)) {
+        yield* linkedTarget(context, action.chatId);
+    }
+
     if (action._tag === 'announce_session' || (action._tag === 'create_session' && action.announce)) {
-        const group = yield* requireGroup(context);
+        const group = yield* linkedTarget(context, action.chatId);
         const prepare = action._tag === 'create_session' ? createFrom(action, context) : Effect.succeed(action.sessionId);
 
         return yield* publishPoll({

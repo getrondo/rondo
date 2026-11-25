@@ -31,7 +31,9 @@ const defaultReply = (method: string, payload: Readonly<Record<string, unknown>>
         };
     }
 
-    return method.startsWith('send') ? { message_id: nextMessageId, date: 0, chat: { id: payload.chat_id, type: 'private' } } : true;
+    return method.startsWith('send') || method === 'forwardMessage'
+        ? { message_id: nextMessageId, date: 0, chat: { id: payload.chat_id, type: 'private' } }
+        : true;
 };
 
 export const makeRecorder = (reply: TelegramRecorder['reply'] = defaultReply): TelegramRecorder => ({

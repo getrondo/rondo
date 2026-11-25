@@ -1,5 +1,6 @@
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
+import { telegramChat } from '@rondo/db/schema/org.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { eq } from 'drizzle-orm';
@@ -65,6 +66,18 @@ export const displayOfVenue = Effect.fn('Core.displayOfVenue')(function* (venueI
     return row ?? noVenue;
 });
 
+const chatTitle = Effect.fn('Core.chatTitle')(function* (chatId: string) {
+    const db = yield* Db;
+    const [row] = /^-?\d+$/u.test(chatId)
+        ? yield* db
+              .select({ title: telegramChat.title })
+              .from(telegramChat)
+              .where(eq(telegramChat.chatId, BigInt(chatId)))
+        : [];
+
+    return row?.title ?? chatId;
+});
+
 const sessionLabel = Effect.fn('Core.sessionLabel')(function* (locale: Locale, sessionId: string) {
     const found = yield* getSession(sessionId);
 
@@ -79,6 +92,7 @@ const words = {
         cancel: '❌ Скасувати гру',
         notify: 'з повідомленням у групі',
         publishPoll: '📣 Опублікувати опитування',
+        forward: '📣 Відкрити опитування для',
         teams: '👥 Опублікувати склади',
         merge: '🔗 Обʼєднати гравців',
         link: '🔗 Привʼязати прізвисько',
@@ -100,6 +114,7 @@ const words = {
         cancel: '❌ Отменить игру',
         notify: 'с уведомлением в группе',
         publishPoll: '📣 Опубликовать опрос',
+        forward: '📣 Открыть опрос для',
         teams: '👥 Опубликовать составы',
         merge: '🔗 Объединить игроков',
         link: '🔗 Привязать прозвище',
@@ -124,22 +139,33 @@ const sizeOf = (
     ...(isDefined(capacityMax) ? [countOf(locale, 'place', capacityMax)] : [])
 ];
 
+const describeCreate = Effect.fn('Core.describeCreate')(function* (
+    action: Extract<Action, { _tag: 'create_session' }>,
+    locale: Locale,
+    communityId: string
+) {
+    const word = words[locale];
+    const display = yield* displayOfVenue(action.venueId);
+    const summary = `${word.create}: ${[formatSessionLabel(locale, { ...action, ...display }), ...sizeOf(locale, action)].join(', ')}`;
+
+    if (!action.announce) {
+        return summary;
+    }
+
+    const game = { ...action, ...display, fieldsPlanned: action.fieldsPlanned ?? null };
+    const poll = yield* pollFor(communityId, game, action.note);
+
+    const where = isDefined(action.chatId) ? ` «${yield* chatTitle(action.chatId)}»` : '';
+
+    return `${summary} ${word.announce}${where}:\n\n${previewOf(poll)}`;
+});
+
 export const describeAction = Effect.fn('Core.describeAction')(function* (action: Action, locale: Locale, communityId: string) {
     const word = words[locale];
 
     switch (action._tag) {
         case 'create_session': {
-            const display = yield* displayOfVenue(action.venueId);
-            const summary = `${word.create}: ${[formatSessionLabel(locale, { ...action, ...display }), ...sizeOf(locale, action)].join(', ')}`;
-
-            if (!action.announce) {
-                return summary;
-            }
-
-            const game = { ...action, ...display, fieldsPlanned: action.fieldsPlanned ?? null };
-            const poll = yield* pollFor(communityId, game, action.note);
-
-            return `${summary} ${word.announce}:\n\n${previewOf(poll)}`;
+            return yield* describeCreate(action, locale, communityId);
         }
         case 'update_session': {
             const before = yield* getSession(action.sessionId);
@@ -170,6 +196,9 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
             const poll = yield* pollFor(communityId, target, action.note);
 
             return `${word.publishPoll}: ${formatSessionLabel(locale, target)}\n\n${previewOf(poll)}`;
+        }
+        case 'forward_poll': {
+            return `${word.forward} «${yield* chatTitle(action.chatId)}»: ${yield* sessionLabel(locale, action.sessionId)}`;
         }
         case 'publish_teams': {
             const lines = action.teams.map(

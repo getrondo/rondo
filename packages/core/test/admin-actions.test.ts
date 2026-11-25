@@ -7,37 +7,15 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { isAdminOf } from '../src/access/admin-access';
-import { describeAction } from '../src/actions/describe-action';
-import { decideAction, proposeAction } from '../src/actions/pending-action.service';
 import { syncMember } from '../src/identity/telegram-user';
 import { notifyPromoted } from '../src/notify/notifier';
 import { createSession, getSession } from '../src/sessions/session.service';
+import { confirmAsOwner } from '../src/testing/confirm-action';
 import { recordedTelegramDbLayer, recorder } from '../src/testing/recorded-telegram.layer';
 import { seedCommunity, seedConfig } from '../src/testing/seed-community';
 import { updateVenue } from '../src/venues/venue.service';
 
-import type { Action } from '../src/actions/action.model';
-
 const group = { chatId: -555n, topicId: null };
-
-const confirm = Effect.fn('test.confirm')(function* (communityId: string, action: Action) {
-    const summary = yield* describeAction(action, 'uk', communityId);
-    const actionId = yield* proposeAction({ communityId, tgUserId: 42n, action, summary });
-
-    return yield* decideAction({
-        actionId,
-        tgUserId: 42n,
-        confirm: true,
-        context: id =>
-            Effect.succeed({
-                communityId: id,
-                timezone: 'Europe/Vienna',
-                group: Option.fromNullishOr(group),
-                groupLocale: 'uk',
-                actorPersonId: null
-            })
-    });
-});
 
 const postsSince = (count: number) =>
     recorder.calls.slice(count).filter(call => call.method === 'sendMessage' && call.payload.chat_id === -555);
@@ -48,8 +26,8 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions, on
             const db = yield* Db;
             const { communityId } = yield* seedCommunity(seedConfig('gaps-admin'));
             const personId = yield* syncMember(communityId, { id: 6001n, firstName: 'Helper' }, 'active');
-            const granted = yield* confirm(communityId, { _tag: 'grant_admin', personId });
-            const levelled = yield* confirm(communityId, { _tag: 'set_rating', personId, level: 8 });
+            const granted = yield* confirmAsOwner(communityId, { _tag: 'grant_admin', personId }, -555n);
+            const levelled = yield* confirmAsOwner(communityId, { _tag: 'set_rating', personId, level: 8 }, -555n);
             const [level] = yield* db
                 .select()
                 .from(rating)
@@ -83,13 +61,13 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions, on
             const first = yield* createSession({ ...game, localDate: '2026-12-04' });
             const second = yield* createSession({ ...game, localDate: '2026-12-05' });
             const start = recorder.calls.length;
-            yield* confirm(communityId, { _tag: 'update_session', sessionId: first, localTime: '20:00', notify: false });
+            yield* confirmAsOwner(communityId, { _tag: 'update_session', sessionId: first, localTime: '20:00', notify: false }, -555n);
             const quiet = postsSince(start).length;
-            yield* confirm(communityId, { _tag: 'update_session', sessionId: first, localTime: '20:30', notify: true });
+            yield* confirmAsOwner(communityId, { _tag: 'update_session', sessionId: first, localTime: '20:30', notify: true }, -555n);
             const changed = postsSince(start).at(-1);
-            yield* confirm(communityId, { _tag: 'cancel_session', sessionId: second, reason: 'venue', notify: false });
+            yield* confirmAsOwner(communityId, { _tag: 'cancel_session', sessionId: second, reason: 'venue', notify: false }, -555n);
             const quietCancel = postsSince(start).length;
-            yield* confirm(communityId, { _tag: 'cancel_session', sessionId: first, reason: 'weather', notify: true });
+            yield* confirmAsOwner(communityId, { _tag: 'cancel_session', sessionId: first, reason: 'weather', notify: true }, -555n);
             const cancelled = postsSince(start).at(-1);
 
             expect(quiet).toBe(0);
@@ -134,7 +112,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions, on
                     isGk: false
                 }))
             }));
-            yield* confirm(communityId, { _tag: 'publish_teams', sessionId, teams });
+            yield* confirmAsOwner(communityId, { _tag: 'publish_teams', sessionId, teams }, -555n);
             const lineup = String(postsSince(start).at(-1)?.payload.text);
             const target = Option.getOrThrow(yield* getSession(sessionId));
             yield* notifyPromoted({

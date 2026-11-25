@@ -129,7 +129,7 @@ export const lineupHtml = Effect.fn('Core.lineupHtml')(function* (locale: Locale
 interface PublishInput {
     readonly target: SessionView;
     readonly teams: readonly BalancedTeam[];
-    readonly group: GroupTarget;
+    readonly groups: readonly GroupTarget[];
     readonly locale: Locale;
     readonly actorPersonId: string | null;
 }
@@ -198,23 +198,25 @@ export const publishTeams = Effect.fn('Core.publishTeams')(function* (input: Pub
             entityId: input.target.id
         });
         const emojis = colors.map(color => color.emoji ?? '');
-        const sent = yield* telegram.call('sendMessage', api =>
-            api.sendMessage(Number(input.group.chatId), lineupText(input.locale, input.target, input.teams, emojis), {
-                parse_mode: 'HTML',
-                ...topicOptions(input.group)
-            })
-        );
-        yield* Ref.set(isSent, true);
-        yield* db
-            .insert(messageRef)
-            .values({
-                chatId: input.group.chatId,
-                messageId: sent.message_id,
-                purpose: 'lineup',
-                entityType: 'session',
-                entityId: input.target.id
-            })
-            .onConflictDoNothing();
+        for (const group of input.groups) {
+            const sent = yield* telegram.call('sendMessage', api =>
+                api.sendMessage(Number(group.chatId), lineupText(input.locale, input.target, input.teams, emojis), {
+                    parse_mode: 'HTML',
+                    ...topicOptions(group)
+                })
+            );
+            yield* Ref.set(isSent, true);
+            yield* db
+                .insert(messageRef)
+                .values({
+                    chatId: group.chatId,
+                    messageId: sent.message_id,
+                    purpose: 'lineup',
+                    entityType: 'session',
+                    entityId: input.target.id
+                })
+                .onConflictDoNothing();
+        }
     });
 
     yield* withCommunityLock({ id: communityId }, publish).pipe(

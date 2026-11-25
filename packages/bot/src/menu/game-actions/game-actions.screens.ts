@@ -130,6 +130,11 @@ const groupHtml = Effect.fn('Bot.groupHtml')(function* (user: MenuUser, game: Se
 
             return yield* sessionChangedHtml({ before: game, after, locale });
         }
+        case 'forward_poll': {
+            const poll = yield* pollFor(user.communityId, game, null);
+
+            return pollHtml(poll);
+        }
         case 'create_person':
         case 'create_session':
         case 'create_venue':
@@ -154,7 +159,7 @@ const confirmButtons = (user: MenuUser, action: Action, revision: number, hasGro
         callback_data: `c:ok:${revision}:${notify ? 1 : 0}`
     });
 
-    if (action._tag === 'announce_session' || action._tag === 'publish_teams') {
+    if (action._tag === 'announce_session' || action._tag === 'publish_teams' || action._tag === 'forward_poll') {
         return [[ok('post', true)]];
     }
 
@@ -172,7 +177,7 @@ export const confirmScreen = Effect.fn('Bot.confirmScreen')(function* (
     const game = yield* requireSession(user.communityId, sessionId);
     const summary = yield* describeAction(action, user.locale, user.communityId);
     const html = yield* groupHtml(user, game, action);
-    const quoted = action._tag === 'announce_session' ? html : `<blockquote>${html}</blockquote>`;
+    const quoted = action._tag === 'announce_session' || action._tag === 'forward_poll' ? html : `<blockquote>${html}</blockquote>`;
 
     return {
         text: [escapeHtml(summary.split('\n\n')[0] ?? summary), '', menuText(user.locale, 'groupSees'), quoted].join('\n'),

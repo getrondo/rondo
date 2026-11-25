@@ -5,9 +5,10 @@ import { upsertTelegramUser } from '@rondo/core/identity/telegram-user';
 import { createSession } from '@rondo/core/sessions/session.service';
 import { seedCommunity, seedConfig } from '@rondo/core/testing/seed-community';
 import { addDays } from '@rondo/core/utils/add-days.util';
+import { messageRef } from '@rondo/db/schema/platform.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { setNow } from './fixed-clock';
@@ -52,4 +53,38 @@ export const seedSeason = Effect.fn('test.seedSeason')(function* (
     yield* setNow(thursdayMorning);
 
     return { communityId, north: north ?? '', park: park ?? '' };
+});
+
+export const seedSecondGroup = Effect.fn('test.seedSecondGroup')(function* (
+    communityId: string,
+    chats: { readonly main: number; readonly second: number; readonly venueId: string }
+) {
+    const db = yield* Db;
+    yield* bindChat({ communityId, chatId: BigInt(chats.second), topicId: null, kind: 'supergroup', title: 'Second' });
+    const base = { communityId, timezone: 'Europe/Vienna', title: null, actorPersonId: null, fieldsPlanned: 1 };
+    const wednesdays = [1, 2, 3, 4].map(week => addDays('2026-11-25', -7 * week));
+    let messageId = 70_000;
+
+    for (const localDate of wednesdays) {
+        const sessionId = yield* createSession({ ...base, localDate, localTime: '20:00', venueId: chats.venueId, capacityMax: 16 });
+        yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
+        messageId += 1;
+        yield* db
+            .insert(messageRef)
+            .values({ chatId: BigInt(chats.second), messageId, purpose: 'poll', entityType: 'session', entityId: sessionId });
+    }
+
+    const fridays = yield* db
+        .select({ id: session.id })
+        .from(session)
+        .where(and(eq(session.communityId, communityId), inArray(session.localDate, ['2026-11-20', '2026-11-13'])));
+
+    for (const friday of fridays) {
+        for (const chatId of [chats.main, chats.second]) {
+            messageId += 1;
+            yield* db
+                .insert(messageRef)
+                .values({ chatId: BigInt(chatId), messageId, purpose: 'poll', entityType: 'session', entityId: friday.id });
+        }
+    }
 });

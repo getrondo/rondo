@@ -11,6 +11,7 @@ import * as Option from 'effect/Option';
 import { dayLabel } from '../../utils/day-label.util';
 import { isMenuKey, menuText, type MenuKey } from '../menu-text';
 
+import { audienceOfDraft } from './new-game.flow';
 import { venueLabel } from './new-game.keyboard';
 
 import type { MenuUser } from '../screen.interface';
@@ -28,9 +29,12 @@ const prompts: Partial<Record<Draft['view'], MenuKey>> = {
     note: 'pickNote'
 };
 
-export const actionOf = (draft: Draft, announce: boolean): Action =>
-    isDefined(draft.sessionId)
-        ? { _tag: 'announce_session', sessionId: draft.sessionId }
+export const actionOf = (draft: Draft, announce: boolean, data: NewGameData): Action => {
+    const [chatId] = audienceOfDraft(draft, data);
+    const target = isDefined(chatId) && data.chats.length > 1 ? { chatId } : {};
+
+    return isDefined(draft.sessionId)
+        ? { _tag: 'announce_session', sessionId: draft.sessionId, ...target }
         : {
               _tag: 'create_session',
               localDate: draft.localDate ?? '',
@@ -40,8 +44,10 @@ export const actionOf = (draft: Draft, announce: boolean): Action =>
               fieldsPlanned: draft.fields,
               title: null,
               note: draft.note,
-              announce
+              announce,
+              ...(announce ? target : {})
           };
+};
 
 const pollOf = Effect.fn('Bot.pollOf')(function* (user: MenuUser, draft: Draft) {
     if (isDefined(draft.sessionId)) {
@@ -73,7 +79,7 @@ export const withSummary = Effect.fn('Bot.withSummary')(function* (user: MenuUse
         return draft;
     }
 
-    return yield* describeAction(actionOf(draft, true), user.locale, user.communityId).pipe(
+    return yield* describeAction(actionOf(draft, true, data), user.locale, user.communityId).pipe(
         Effect.map(summary => ({ ...draft, summary })),
         Effect.catchTag('ActionFailedError', error => Effect.succeed({ ...draft, summary: null, notice: error.reason }))
     );

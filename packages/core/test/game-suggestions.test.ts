@@ -47,8 +47,24 @@ const venues = [
     { id: 'park', name: 'Park' },
     { id: 'zoo', name: 'Zoo' }
 ];
-const fridayGame = { _tag: 'new', localDate: '2026-11-27', localTime: '19:00', venueId: 'arena', fields: 1, places: 22 } as const;
-const mondayGame = { _tag: 'new', localDate: '2026-11-30', localTime: '18:30', venueId: 'park', fields: 1, places: 18 } as const;
+const fridayGame = {
+    _tag: 'new',
+    localDate: '2026-11-27',
+    localTime: '19:00',
+    venueId: 'arena',
+    fields: 1,
+    places: 22,
+    audience: []
+} as const;
+const mondayGame = {
+    _tag: 'new',
+    localDate: '2026-11-30',
+    localTime: '18:30',
+    venueId: 'park',
+    fields: 1,
+    places: 18,
+    audience: []
+} as const;
 
 describe('game predictions', () => {
     it('proposes tomorrow on a Thursday, then the next usual game', () => {
@@ -71,7 +87,26 @@ describe('game predictions', () => {
     it('offers to post the poll of a planned game that has none', () => {
         const planned: PlannedGame[] = [{ sessionId: 's1', localDate: '2026-11-27', hasPoll: false }];
 
-        expect(predictGames(history, planned, '2026-11-26')[0]).toEqual({ _tag: 'announce', sessionId: 's1', localDate: '2026-11-27' });
+        expect(predictGames(history, planned, '2026-11-26')[0]).toEqual({
+            _tag: 'announce',
+            sessionId: 's1',
+            localDate: '2026-11-27',
+            audience: []
+        });
+    });
+
+    it('brings the chats its weekday was last posted to, so a second group gets its own game', () => {
+        const wednesdays = [
+            { ...played('2026-11-18', '20:00', 'lake', 16), chatIds: ['-2'] },
+            { ...played('2026-11-11', '20:00', 'lake', 16), chatIds: ['-2'] }
+        ];
+        const both = { ...played('2026-11-20', '19:00', 'arena', 22), chatIds: ['-1', '-2'] };
+        const candidates = predictGames([both, ...wednesdays, ...history], [], '2026-11-24');
+
+        expect(candidates.map(game => [game.localDate, game.audience])).toEqual([
+            ['2026-11-25', ['-2']],
+            ['2026-11-27', ['-1', '-2']]
+        ]);
     });
 
     it('has nothing to propose with too little history', () => {

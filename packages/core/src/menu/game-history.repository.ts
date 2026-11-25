@@ -1,10 +1,10 @@
 import { isNotEmptyArray } from '@rnw-community/shared';
 import { activity, community } from '@rondo/db/schema/org.schema';
-import { messageRef } from '@rondo/db/schema/platform.schema';
+import { messageRef, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
 import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, asc, desc, eq, gte, inArray, isNotNull, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { localTimeOf } from '../sessions/local-time';
@@ -29,7 +29,10 @@ export const footballHistory = Effect.fn('Core.footballHistory')(function* (
             venueId: session.venueId,
             fieldsPlanned: session.fieldsPlanned,
             capacityMax: session.capacityMax,
-            status: session.status
+            status: session.status,
+            chatIds: sql<
+                string[]
+            >`array(select ${messageRef.chatId}::text from ${messageRef} where ${messageRef.entityId} = ${session.id} and ${messageRef.purpose} = 'poll' order by ${messageRef.createdAt}, ${messageRef.messageId})`
         })
         .from(session)
         .innerJoin(activity, eq(activity.id, session.activityId))
@@ -52,7 +55,8 @@ export const footballHistory = Effect.fn('Core.footballHistory')(function* (
         venueId: row.venueId,
         fieldsPlanned: row.fieldsPlanned,
         capacityMax: row.capacityMax,
-        status: row.status
+        status: row.status,
+        chatIds: row.chatIds
     }));
 });
 
@@ -100,6 +104,17 @@ export const hasPollFor = Effect.fn('Core.hasPollFor')(function* (sessionId: str
         .select({ messageId: messageRef.messageId })
         .from(messageRef)
         .where(and(eq(messageRef.entityId, sessionId), eq(messageRef.purpose, 'poll')))
+        .limit(1);
+
+    return isNotEmptyArray(rows);
+});
+
+export const hasOpenPoll = Effect.fn('Core.hasOpenPoll')(function* (sessionId: string) {
+    const db = yield* Db;
+    const rows = yield* db
+        .select({ pollId: telegramPoll.pollId })
+        .from(telegramPoll)
+        .where(and(eq(telegramPoll.sessionId, sessionId), isNull(telegramPoll.closedAt)))
         .limit(1);
 
     return isNotEmptyArray(rows);

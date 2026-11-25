@@ -7,6 +7,7 @@ export interface PastGame {
     readonly fieldsPlanned: number | null;
     readonly capacityMax: number | null;
     readonly status: SessionStatus;
+    readonly chatIds?: readonly string[];
 }
 
 export interface PlannedGame {
@@ -24,8 +25,9 @@ export interface GamePlan extends GameSize {
     readonly localDate: string;
     readonly localTime: string;
     readonly venueId: string | null;
+    readonly audience: readonly string[];
 }
 
 export type GameCandidate =
     | ({ readonly _tag: 'new' } & GamePlan)
-    | { readonly _tag: 'announce'; readonly sessionId: string; readonly localDate: string };
+    | { readonly _tag: 'announce'; readonly sessionId: string; readonly localDate: string; readonly audience: readonly string[] };
