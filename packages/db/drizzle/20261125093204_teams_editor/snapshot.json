@@ -1,0 +1,745 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "5552aa6e-8e07-4f83-bc9d-b249a98fd86c",
+    "prevIds": ["15552e92-82e2-4f7f-9198-2e1eb472a776"],
+    "footprints": [
+        {
+            "statementType": "create_enum",
+            "statementTarget": ["enum", "play_private", "pair_kind"],
+            "writes": [
+                "s|enum|play_private.pair_kind",
+                "n|enum|play_private.pair_kind",
+                "e|enum|play_private.pair_kind",
+                "n|type|play_private.pair_kind"
+            ],
+            "reads": ["n|sch|play_private"]
+        },
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "play_private", "pair_rule"],
+            "writes": [
+                "s|tbl|play_private.pair_rule",
+                "n|tbl|play_private.pair_rule",
+                "e|tbl|play_private.pair_rule",
+                "n|rel|play_private.pair_rule",
+                "n|type|play_private.pair_rule",
+                "n|rel|play_private.pair_rule_pkey"
+            ],
+            "reads": ["n|sch|play_private", "n|enum|play_private.pair_kind"]
+        },
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "play", "team_draft"],
+            "writes": [
+                "s|tbl|play.team_draft",
+                "n|tbl|play.team_draft",
+                "e|tbl|play.team_draft",
+                "n|rel|play.team_draft",
+                "n|type|play.team_draft",
+                "n|rel|play.team_draft_pkey"
+            ],
+            "reads": ["n|sch|play"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "play_private", "rating_event", "session_id"],
+            "writes": [
+                "s|col|play_private.rating_event.session_id",
+                "n|col|play_private.rating_event.session_id",
+                "e|col|play_private.rating_event.session_id"
+            ],
+            "reads": ["n|tbl|play_private.rating_event", "n|sch|play_private"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "play", "team", "rank"],
+            "writes": ["s|col|play.team.rank", "n|col|play.team.rank", "e|col|play.team.rank"],
+            "reads": ["n|tbl|play.team", "n|sch|play"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "scheduling", "signup", "is_guest"],
+            "writes": ["s|col|scheduling.signup.is_guest", "n|col|scheduling.signup.is_guest", "e|col|scheduling.signup.is_guest"],
+            "reads": ["n|tbl|scheduling.signup", "n|sch|scheduling"]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play_private", "pair_rule"],
+            "writes": [
+                "s|fk|play_private.pair_rule.pair_rule_community_id_community_id_fkey",
+                "n|fk|play_private.pair_rule.pair_rule_community_id_community_id_fkey",
+                "e|fk|play_private.pair_rule.pair_rule_community_id_community_id_fkey",
+                "n|con|play_private.pair_rule.pair_rule_community_id_community_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play_private.pair_rule",
+                "n|sch|play_private",
+                "n|tbl|org.community",
+                "n|sch|org",
+                "n|col|play_private.pair_rule.community_id",
+                "n|col|org.community.id",
+                "e|uniqueness|org.community.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play_private", "pair_rule"],
+            "writes": [
+                "s|fk|play_private.pair_rule.pair_rule_person_id_person_id_fkey",
+                "n|fk|play_private.pair_rule.pair_rule_person_id_person_id_fkey",
+                "e|fk|play_private.pair_rule.pair_rule_person_id_person_id_fkey",
+                "n|con|play_private.pair_rule.pair_rule_person_id_person_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play_private.pair_rule",
+                "n|sch|play_private",
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|col|play_private.pair_rule.person_id",
+                "n|col|identity.person.id",
+                "e|uniqueness|identity.person.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play_private", "pair_rule"],
+            "writes": [
+                "s|fk|play_private.pair_rule.pair_rule_other_person_id_person_id_fkey",
+                "n|fk|play_private.pair_rule.pair_rule_other_person_id_person_id_fkey",
+                "e|fk|play_private.pair_rule.pair_rule_other_person_id_person_id_fkey",
+                "n|con|play_private.pair_rule.pair_rule_other_person_id_person_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play_private.pair_rule",
+                "n|sch|play_private",
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|col|play_private.pair_rule.other_person_id",
+                "n|col|identity.person.id",
+                "e|uniqueness|identity.person.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play_private", "pair_rule"],
+            "writes": [
+                "s|fk|play_private.pair_rule.pair_rule_created_by_person_id_fkey",
+                "n|fk|play_private.pair_rule.pair_rule_created_by_person_id_fkey",
+                "e|fk|play_private.pair_rule.pair_rule_created_by_person_id_fkey",
+                "n|con|play_private.pair_rule.pair_rule_created_by_person_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play_private.pair_rule",
+                "n|sch|play_private",
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|col|play_private.pair_rule.created_by",
+                "n|col|identity.person.id",
+                "e|uniqueness|identity.person.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play_private", "rating_event"],
+            "writes": [
+                "s|fk|play_private.rating_event.rating_event_session_id_session_id_fkey",
+                "n|fk|play_private.rating_event.rating_event_session_id_session_id_fkey",
+                "e|fk|play_private.rating_event.rating_event_session_id_session_id_fkey",
+                "n|con|play_private.rating_event.rating_event_session_id_session_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play_private.rating_event",
+                "n|sch|play_private",
+                "n|tbl|scheduling.session",
+                "n|sch|scheduling",
+                "n|col|play_private.rating_event.session_id",
+                "n|col|scheduling.session.id",
+                "e|uniqueness|scheduling.session.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play", "team_draft"],
+            "writes": [
+                "s|fk|play.team_draft.team_draft_session_id_session_id_fkey",
+                "n|fk|play.team_draft.team_draft_session_id_session_id_fkey",
+                "e|fk|play.team_draft.team_draft_session_id_session_id_fkey",
+                "n|con|play.team_draft.team_draft_session_id_session_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play.team_draft",
+                "n|sch|play",
+                "n|tbl|scheduling.session",
+                "n|sch|scheduling",
+                "n|col|play.team_draft.session_id",
+                "n|col|scheduling.session.id",
+                "e|uniqueness|scheduling.session.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play", "team_draft"],
+            "writes": [
+                "s|fk|play.team_draft.team_draft_community_id_community_id_fkey",
+                "n|fk|play.team_draft.team_draft_community_id_community_id_fkey",
+                "e|fk|play.team_draft.team_draft_community_id_community_id_fkey",
+                "n|con|play.team_draft.team_draft_community_id_community_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play.team_draft",
+                "n|sch|play",
+                "n|tbl|org.community",
+                "n|sch|org",
+                "n|col|play.team_draft.community_id",
+                "n|col|org.community.id",
+                "e|uniqueness|org.community.id"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "play", "team_draft"],
+            "writes": [
+                "s|fk|play.team_draft.team_draft_updated_by_person_id_fkey",
+                "n|fk|play.team_draft.team_draft_updated_by_person_id_fkey",
+                "e|fk|play.team_draft.team_draft_updated_by_person_id_fkey",
+                "n|con|play.team_draft.team_draft_updated_by_person_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|play.team_draft",
+                "n|sch|play",
+                "n|tbl|identity.person",
+                "n|sch|identity",
+                "n|col|play.team_draft.updated_by",
+                "n|col|identity.person.id",
+                "e|uniqueness|identity.person.id"
+            ]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "name": "pair_rule",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "name": "team_draft",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "name": "pair_kind",
+                "values": ["together", "apart"],
+                "entityType": "enums"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "pair_rule",
+                "name": "community_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "pair_rule",
+                "name": "person_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "pair_rule",
+                "name": "other_person_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "pair_rule",
+                "name": "kind",
+                "type": "pair_kind",
+                "typeSchema": "play_private",
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "pair_rule",
+                "name": "created_by",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "pair_rule",
+                "name": "created_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "now()",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "rating_event",
+                "name": "session_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team",
+                "name": "rank",
+                "type": "smallint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "session_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "community_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "version",
+                "type": "integer",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "1",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "state",
+                "type": "jsonb",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "proposed",
+                "type": "jsonb",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "private_text",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "proposed_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "changed_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "notified_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "published_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "updated_by",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "updated_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "now()",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "scheduling",
+                "table": "signup",
+                "name": "is_guest",
+                "type": "boolean",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "false",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "pair_rule",
+                "name": "pair_rule_community_id_community_id_fkey",
+                "nameExplicit": false,
+                "columns": ["community_id"],
+                "schemaTo": "org",
+                "tableTo": "community",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "pair_rule",
+                "name": "pair_rule_person_id_person_id_fkey",
+                "nameExplicit": false,
+                "columns": ["person_id"],
+                "schemaTo": "identity",
+                "tableTo": "person",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "pair_rule",
+                "name": "pair_rule_other_person_id_person_id_fkey",
+                "nameExplicit": false,
+                "columns": ["other_person_id"],
+                "schemaTo": "identity",
+                "tableTo": "person",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "pair_rule",
+                "name": "pair_rule_created_by_person_id_fkey",
+                "nameExplicit": false,
+                "columns": ["created_by"],
+                "schemaTo": "identity",
+                "tableTo": "person",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "SET NULL",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "rating_event",
+                "name": "rating_event_session_id_session_id_fkey",
+                "nameExplicit": false,
+                "columns": ["session_id"],
+                "schemaTo": "scheduling",
+                "tableTo": "session",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "SET NULL",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "team_draft_session_id_session_id_fkey",
+                "nameExplicit": false,
+                "columns": ["session_id"],
+                "schemaTo": "scheduling",
+                "tableTo": "session",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "team_draft_community_id_community_id_fkey",
+                "nameExplicit": false,
+                "columns": ["community_id"],
+                "schemaTo": "org",
+                "tableTo": "community",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "team_draft_updated_by_person_id_fkey",
+                "nameExplicit": false,
+                "columns": ["updated_by"],
+                "schemaTo": "identity",
+                "tableTo": "person",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "SET NULL",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "pair_rule",
+                "name": "pair_rule_pkey",
+                "columns": ["community_id", "person_id", "other_person_id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play",
+                "table": "team_draft",
+                "name": "team_draft_pkey",
+                "columns": ["session_id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "play_private",
+                "table": "pair_rule",
+                "name": "pair_rule_order_ck",
+                "value": "\"person_id\" < \"other_person_id\"",
+                "entityType": "checks"
+            }
+        }
+    ]
+}

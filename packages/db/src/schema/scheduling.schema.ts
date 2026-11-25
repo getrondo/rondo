@@ -124,6 +124,7 @@ export const signup = scheduling.table(
         role: signupRoleEnum('role').notNull().default('field'),
         status: signupStatusEnum('status').notNull(),
         guestOfPersonId: ref('guest_of_person_id').references(() => person.id, { onDelete: 'set null' }),
+        isGuest: boolean('is_guest').notNull().default(false),
         priority: signupPriorityEnum('priority').notNull().default('normal'),
         createdAt: createdAt(),
         updatedAt: updatedAt()
