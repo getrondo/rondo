@@ -1,0 +1,213 @@
+{
+    "type": "diff",
+    "version": "10",
+    "dialect": "postgres",
+    "id": "3e429f11-eb55-4bc1-af15-2df65bc4b110",
+    "prevIds": ["4a97ef78-06dd-4eee-b7ea-98f6e9ab2418"],
+    "footprints": [
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "comms", "admin_state"],
+            "writes": [
+                "s|tbl|comms.admin_state",
+                "n|tbl|comms.admin_state",
+                "e|tbl|comms.admin_state",
+                "n|rel|comms.admin_state",
+                "n|type|comms.admin_state",
+                "n|rel|comms.admin_state_pkey"
+            ],
+            "reads": ["n|sch|comms"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "venue", "venue", "map_url"],
+            "writes": ["s|col|venue.venue.map_url", "n|col|venue.venue.map_url", "e|col|venue.venue.map_url"],
+            "reads": ["n|tbl|venue.venue", "n|sch|venue"]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "comms", "admin_state"],
+            "writes": [
+                "s|fk|comms.admin_state.admin_state_community_id_community_id_fkey",
+                "n|fk|comms.admin_state.admin_state_community_id_community_id_fkey",
+                "e|fk|comms.admin_state.admin_state_community_id_community_id_fkey",
+                "n|con|comms.admin_state.admin_state_community_id_community_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|comms.admin_state",
+                "n|sch|comms",
+                "n|tbl|org.community",
+                "n|sch|org",
+                "n|col|comms.admin_state.community_id",
+                "n|col|org.community.id",
+                "e|uniqueness|org.community.id"
+            ]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "name": "admin_state",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "admin_state",
+                "name": "tg_user_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "admin_state",
+                "name": "community_id",
+                "type": "uuid",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "admin_state",
+                "name": "message_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "admin_state",
+                "name": "revision",
+                "type": "integer",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "0",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "admin_state",
+                "name": "awaiting",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "admin_state",
+                "name": "draft",
+                "type": "jsonb",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "'{}'",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "admin_state",
+                "name": "expires_at",
+                "type": "timestamp with time zone",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "venue",
+                "table": "venue",
+                "name": "map_url",
+                "type": "text",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "admin_state",
+                "name": "admin_state_community_id_community_id_fkey",
+                "nameExplicit": false,
+                "columns": ["community_id"],
+                "schemaTo": "org",
+                "tableTo": "community",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "comms",
+                "table": "admin_state",
+                "name": "admin_state_pkey",
+                "columns": ["tg_user_id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        }
+    ]
+}

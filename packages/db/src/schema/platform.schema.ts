@@ -136,6 +136,16 @@ export const pendingAction = comms.table(
     t => [index('pending_action_status_idx').on(t.status, t.expiresAt)]
 );
 
+export const adminState = comms.table('admin_state', {
+    tgUserId: bigint('tg_user_id', { mode: 'bigint' }).primaryKey(),
+    communityId: requiredRef('community_id', () => community.id),
+    messageId: bigint('message_id', { mode: 'number' }),
+    revision: integer('revision').notNull().default(0),
+    awaiting: text('awaiting'),
+    draft: jsonb('draft').notNull().default({}),
+    expiresAt: instant('expires_at').notNull()
+});
+
 export const ingestRun = ingest.table('run', {
     id: id(),
     communityId: requiredRef('community_id', () => community.id),
