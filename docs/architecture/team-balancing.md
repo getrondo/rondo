@@ -9,7 +9,10 @@ Park-Miller generator, so the same input in any order gives the same teams. 30 p
 takes about 35 ms.
 
 Hard rules, kept by construction or by a weight of 10⁶ per miss: sizes at most one apart, a keeper per team when there are
-enough (otherwise at most one more than the fair share), admin locks, pairs together and apart (`play_private.pair_rule`).
+enough (otherwise at most one more than the fair share), admin locks. When the local search misses sizes or keepers, a bounded
+exhaustive search over the free keepers repairs it; what locks make impossible is returned as `unresolved`, and the editor names
+uneven keepers plainly. Pairs together or apart are not stored: nothing wrote them, so the table and its constraints were
+removed.
 
 Objective, in this order of weights: strength spread of the teams (a short team is counted with the average player it will
 borrow, "+1 from the losing team"), spread of uncertainty (players of unknown strength are not put together), the rotation
@@ -79,10 +82,16 @@ and five undo steps. Every change is an update `where version = ?`; a tap on an 
 admin's repeated tap is ignored, another admin's change is shown with "the teams were changed by another admin". Callback
 data is `t:<game>:<version>:<page>:<op>:<args>`, at most 64 bytes, and every tap checks the admin and the game's community.
 
-✅ names its destination and opens a preview (and, after a first post, the diff). Groups the poll is in get one message that
-is edited on later updates; a refused edit is reported and nothing is posted twice. When the poll audience is the admin's
-private chat, ✅ sends one clean message to forward plus a hint with the game card; an update sends a new message headed
-"Оновлені склади", a repeated ✅ without changes sends nothing. The post reads back through our squad importer, and a linked
+The send button names every destination ("✅ Надіслати в «Games» і мені") and opens a preview with the exact text and, after a
+first post, the diff. The ✅ in the preview carries a fingerprint of the chats, topics and text it shows; under the community
+lock the plan is made again and a different fingerprint sends nothing and shows a fresh preview. `play.lineup_delivery` keeps
+one claim and receipt per destination: each send is one bounded Telegram call with its own receipt, so a refusal or timeout
+in one group never touches another. An unknown result is shown with its own "✅ Немає, надіслати в «X»" button, whose random
+token is rotated on every claim; it is never resent by itself. "Nothing changed" compares the rendered text with the last
+delivered text of that destination, and a ✅ appears only when something would be sent. Groups get one message that is edited
+later; only messages the bot sent are edited, organizer posts and forwarded copies are only remembered. When the poll
+audience is the admin's private chat, the clean message to forward goes below and the editor follows under it with the
+hint; after a first post a new message is headed "Оновлені склади". The post reads back through our squad importer, and a linked
 group that sees the forwarded copy only remembers the message.
 
 Private texts follow the admin's language from their last update (stored on every message and tap), Ukrainian when it
