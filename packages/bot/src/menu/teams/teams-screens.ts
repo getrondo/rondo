@@ -195,3 +195,28 @@ export const joinersScreen = (
         backRow(user, view)
     ]
 });
+
+export const overLimitAsk = (
+    user: MenuUser,
+    view: EditorView,
+    ask: {
+        readonly joiner: string;
+        readonly taken: number;
+        readonly limit: number;
+        readonly waiting: readonly string[];
+        readonly arg: string;
+    }
+): Screen => ({
+    text: [
+        header(user, view),
+        teamsText(user.locale, 'fullAsk', { taken: ask.taken, limit: ask.limit, name: escapeHtml(ask.joiner) }),
+        ...(isNotEmptyArray(ask.waiting)
+            ? [teamsText(user.locale, 'queue', { names: escapeHtml(ask.waiting.map((name, index) => `${index + 1}. ${name}`).join(', ')) })]
+            : [])
+    ].join('\n'),
+    keyboard: [
+        [{ text: teamsText(user.locale, 'overLimit'), callback_data: teamsData(baseOf(view), 'J', [ask.arg, 1]) }],
+        [{ text: teamsText(user.locale, 'toQueue'), callback_data: teamsData(baseOf(view), 'J', [ask.arg, 0]) }],
+        backRow(user, view)
+    ]
+});

@@ -156,6 +156,7 @@ const finishPaste = Effect.fn('Bot.finishPaste')(function* (
     });
     yield* showEditor(user, sessionId, options.messageId, [
         teamsText(user.locale, 'pasted'),
+        ...(isNotEmptyArray(placed.queued) ? [teamsText(user.locale, 'queued', { names: escapeHtml(placed.queued.join(', ')) })] : []),
         ...placed.twice.map(entry =>
             teamsText(user.locale, 'twice', {
                 name: escapeHtml(entry.name),

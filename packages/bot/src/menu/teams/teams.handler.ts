@@ -1,12 +1,14 @@
 import { isDefined } from '@rnw-community/shared';
 import { requireSession } from '@rondo/core/sessions/session.service';
-import { firstWaiting, joinCandidates } from '@rondo/core/signups/roster.service';
+import { joinCandidates, waitingOf } from '@rondo/core/signups/roster.service';
 import { playersOf } from '@rondo/core/teams/draft-state';
+import { personNames } from '@rondo/core/teams/team-inputs';
 import { recordResult } from '@rondo/core/teams/team-result';
 import { setTier } from '@rondo/core/teams/team.service';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
+import { fromShortId } from '../../utils/from-short-id.util';
 import { gameCardScreen } from '../games.screen';
 import { menuText } from '../menu-text';
 import { showScreen } from '../show-screen';
@@ -19,6 +21,7 @@ import { notifyRosterChange } from './teams-notify';
 import { previewScreen, publishAndShow, retryPreview } from './teams-publish';
 import {
     colourScreen,
+    overLimitAsk,
     guestCountScreen,
     guestHostScreen,
     guestPlaceScreen,
@@ -82,19 +85,32 @@ const viewScreen = Effect.fn('Bot.teamsViewScreen')(function* (user: MenuUser, v
             return yield* retryPreview(user, view, tap.args[0] ?? '');
         }
         case 'r': {
-            const waiting = yield* firstWaiting(view.row.sessionId);
+            const { waiting } = yield* waitingOf(view.row.sessionId);
             const personId = selected ?? '';
 
             return removeScreen(user, view, {
                 personId,
                 guests: view.inputs.members.filter(member => member.isGuest && member.hostId === personId).length,
-                waiting: Option.match(waiting, { onNone: () => null, onSome: found => found.displayName })
+                waiting: waiting[0]?.displayName ?? null
             });
         }
         default: {
             return editorScreen(user, view);
         }
     }
+});
+
+const overLimitScreen = Effect.fn('Bot.teamsOverLimit')(function* (user: MenuUser, tap: TeamsTap) {
+    const view = yield* loadView(user, tap.sessionId, { page: tap.page });
+    const { waiting, taken } = yield* waitingOf(tap.sessionId);
+    const limit = view.inputs.game.capacityMax;
+    const personId = fromShortId(tap.args[0] ?? '') ?? '';
+    const names = yield* personNames([personId]);
+    const joiner = names.get(personId) ?? '?';
+
+    return isDefined(limit) && taken >= limit && tap.version === view.row.version
+        ? overLimitAsk(user, view, { joiner, taken, limit, waiting: waiting.map(entry => entry.displayName), arg: tap.args[0] ?? '' })
+        : null;
 });
 
 const changeScreen = Effect.fn('Bot.teamsChange')(function* (user: MenuUser, tap: TeamsTap) {
@@ -175,6 +191,16 @@ const teamsTap = Effect.fn('Bot.teamsTap')(function* (user: MenuUser, data: stri
         yield* publishAndShow(user, tap, messageId);
 
         return Option.none<string>();
+    }
+
+    if (tap.op === 'J' && tap.args.length === 1) {
+        const asked = yield* overLimitScreen(user, tap);
+
+        if (isDefined(asked)) {
+            yield* showTeams(user, messageId, { sessionId: tap.sessionId, screen: asked });
+
+            return Option.none<string>();
+        }
     }
 
     if (changingOps.has(tap.op)) {

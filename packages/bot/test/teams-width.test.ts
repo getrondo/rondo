@@ -88,8 +88,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(labels().filter(label => label.endsWith('у найслабшу') || label.endsWith('в самую слабую'))).toHaveLength(2);
             expect(labels()).toEqual(
                 expect.arrayContaining([
-                    '🗑 Прибрати з гри',
-                    '🗑 Убрать из игры',
+                    '🗑 Прибрати',
+                    '🗑 Убрать',
                     '✅ Надіслати в «A very long group…',
                     '✅ Отправить в «A very long group…'
                 ])

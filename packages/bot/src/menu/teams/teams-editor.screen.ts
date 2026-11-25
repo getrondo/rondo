@@ -142,6 +142,7 @@ const selectedRow = (user: MenuUser, view: EditorView, base: TeamsBase): MenuBut
 
     const index = playersOf(view.row.state).indexOf(view.selected);
     const isOnField = user.now.getTime() >= view.inputs.game.startsAt.getTime() - 30 * 60_000;
+    const isBeforeStart = user.now.getTime() < view.inputs.game.startsAt.getTime();
 
     return [
         [
@@ -153,10 +154,8 @@ const selectedRow = (user: MenuUser, view: EditorView, base: TeamsBase): MenuBut
             { text: teamsText(user.locale, 'deselect'), callback_data: teamsData(base, 'd') }
         ],
         [
-            {
-                text: teamsText(user.locale, isOnField ? 'noShow' : 'removeOne'),
-                callback_data: teamsData(base, isOnField ? 'o' : 'r', [index])
-            }
+            ...(isBeforeStart ? [{ text: teamsText(user.locale, 'removeOne'), callback_data: teamsData(base, 'r', [index]) }] : []),
+            ...(isOnField ? [{ text: teamsText(user.locale, 'noShow'), callback_data: teamsData(base, 'o', [index]) }] : [])
         ]
     ];
 };

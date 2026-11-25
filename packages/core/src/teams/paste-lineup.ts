@@ -171,7 +171,7 @@ export const applyPaste = Effect.fn('Core.applyPaste')(function* (
     addUnknown: boolean
 ) {
     const members = paste.teams.flatMap(team => team.members);
-    yield* joinGame(
+    const { waiting } = yield* joinGame(
         change,
         members.flatMap(member => (isDefined(member.personId) ? [member.personId] : []))
     );
@@ -180,6 +180,7 @@ export const applyPaste = Effect.fn('Core.applyPaste')(function* (
     const teams: string[][] = [];
     const keepers: string[] = [];
     const twice: { readonly name: string; readonly team: number }[] = [];
+    const queued: string[] = [];
     const firstTeam = new Map<string, number>();
 
     for (const [index, team] of paste.teams.entries()) {
@@ -190,6 +191,8 @@ export const applyPaste = Effect.fn('Core.applyPaste')(function* (
 
             if (isDefined(earlier)) {
                 twice.push({ name: member.name, team: earlier });
+            } else if (waiting.includes(member.personId ?? '')) {
+                queued.push(member.name);
             } else if (isDefined(member.personId)) {
                 firstTeam.set(member.personId, index);
                 placed.push(member.personId, ...(yield* placeGuests(change, member.personId, member.guests)));
@@ -208,5 +211,5 @@ export const applyPaste = Effect.fn('Core.applyPaste')(function* (
         teams.push(placed);
     }
 
-    return { teams, keepers, twice, colours: paste.teams.map(team => team.colour) };
+    return { teams, keepers, twice, queued, colours: paste.teams.map(team => team.colour) };
 });

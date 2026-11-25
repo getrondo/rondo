@@ -47,7 +47,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const marked = admin.screen();
 
             expect(labelsOf(selected).find(row => row[0] === '🔒')).toEqual(['🔒', '🧤', '✖️']);
-            expect(labelsOf(selected)).toContainEqual(['🗑 Прибрати з гри']);
+            expect(labelsOf(selected)).toContainEqual(['🗑 Прибрати']);
             expect(selected.text).toContain(`▶ ${first}: торкнись іншого гравця`);
             expect(swapped.teams[0]).toContain(second);
             expect(swapped.teams[1]).toContain(first);

@@ -103,7 +103,7 @@ const rosterTransform = Effect.fn('Bot.teamsRosterChange')(function* (context: C
         }
         case 'J': {
             const personId = fromShortId(tap.args[0] ?? '');
-            yield* joinGame(rosterChange(context), isDefined(personId) ? [personId] : []);
+            yield* joinGame(rosterChange(context), isDefined(personId) ? [personId] : [], tap.args[1] === '1');
 
             return yield* afterRoster(context, state, (synced, inputs) => rebalanced(inputs, synced));
         }

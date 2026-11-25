@@ -103,7 +103,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('roster changes by an admin'
             expect(removed.promoted).toEqual([]);
             expect(events.map(({ toStatus }) => toStatus)).toEqual(['waitlisted', 'in', 'out']);
             expect(audits.map(({ action }) => action)).toEqual(['session.create', 'signup.guest', 'signup.no_show', 'signup.remove']);
-            expect(rejoined).toEqual([host]);
+            expect(rejoined).toEqual({ joined: [host], waiting: [] });
         })
     );
 });
