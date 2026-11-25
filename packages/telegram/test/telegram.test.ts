@@ -1,9 +1,12 @@
 import { describe, expect, it } from '@effect/vitest';
+import { isDefined } from '@rnw-community/shared';
 import * as ConfigProvider from 'effect/ConfigProvider';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
+import * as Fiber from 'effect/Fiber';
 import * as Layer from 'effect/Layer';
 import * as Redacted from 'effect/Redacted';
+import * as TestClock from 'effect/testing/TestClock';
 
 import { escapeHtml, mentionHtml } from '../src/format/html';
 import { Telegram } from '../src/service/telegram.service';
@@ -73,5 +76,52 @@ describe('telegram failures', () => {
                 Telegram.layer.pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ TELEGRAM_BOT_TOKEN: '0:test' }))))
             )
         )
+    );
+});
+
+describe('telegram rate limit', () => {
+    const sendAfter = (failures: Error[], wait: '0 seconds' | '3 seconds' | '10 seconds') => {
+        const recorder = makeRecorder(() => {
+            const failure = failures.shift();
+
+            if (isDefined(failure)) {
+                throw failure;
+            }
+
+            return true;
+        });
+        const attempts = failures.length;
+
+        return Effect.gen(function* () {
+            const telegram = yield* Telegram;
+            const fiber = yield* Effect.forkChild(Effect.exit(telegram.call('sendMessage', api => api.sendMessage(1, 'hi'))));
+            yield* TestClock.adjust(wait);
+            const exit = yield* Fiber.join(fiber);
+
+            return { isSent: Exit.isSuccess(exit), tries: attempts - failures.length };
+        }).pipe(Effect.provide(recordingTelegramLayer(recorder)));
+    };
+    const limited = (seconds?: number) => refusal('sendMessage', 'Too Many Requests', 429, seconds);
+
+    it.effect('waits as long as Telegram asks and sends again', () =>
+        Effect.gen(function* () {
+            expect((yield* sendAfter([limited(3)], '3 seconds')).isSent).toBe(true);
+        })
+    );
+
+    it.effect('does not wait past 10 seconds in total, nor without a wait time', () =>
+        Effect.gen(function* () {
+            expect(yield* sendAfter([limited(11)], '0 seconds')).toEqual({ isSent: false, tries: 1 });
+            expect(yield* sendAfter([limited()], '0 seconds')).toEqual({ isSent: false, tries: 1 });
+            expect(yield* sendAfter([limited(6), limited(6)], '10 seconds')).toEqual({ isSent: false, tries: 2 });
+        })
+    );
+
+    it.effect('never sends again after another refusal or an unknown result', () =>
+        Effect.gen(function* () {
+            for (const failure of [new Error('socket hang up'), refusal('sendMessage', 'x', 502, 3), refusal('sendMessage', 'x', 400, 3)]) {
+                expect(yield* sendAfter([failure, failure], '10 seconds')).toEqual({ isSent: false, tries: 1 });
+            }
+        })
     );
 });

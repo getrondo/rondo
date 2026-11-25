@@ -46,8 +46,13 @@ export const makeRecorder = (reply: TelegramRecorder['reply'] = defaultReply): T
     reply
 });
 
-export const refusal = (method: string, description: string, errorCode = 400): GrammyError =>
-    new GrammyError(`Call to '${method}' failed!`, { ok: false, error_code: errorCode, description }, method, {});
+export const refusal = (method: string, description: string, errorCode = 400, retryAfter?: number): GrammyError =>
+    new GrammyError(
+        `Call to '${method}' failed!`,
+        { ok: false, error_code: errorCode, description, ...(isDefined(retryAfter) ? { parameters: { retry_after: retryAfter } } : {}) },
+        method,
+        {}
+    );
 
 export const recordingTelegramLayer = (recorder: TelegramRecorder): Layer.Layer<Telegram> =>
     Layer.effect(
