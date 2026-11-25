@@ -121,8 +121,7 @@ const rowsOf: Readonly<Record<GameListView, (context: ListContext) => MenuButton
     venues: venueRows,
     venue_name: () => [],
     size: sizeRows,
-    cancel: ({ user, button }) => reasons.map(reason => [button(capitalized(cancelReasonText(user.locale, reason)), 'xr', reason)]),
-    teams: ({ user, button }) => [[2, 3].map(count => button(menuText(user.locale, 'teamCount', { count }), 'kn', String(count)))]
+    cancel: ({ user, button }) => reasons.map(reason => [button(capitalized(cancelReasonText(user.locale, reason)), 'xr', reason)])
 };
 
 const prompts: Readonly<Record<GameListView, MenuKey>> = {
@@ -132,8 +131,7 @@ const prompts: Readonly<Record<GameListView, MenuKey>> = {
     venues: 'allPlaces',
     venue_name: 'newPlaceName',
     size: 'pickSize',
-    cancel: 'cancelWhy',
-    teams: 'teams'
+    cancel: 'cancelWhy'
 };
 
 export const gameListScreen = (

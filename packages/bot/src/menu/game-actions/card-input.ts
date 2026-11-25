@@ -10,6 +10,7 @@ import { parseDate } from '../../utils/parse-date.util';
 import { parseTime } from '../../utils/parse-time.util';
 import { loadNewGameData } from '../new-game/new-game.data';
 import { placeOfName } from '../new-game/place-input';
+import { handleTeamsInput } from '../teams/teams-input';
 
 import { GameDraftSchema, type GameDraft } from './game-draft';
 import { showConfirm, showGameList } from './show-confirm';
@@ -86,7 +87,6 @@ const typedOf = (draft: GameDraft, game: SessionView, text: string, data: NewGam
         case 'venues':
         case 'venue_name':
         case 'cancel':
-        case 'teams':
         case 'confirm': {
             return null;
         }
@@ -106,6 +106,10 @@ const newPlace = Effect.fn('Bot.cardNewPlace')(function* (user: MenuUser, name: 
 });
 
 export const handleGameInput = Effect.fn('Bot.handleGameInput')(function* (user: MenuUser, row: AdminStateRow, text: string) {
+    if (yield* handleTeamsInput(user, row, text)) {
+        return true;
+    }
+
     const draft = decodeGameDraft(row.draft);
 
     if (Option.isNone(draft) || draft.value.view === 'confirm') {

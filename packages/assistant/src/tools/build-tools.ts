@@ -220,7 +220,7 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
     }),
     propose_publish_teams: tool({
         description:
-            'Balance the players signed in for a game into teams (using confidential levels) and propose posting the line-ups in the group.',
+            'Make teams for the players signed in for a game, the same way as the team editor, and propose posting them where the poll is. Never tell anyone about levels.',
         inputSchema: toolSchema(
             Schema.Struct({ sessionId: Schema.String, teamCount: Schema.Int.check(Schema.isBetween({ minimum: 2, maximum: 4 })) })
         ),
@@ -228,7 +228,7 @@ const proposalTools = (scope: ToolScope, run: ToolRunner) => ({
             await run(
                 Effect.gen(function* () {
                     yield* requireSession(scope.communityId, input.sessionId);
-                    const teams = yield* proposeTeams(input.sessionId, input.teamCount);
+                    const teams = yield* proposeTeams(scope.communityId, input.sessionId, input.teamCount);
 
                     return yield* propose(scope, { _tag: 'publish_teams', sessionId: input.sessionId, teams });
                 })

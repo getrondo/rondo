@@ -18,7 +18,7 @@ import { runConfirmed } from '../run-confirmed';
 import { showScreen } from '../show-screen';
 import { plainReceipt, rememberDone, replyStale, showAfterSuccess } from '../stale-reply';
 
-import { changeOf, ownVenue, teamsOf } from './card-changes';
+import { changeOf, ownVenue } from './card-changes';
 import { GameDraftSchema, listViews, sessionOf } from './game-draft';
 import { targetOfAction, type GameTarget } from './game-target';
 import { confirmRetry } from './retry-confirm';
@@ -264,11 +264,10 @@ export const handleGameTap = Effect.fn('Bot.handleGameTap')(function* (user: Men
         );
     }
 
-    const teams = op === 'kn' ? yield* teamsOf(game.value.id, Number(arg)) : Option.none<Action>();
-    const action = Option.getOrNull(teams) ?? changeOf(user, game.value.id, { op, arg });
+    const action = changeOf(user, game.value.id, { op, arg });
 
     if (!isDefined(action)) {
-        return Option.some(menuText(user.locale, op === 'kn' ? 'noTeams' : 'stale'));
+        return Option.some(menuText(user.locale, 'stale'));
     }
 
     const venue = action._tag === 'update_session' && isDefined(action.venueId) ? yield* ownVenue(user, action.venueId) : Option.some(null);

@@ -84,10 +84,11 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const pollConfirm = admin.screen().text;
             yield* admin.tap('✅ Отправить в «Games»');
             yield* admin.tap('👕 Составы');
-            yield* admin.tap('2 команды');
+            yield* admin.tap('✅ Отправить в «Games»');
             const teams = admin.screen().text;
             yield* admin.tap('✅ Отправить в «Games»');
             const lineup = groupPosts(-2002).at(-1);
+            yield* admin.tap('⬅️ Назад');
             yield* admin.tap('✖️ Отменить игру');
             yield* admin.tap('Погода');
             yield* admin.tap('✅ Отменить и написать в «Games»');

@@ -74,10 +74,12 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/games');
             yield* admin.tap('Сб 28.11 18:30');
             yield* admin.tap('👕 Склади');
-            yield* admin.tap('2 команди');
             const teamsAsk = admin.screen();
             yield* admin.tap('✅ Надіслати мені');
+            yield* admin.tap('✅ Надіслати мені');
             const lineup = sentTo(1602, 'sendMessage').findLast(call => String(call.payload.text).startsWith('<b>Склади'));
+            const hint = sentTo(1602, 'sendMessage').findLast(call => String(call.payload.text).startsWith('☝️'));
+            yield* admin.tap('⬅️ Назад');
             yield* admin.tap('🕖 Час');
             yield* admin.tap('19:00');
             const changeAsk = admin.screen();
@@ -89,8 +91,9 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(receipt.text).toBe('✅ Опитування в тебе.\nНатисни й утримуй опитування → Переслати → група.');
             expect(mine.text).toContain('👤 Опитування в тебе, переслати треба самому');
             expect(resent).toHaveLength(1);
-            expect(teamsAsk.text.startsWith('Надішлю тобі, а ти перешлеш у групу:')).toBe(true);
-            expect(String(lineup?.payload.text)).toContain('↪️ Перешли це в групу.');
+            expect(teamsAsk.text).toContain('Поки нічого не надіслано.');
+            expect(String(lineup?.payload.text)).not.toContain('Перешли');
+            expect(String(hint?.payload.text)).toBe('☝️ Склади вище: натисни й утримуй → Переслати → група.');
             expect(labelsOf(changeAsk)).toEqual(expect.arrayContaining(['✅ Змінити й надіслати мені', 'Змінити без повідомлення']));
             expect(String(notice?.payload.text)).toContain('↪️ Перешли це в групу.');
         })

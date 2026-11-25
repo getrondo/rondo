@@ -1,0 +1,88 @@
+import { isDefined } from '@rnw-community/shared';
+import { mainGroupOf } from '@rondo/core/community/community.repository';
+import { personIdOfTelegramUser } from '@rondo/core/identity/telegram-user';
+import { loadAdminState, saveAdminState } from '@rondo/core/menu/admin-state.repository';
+import { audienceForTeams } from '@rondo/core/teams/publish-lineup';
+import { openDraft, type DraftRow } from '@rondo/core/teams/team-draft.service';
+import { loadTeamInputs } from '@rondo/core/teams/team-inputs';
+import { claimLevelsOffer } from '@rondo/core/teams/team-schedule';
+import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
+import * as Schema from 'effect/Schema';
+
+import { showScreen } from '../show-screen';
+
+import { stackRows } from './teams-editor.screen';
+
+import type { MenuUser, Screen } from '../screen.interface';
+import type { EditorView } from './teams-view.interface';
+
+export const TeamsDraftSchema = Schema.Struct({
+    flow: Schema.Literal('teams'),
+    sessionId: Schema.String,
+    step: Schema.Literals(['editor', 'guest']),
+    host: Schema.NullOr(Schema.String),
+    paste: Schema.NullOr(Schema.Unknown)
+});
+
+export type TeamsDraft = typeof TeamsDraftSchema.Type;
+
+const decodeTeamsDraft = Schema.decodeUnknownOption(TeamsDraftSchema);
+
+export const actorOf = (user: MenuUser) => personIdOfTelegramUser(user.tgUserId);
+
+const audienceOfGame = Effect.fn('Bot.teamsAudience')(function* (user: MenuUser, sessionId: string) {
+    const fallback = yield* mainGroupOf(user.communityId);
+
+    return yield* audienceForTeams(user.communityId, sessionId, fallback);
+});
+
+export const loadView = Effect.fn('Bot.loadTeamsView')(function* (
+    user: MenuUser,
+    sessionId: string,
+    options: { readonly page?: number; readonly notes?: readonly string[]; readonly row?: DraftRow; readonly offerLevels?: boolean } = {}
+) {
+    const actor = yield* actorOf(user);
+    const opened = isDefined(options.row)
+        ? { row: options.row, inputs: yield* loadTeamInputs(user.communityId, sessionId) }
+        : yield* openDraft(user.communityId, sessionId, actor);
+    const audience = yield* audienceOfGame(user, sessionId);
+    const pages = Math.max(1, Math.ceil(opened.row.state.teams.length / 2));
+
+    return {
+        row: opened.row,
+        inputs: opened.inputs,
+        audience,
+        selected: null,
+        title: null,
+        page: Math.min(options.page ?? 0, pages - 1),
+        notes: options.notes ?? [],
+        offerLevels: options.offerLevels === true && (yield* claimLevelsOffer(user.communityId, actor, user.now))
+    } satisfies EditorView;
+});
+
+export const showTeams = Effect.fn('Bot.showTeams')(function* (
+    user: MenuUser,
+    messageId: number | null,
+    content: { readonly sessionId: string; readonly screen: Screen; readonly draft?: Partial<TeamsDraft> }
+) {
+    const shownId = yield* showScreen(user.chatId, messageId, { text: content.screen.text, keyboard: stackRows(content.screen.keyboard) });
+    const draft: TeamsDraft = { flow: 'teams', sessionId: content.sessionId, step: 'editor', host: null, paste: null, ...content.draft };
+    const live = yield* loadAdminState(user.tgUserId, user.now);
+    const isOtherFlow = Option.exists(live, row => row.messageId !== shownId && Option.isNone(decodeTeamsDraft(row.draft)));
+
+    if (isOtherFlow) {
+        return shownId;
+    }
+
+    yield* saveAdminState({
+        tgUserId: user.tgUserId,
+        communityId: user.communityId,
+        messageId: shownId,
+        awaiting: 'teams',
+        draft,
+        now: user.now
+    });
+
+    return shownId;
+});

@@ -2,6 +2,7 @@ import { isDefined, isNotEmptyArray, isNotEmptyString } from '@rnw-community/sha
 import * as Option from 'effect/Option';
 
 import { defaultGuestPatterns, type CommunityConfig } from '../config/community-config';
+import { teamBadges } from '../config/team-badges';
 
 import { pricePattern } from './extract-signals';
 import { findLocalTime, resolveGameDate, statedDateConfidence } from './game-date';
@@ -17,7 +18,7 @@ interface RosterContext {
     readonly mentions: NonNullable<TelegramMessage['mentions']>;
 }
 
-const gkPattern = 'вратарь|воротар|на воротах';
+const gkPattern = 'вратарь|воротар|на воротах|🧤';
 const newcomerPattern = 'новый|новенький|новий|новичок';
 const gkMarker = new RegExp(gkPattern, 'giu');
 const newcomerMarker = new RegExp(newcomerPattern, 'giu');
@@ -182,10 +183,14 @@ const isNameList = (names: readonly string[], least: number): boolean =>
             name.trim().length <= maxNameLength
     );
 
+const badgeEmojis: readonly string[] = [...teamBadges.map(({ badge }) => badge), ...teamBadges.flatMap(({ aliases }) => aliases)];
+
+const knownEmojis = (config: CommunityConfig): string[] => [...new Set([...config.teamColors.map(color => color.emoji), ...badgeEmojis])];
+
 const teamLinesOf = (text: string, config: CommunityConfig): TeamLine[] =>
     text.split('\n').flatMap(line => {
         const [, emoji, rest = ''] = teamLine.exec(line) ?? [];
-        const isKnown = config.teamColors.some(color => color.emoji === emoji);
+        const isKnown = knownEmojis(config).some(known => known === emoji);
         const names = (isKnown ? rest.replace(colorLabel, '') : rest)
             .split(/[,;]/u)
             .map(part => stripParentheses(part))
@@ -195,7 +200,7 @@ const teamLinesOf = (text: string, config: CommunityConfig): TeamLine[] =>
     });
 
 const teamEmojis = (lines: readonly TeamLine[], config: CommunityConfig): string[] => {
-    const known = config.teamColors.map(color => color.emoji);
+    const known = knownEmojis(config);
     const isSquad = lines.some(({ emoji, names }) => known.includes(emoji) && isNameList(names, 1));
     const unknown = lines.filter(({ emoji, names }) => isSquad && !known.includes(emoji) && isNameList(names, minNamesForUnknownEmoji));
 
@@ -203,7 +208,7 @@ const teamEmojis = (lines: readonly TeamLine[], config: CommunityConfig): string
 };
 
 const isSquadByStructure = (lines: readonly TeamLine[], config: CommunityConfig): boolean => {
-    const known = new Set(config.teamColors.map(color => color.emoji));
+    const known = new Set(knownEmojis(config));
     const squads = lines.filter(({ emoji, names }) => known.has(emoji) && isNameList(names, minNamesPerTeam));
 
     return new Set(squads.map(({ emoji }) => emoji)).size >= 2;

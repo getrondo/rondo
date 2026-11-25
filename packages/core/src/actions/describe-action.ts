@@ -223,8 +223,7 @@ export const describeAction = Effect.fn('Core.describeAction')(function* (action
         }
         case 'publish_teams': {
             const lines = action.teams.map(
-                team =>
-                    `${team.ordinal}. ${team.players.map(player => `${player.displayName}${player.isGk ? ' 🧤' : ''}`).join(', ')} (Σ ${team.strength.toFixed(1)})`
+                team => `${team.ordinal}. ${team.players.map(player => `${player.displayName}${player.isGk ? ' 🧤' : ''}`).join(', ')}`
             );
 
             return [`${word.teams}: ${yield* sessionLabel(locale, action.sessionId)}`, ...lines].join('\n');

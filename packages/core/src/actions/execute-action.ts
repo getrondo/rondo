@@ -1,4 +1,4 @@
-import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
+import { isDefined } from '@rnw-community/shared';
 import { withCommunityLock } from '@rondo/ingest-telegram/load/with-community-lock';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
@@ -18,7 +18,8 @@ import { cancelSession, createSession, findSameGame, requireSession, updateSessi
 import { forwardPoll } from '../signups/forward-poll';
 import { publishPoll } from '../signups/publish-poll';
 import { closePollsOf } from '../signups/signup.service';
-import { publishTeams, setSeedRating } from '../teams/team.service';
+import { publishLineup } from '../teams/publish-lineup';
+import { setSeedRating, storeProposedTeams } from '../teams/team.service';
 import { createVenue, requireVenue, updateVenue } from '../venues/venue.service';
 
 import type { Locale } from '../i18n/locale';
@@ -140,15 +141,16 @@ const executeAction = Effect.fn('Core.executeAction')(function* (
         }
         case 'publish_teams': {
             return yield* Effect.gen(function* () {
-                yield* requirePreviewed(action, context);
-                const target = yield* requireSession(communityId, action.sessionId);
-                const groups = previewedTargets(action) ?? (yield* noticeTargetsOf(context, action.sessionId));
-
-                if (!isNotEmptyArray(groups)) {
-                    return yield* ActionFailedError.make({ reason: 'no group is linked to this community yet' });
-                }
-
-                yield* publishTeams({ target, teams: action.teams, groups, locale, actorPersonId });
+                yield* storeProposedTeams(communityId, action.sessionId, action.teams, actorPersonId);
+                yield* publishLineup({
+                    communityId,
+                    sessionId: action.sessionId,
+                    version: null,
+                    locale,
+                    actorPersonId,
+                    privateChatId: isDefined(context.requester) ? Number(context.requester) : null,
+                    fallback: context.group
+                });
 
                 return { sessionId: action.sessionId };
             }).pipe(asResult);

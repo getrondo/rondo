@@ -25,7 +25,9 @@ interface PersonMatch {
 
 const inCommunity = (communityId: string): SQL =>
     sql`(exists (select 1 from ${membership} where ${membership.personId} = ${person.id} and ${membership.communityId} = ${communityId})
-        or exists (select 1 from identity.person_alias known where known.person_id = ${person.id} and known.community_id = ${communityId}))`;
+        or exists (select 1 from identity.person_alias known where known.person_id = ${person.id} and known.community_id = ${communityId})
+        or exists (select 1 from scheduling.signup guest join scheduling.session game on game.id = guest.session_id
+            where guest.person_id = ${person.id} and guest.is_guest and game.community_id = ${communityId}))`;
 
 export const arePeopleOf = Effect.fn('Core.arePeopleOf')(function* (communityId: string, personIds: readonly string[]) {
     const db = yield* Db;

@@ -7,6 +7,7 @@ import { listSessions, requireSession } from '@rondo/core/sessions/session.servi
 import { audienceOf } from '@rondo/core/signups/audience';
 import { unknownForwardsOf } from '@rondo/core/signups/forward-poll';
 import { rosterOf } from '@rondo/core/signups/signup.service';
+import { storedTeams } from '@rondo/core/teams/lineup-of-draft';
 import { addDays } from '@rondo/core/utils/add-days.util';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
@@ -19,6 +20,7 @@ import { toShortId } from '../utils/to-short-id.util';
 import { signedUpLine, upcomingGames } from './home.screen';
 import { menuText, type MenuKey } from './menu-text';
 import { quotedTitles } from './new-game/audience';
+import { teamsData } from './teams/teams-callback';
 
 import type { MenuButton, MenuUser, Screen } from './screen.interface';
 import type { Locale } from '@rondo/core/i18n/locale';
@@ -93,6 +95,7 @@ interface CardState {
     readonly unknownTo: readonly { readonly chatId: bigint; readonly title: string; readonly token: string }[];
     readonly retry: RetryTarget | null;
     readonly page: number;
+    readonly hasTeams: boolean;
 }
 
 const retryRoom = (user: MenuUser): number => full - labelWidth(menuText(user.locale, 'resendTo', { where: '«»' }));
@@ -158,7 +161,18 @@ const actionRows = (user: MenuUser, game: SessionView, state: CardState): MenuBu
         ...openRows,
         [button('time', 't'), button('day', 'dd')],
         [button('place', 'v'), button('size', 'z')],
-        ...(state.signed >= 2 ? [[button('teams', 'k')]] : []),
+        ...(state.signed >= 2 || state.hasTeams
+            ? [
+                  [
+                      {
+                          text: state.hasTeams
+                              ? `✏️ ${menuText(user.locale, 'teams').replace(/^\S+\s/u, '')}`
+                              : menuText(user.locale, 'teams'),
+                          callback_data: teamsData({ sessionId: game.id, version: 0, page: 0 }, 'e')
+                      }
+                  ]
+              ]
+            : []),
         [button('cancelGame', 'x')],
         ...(state.canDelete ? [[button('deleteGame', 'd')]] : []),
         ...(isNotEmptyArray(paging) ? [paging] : [])
@@ -202,6 +216,30 @@ const countLine = (user: MenuUser, game: SessionView, signedLine: string, signed
     return [capitalized(signedLine), ...free].join(' · ');
 };
 
+const resultRowOf = (
+    user: MenuUser,
+    game: SessionView,
+    stored: readonly { readonly ordinal: number; readonly rank: number | null; readonly badge: string }[]
+): MenuButton[][] => {
+    const isRanked = stored.some(entry => isDefined(entry.rank));
+    const isDraw = stored.every(entry => entry.rank === 1);
+    const hasStarted = game.startsAt.getTime() <= user.now.getTime() && game.status !== 'cancelled';
+    const isCorrectable = !isRanked || user.now.getTime() <= game.startsAt.getTime() + 12 * 60 * 60_000;
+    const base = { sessionId: game.id, version: 0, page: 0 };
+
+    return hasStarted && isNotEmptyArray(stored) && isCorrectable
+        ? [
+              [
+                  ...stored.map(entry => ({
+                      text: `${isRanked && !isDraw && entry.rank === 1 ? '✓' : ''}🏆 ${entry.badge}`,
+                      callback_data: teamsData(base, 'W', [entry.ordinal])
+                  })),
+                  { text: isRanked && isDraw ? '✓🤝' : '🤝', callback_data: teamsData(base, 'W', [0]) }
+              ]
+          ]
+        : [];
+};
+
 export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
     user: MenuUser,
     sessionId: string,
@@ -218,6 +256,8 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
     const onlyAdmins = yield* hasOnlyAdminVotes(user.communityId, sessionId);
     const canDelete = yield* isDeletableSession(user.communityId, sessionId, user.today);
     const unknown = yield* unknownForwardsOf(sessionId);
+    const stored = yield* storedTeams(sessionId);
+    const resultRow = resultRowOf(user, game, stored);
     const state: CardState = {
         hasPoll: isNotEmptyArray(audience),
         canDelete,
@@ -235,7 +275,8 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
               )
             : [],
         retry: header?.retry ?? null,
-        page
+        page,
+        hasTeams: isNotEmptyArray(stored)
     };
     const waiting = roster.filter(entry => entry.status === 'waitlisted');
     const keepers = roster.filter(entry => entry.status === 'in' && entry.role === 'gk');
@@ -260,7 +301,7 @@ export const gameCardPage = Effect.fn('Bot.gameCardPage')(function* (
 
     return {
         text: lines.join('\n'),
-        keyboard: [...(isUpcoming ? actionRows(user, game, state) : []), navRow(user.locale, 'm:gl')]
+        keyboard: [...(isUpcoming ? actionRows(user, game, state) : []), ...resultRow, navRow(user.locale, 'm:gl')]
     } satisfies Screen;
 });
 

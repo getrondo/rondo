@@ -123,7 +123,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions, on
             });
             const promoted = String(postsSince(start).at(-1)?.payload.text);
 
-            expect(lineup).toBe('<b>Склади: Нд 06.12 10:00 · North Arena</b>\n📍 <b>North Arena</b>\n🟢 Name1, Name2\n🔵 Name3, Name4');
+            expect(lineup).toBe(
+                '<b>Склади: Нд 06.12 10:00 · North Arena</b>\n\n🔴 <a href="tg://user?id=7001">Name1</a>, <a href="tg://user?id=7002">Name2</a>\n\n🔵 <a href="tg://user?id=7003">Name3</a>, <a href="tg://user?id=7004">Name4</a>'
+            );
             expect(lineup).not.toMatch(/4\.75|9\.5|Σ/u);
             expect(promoted).toBe(
                 '🎉 <a href="tg://user?id=7001">Name1</a>, звільнилося місце — ти в складі! Нд 06.12 10:00 · North Arena'

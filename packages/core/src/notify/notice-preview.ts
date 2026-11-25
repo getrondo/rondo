@@ -7,7 +7,6 @@ import { displayOfVenue } from '../actions/describe-action';
 import { ActionFailedError } from '../error/action-failed.error';
 import { requireSession } from '../sessions/session.service';
 import { noticeTargets } from '../signups/audience';
-import { lineupHtml } from '../teams/team.service';
 
 import { sessionCancelledHtml, sessionChangedHtml } from './notifier';
 
@@ -16,10 +15,10 @@ import type { ActionContext } from '../actions/execute-action';
 import type { GroupTarget } from '../interface/group-target.interface';
 import type { SessionView } from '../sessions/session.model';
 
-type NoticeAction = Extract<Action, { _tag: 'update_session' | 'cancel_session' | 'publish_teams' }>;
+type NoticeAction = Extract<Action, { _tag: 'update_session' | 'cancel_session' }>;
 
 export const isNoticeAction = (action: Action): action is NoticeAction =>
-    action._tag === 'update_session' || action._tag === 'cancel_session' || action._tag === 'publish_teams';
+    action._tag === 'update_session' || action._tag === 'cancel_session';
 
 const afterChange = Effect.fn('Core.afterChange')(function* (game: SessionView, action: Extract<Action, { _tag: 'update_session' }>) {
     const display = isDefined(action.venueId) ? yield* displayOfVenue(action.venueId, game.communityId) : {};
@@ -52,9 +51,6 @@ const noticeHtml = Effect.fn('Core.noticeHtml')(function* (action: NoticeAction,
         }
         case 'cancel_session': {
             return yield* sessionCancelledHtml({ target: game, reason: action.reason, locale });
-        }
-        case 'publish_teams': {
-            return yield* lineupHtml(locale, game, action.teams);
         }
         default: {
             return yield* Effect.die(new Error('not a notice'));
