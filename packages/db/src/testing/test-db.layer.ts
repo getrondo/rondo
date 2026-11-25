@@ -27,7 +27,12 @@ const acquireServer = Effect.acquireRelease(
 const clientLayer = Layer.unwrap(
     acquireServer.pipe(
         Effect.map(({ server }) =>
-            PgClient.layer({ url: Redacted.make(`postgres://postgres@${server.getServerConn()}/postgres`), maxConnections: 1 })
+            PgClient.layer({
+                url: Redacted.make(`postgres://postgres@${server.getServerConn()}/postgres`),
+                maxConnections: 1,
+                // PGlite takes one connection: a pool that drops the idle one (test clocks jump) cannot reconnect in time
+                idleTimeout: 'Infinity'
+            })
         )
     )
 );
