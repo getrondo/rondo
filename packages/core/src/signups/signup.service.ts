@@ -12,6 +12,7 @@ import * as Option from 'effect/Option';
 import { primaryAccount } from '../identity/primary-account';
 import { syncMember, type TelegramUser } from '../identity/telegram-user';
 import { closedStatuses, isClosed } from '../sessions/session.model';
+import { unsignedSquad } from '../teams/team-inputs';
 import { isSettledPoll } from '../utils/is-settled-poll.util';
 
 type PollChoice = 'in' | 'gk' | 'out';
@@ -30,7 +31,7 @@ export interface PollAnswerOutcome {
     readonly promoted: readonly PromotedPlayer[];
 }
 
-export const fieldPlayersIn = Effect.fn('Core.fieldPlayersIn')(function* (sessionId: string, exceptPersonId: string | null) {
+const fieldPlayersIn = Effect.fn('Core.fieldPlayersIn')(function* (sessionId: string, exceptPersonId: string | null) {
     const db = yield* Db;
     const conditions = [
         eq(signup.sessionId, sessionId),
@@ -44,6 +45,14 @@ export const fieldPlayersIn = Effect.fn('Core.fieldPlayersIn')(function* (sessio
         .where(and(...conditions));
 
     return row?.value ?? 0;
+});
+
+// Seats: field players who said yes, and squad members who play without a «yes»
+export const seatsTaken = Effect.fn('Core.seatsTaken')(function* (sessionId: string, exceptPersonId: string | null = null) {
+    const unsigned = yield* unsignedSquad(sessionId);
+    const seated = unsigned.filter(member => member.role === 'field' && member.personId !== exceptPersonId);
+
+    return (yield* fieldPlayersIn(sessionId, exceptPersonId)) + seated.length;
 });
 
 const writeSignup = Effect.fn('Core.writeSignup')(function* (input: {
@@ -105,7 +114,7 @@ const refreshFullness = Effect.fn('Core.refreshFullness')(function* (sessionId: 
         return;
     }
 
-    const taken = yield* fieldPlayersIn(sessionId, null);
+    const taken = yield* seatsTaken(sessionId);
     const [current] = yield* db.select({ status: session.status }).from(session).where(eq(session.id, sessionId));
 
     if (current?.status === 'open' && taken >= capacityMax) {
@@ -118,9 +127,7 @@ const refreshFullness = Effect.fn('Core.refreshFullness')(function* (sessionId: 
 });
 
 export const fillFreeSeats = Effect.fn('Core.fillFreeSeats')(function* (sessionId: string, capacityMax: number | null) {
-    const promoted = isDefined(capacityMax)
-        ? yield* promoteWaitlisted(sessionId, capacityMax - (yield* fieldPlayersIn(sessionId, null)))
-        : [];
+    const promoted = isDefined(capacityMax) ? yield* promoteWaitlisted(sessionId, capacityMax - (yield* seatsTaken(sessionId))) : [];
     yield* refreshFullness(sessionId, capacityMax);
 
     return promoted;
@@ -152,7 +159,7 @@ const setSignup = Effect.fn('Core.setSignup')(function* (sessionId: string, pers
         .where(and(eq(signup.sessionId, sessionId), eq(signup.personId, personId)));
     const keptRole = previous?.role === 'gk' && !(asksGoalkeeper && choice === 'in') ? 'gk' : 'field';
     const role = choice === 'gk' ? 'gk' : keptRole;
-    const othersIn = yield* fieldPlayersIn(sessionId, personId);
+    const othersIn = yield* seatsTaken(sessionId, personId);
     const hasSeat = role === 'gk' || !isDefined(capacityMax) || othersIn < capacityMax;
     const seatedStatus = hasSeat ? 'in' : 'waitlisted';
     const status = choice === 'out' ? 'out' : seatedStatus;

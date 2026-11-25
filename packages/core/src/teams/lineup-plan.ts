@@ -5,11 +5,12 @@ import { telegramChat } from '@rondo/db/schema/org.schema';
 import { importedPoll } from '@rondo/db/schema/platform.schema';
 import { lineupDelivery, ratingEvent } from '@rondo/db/schema/play.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
+import { linkedChatsOf } from '../community/community.repository';
 import { ActionFailedError } from '../error/action-failed.error';
 import { noticeTargets } from '../signups/audience';
 
@@ -43,18 +44,11 @@ const audienceForTeams = Effect.fn('Core.audienceForTeams')(function* (
     fallback: Option.Option<GroupTarget>
 ) {
     const db = yield* Db;
-    // An imported poll's own chat decides: that group when the bot has it, else the admin, never the main group
-    const [imported] = yield* db.select({ chatId: importedPoll.chatId }).from(importedPoll).where(eq(importedPoll.sessionId, sessionId));
-    const [own] = isDefined(imported?.chatId)
-        ? yield* db
-              .select({ chatId: telegramChat.chatId, topicId: telegramChat.topicId })
-              .from(telegramChat)
-              .where(and(eq(telegramChat.chatId, BigInt(imported.chatId)), eq(telegramChat.communityId, communityId)))
-        : [];
-    const audience = yield* noticeTargets(
-        sessionId,
-        isDefined(imported) ? Option.toArray(Option.fromNullishOr(own)) : Option.toArray(fallback)
-    );
+    // The chats of the imported polls decide: the groups the bot has, else the admin, never the main group
+    const imported = yield* db.select({ chatId: importedPoll.chatId }).from(importedPoll).where(eq(importedPoll.sessionId, sessionId));
+    const ownIds = new Set(imported.flatMap(({ chatId }) => (isDefined(chatId) ? [BigInt(chatId)] : [])));
+    const own = (yield* linkedChatsOf(communityId)).filter(chat => ownIds.has(chat.chatId));
+    const audience = yield* noticeTargets(sessionId, isNotEmptyArray(imported) ? own : Option.toArray(fallback));
     const isPrivate = audience.some(target => target.chatId > 0n);
     const targets = audience.filter(target => target.chatId < 0n);
     const titles = isNotEmptyArray(targets)

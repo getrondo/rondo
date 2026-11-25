@@ -247,6 +247,19 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             yield* db.update(importedPoll).set({ chatId: -7982 }).where(eq(importedPoll.pollId, 'imported-elsewhere'));
             const linked = yield* planLineup({ ...game, locale: 'uk', privateChatId: 4244, fallback });
 
+            yield* db.insert(importedPoll).values({
+                pollId: 'imported-second',
+                communityId: game.communityId,
+                sessionId: game.sessionId,
+                chatId: -7981,
+                messageId: 2,
+                postedAt: new Date('2026-12-01T09:00:00Z'),
+                kind: 'participation',
+                answers: 2
+            });
+            const both = yield* planLineup({ ...game, locale: 'uk', privateChatId: 4244, fallback });
+
+            expect(new Set(both.deliveries.map(delivery => delivery.chatId))).toEqual(new Set([-7981n, -7982n]));
             expect(unlinked.deliveries.map(delivery => delivery.chatId)).toEqual([4244n]);
             expect(linked.deliveries.map(delivery => delivery.chatId)).toEqual([-7982n]);
         })

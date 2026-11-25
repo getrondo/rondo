@@ -75,7 +75,9 @@ const recordBotCopy = Effect.fn('Bot.recordBotCopy')(function* (communityId: str
         return yield* recordPollCopy({ communityId, pollId: message.poll.id, chatId, messageId: message.message_id });
     }
 
-    if (message.forward_origin?.sender_user?.is_bot === true) {
+    const { botId } = yield* Telegram;
+
+    if (message.forward_origin?.sender_user?.id === botId) {
         yield* recordLineupCopy({ communityId, chatId, messageId: message.message_id, text: body });
 
         return true;

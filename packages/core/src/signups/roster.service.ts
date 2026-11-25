@@ -13,7 +13,7 @@ import { arePeopleOf } from '../people/people.service';
 import { requireSession } from '../sessions/session.service';
 import { unsignedSquad } from '../teams/team-inputs';
 
-import { fieldPlayersIn, fillFreeSeats, lockSession } from './signup.service';
+import { fillFreeSeats, lockSession, seatsTaken } from './signup.service';
 
 const CandidatesSchema = Schema.Struct({ rows: Schema.Array(Schema.Struct({ person_id: Schema.String, display_name: Schema.String })) });
 
@@ -54,13 +54,6 @@ const setStatus = Effect.fn('Core.setRosterStatus')(function* (
             actorPersonId: change.actorPersonId
         });
     }
-});
-
-// Seats: field players who said yes, and squad members who play without a «yes»
-const seatsTaken = Effect.fn('Core.seatsTaken')(function* (sessionId: string) {
-    const unsigned = yield* unsignedSquad(sessionId);
-
-    return (yield* fieldPlayersIn(sessionId, null)) + unsigned.filter(member => member.role === 'field').length;
 });
 
 export const addGuests = Effect.fn('Core.addGuests')(function* (

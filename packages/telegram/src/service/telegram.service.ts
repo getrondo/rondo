@@ -19,6 +19,7 @@ export interface CallOptions {
 }
 
 export interface TelegramClient {
+    readonly botId: number;
     readonly call: <Value>(
         method: string,
         request: (api: Api) => Promise<Value>,
@@ -58,6 +59,7 @@ const requestUntil = <Value>(
     );
 
 export const makeTelegramClient = (api: Api): TelegramClient => ({
+    botId: Number(api.token.split(':')[0]),
     call: (method, request, options) => {
         const once = Effect.tryPromise({ try: async () => await request(api), catch: error => failureOf(method, error) });
         const maxWaitMs = onceOnly.has(method) ? 0 : (options?.maxWaitSeconds ?? timeoutSeconds) * 1000;
