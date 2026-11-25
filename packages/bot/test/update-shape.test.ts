@@ -1,9 +1,10 @@
+import { inspect } from 'node:util';
+
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { processedUpdate } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
-import * as Cause from 'effect/Cause';
 import * as Effect from 'effect/Effect';
 import * as Logger from 'effect/Logger';
 import * as Option from 'effect/Option';
@@ -73,7 +74,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000 })('shapes of updates', it => {
             const { communityId } = yield* seedSeason('shape-log', { groupChatId: -90_044, adminId: 9044 });
             const logged: unknown[] = [];
             const collect = Logger.make(({ message: line, cause }) => {
-                logged.push(line, Cause.pretty(cause));
+                logged.push(inspect([line, cause], { depth: 12 }));
             });
             const chat = { ...groupChat, id: -90_044 };
             const from = { ...adminNumbered(9044), first_name: 'private words\u0000' };

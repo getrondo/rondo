@@ -11,6 +11,7 @@ import * as Effect from 'effect/Effect';
 import * as Fiber from 'effect/Fiber';
 import * as Layer from 'effect/Layer';
 import * as Option from 'effect/Option';
+import * as Random from 'effect/Random';
 
 import { finishPastSessions } from '../src/sessions/finish-session';
 import { swapPlayers } from '../src/teams/draft-state';
@@ -30,8 +31,8 @@ interface Game {
     readonly sessionId: string;
 }
 
-const game = Effect.fn('test.game')(function* (slug: string, offset: number) {
-    const base = Math.floor(performance.now()) * 100 + offset;
+const game = Effect.fn('test.game')(function* (slug: string) {
+    const base = yield* Random.nextIntBetween(1_000_000_000, 2_000_000_000);
 
     return yield* twoGroupGame(`${slug}-${base}`, [-96_000_000 - base, -97_000_000 - base], base);
 });
@@ -86,7 +87,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('a line-up
     it.effect.skipIf(isEmptyString(raceDatabaseUrl))('makes a result and the end of the game wait for the line-up that is being sent', () =>
         Effect.gen(function* () {
             const db = yield* Db;
-            const target = yield* game('publish-defer', 0);
+            const target = yield* game('publish-defer');
             yield* publishPlanned(target);
             const moved = yield* swapped(target);
             yield* db
@@ -112,7 +113,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('a line-up
     it.effect.skipIf(isEmptyString(raceDatabaseUrl))('never replaces the squad of a result recorded after the claim ran out', () =>
         Effect.gen(function* () {
             const db = yield* Db;
-            const target = yield* game('publish-result', 200);
+            const target = yield* game('publish-result');
             yield* publishPlanned(target);
             const moved = yield* swapped(target);
             const expireAndRecord = db
@@ -141,7 +142,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('a line-up
     it.effect.skipIf(isEmptyString(raceDatabaseUrl))('stores no squad of a game cancelled during the send', () =>
         Effect.gen(function* () {
             const db = yield* Db;
-            const target = yield* game('publish-cancel', 400);
+            const target = yield* game('publish-cancel');
             const { row } = yield* openDraft(target.communityId, target.sessionId, null);
             const cancel = db.update(session).set({ status: 'cancelled' }).where(eq(session.id, target.sessionId));
             const raced = yield* publishWhile(target, cancel);
@@ -160,7 +161,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('a line-up
             Effect.gen(function* () {
                 const db = yield* Db;
                 const telegram = yield* Telegram;
-                const target = yield* game('publish-cut', 600);
+                const target = yield* game('publish-cut');
                 const { row } = yield* openDraft(target.communityId, target.sessionId, null);
                 const isSecond = yield* Deferred.make<boolean>();
                 let sends = 0;
@@ -196,7 +197,7 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('a line-up
     it.effect.skipIf(isEmptyString(raceDatabaseUrl))('never answers unchanged for a receipt whose squad is not stored', () =>
         Effect.gen(function* () {
             const db = yield* Db;
-            const target = yield* game('publish-orphan', 800);
+            const target = yield* game('publish-orphan');
             const { row } = yield* openDraft(target.communityId, target.sessionId, null);
             yield* publishPlanned(target);
             yield* db.delete(team).where(eq(team.sessionId, target.sessionId));
