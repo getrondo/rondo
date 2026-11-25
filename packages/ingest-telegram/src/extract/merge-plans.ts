@@ -37,7 +37,9 @@ const minutesOf = (time: string): number => {
     return hour * 60 + minute;
 };
 
-const isOtherGame = (main: PlannedSession, other: PlannedSession): boolean =>
+type Timed = Pick<PlannedSession, 'statedTimes'>;
+
+export const isOtherGame = (main: Timed, other: Timed): boolean =>
     isNotEmptyArray(main.statedTimes) &&
     isNotEmptyArray(other.statedTimes) &&
     main.statedTimes.every(left => other.statedTimes.every(right => Math.abs(minutesOf(left) - minutesOf(right)) >= minutesApart));

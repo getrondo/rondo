@@ -326,6 +326,50 @@ describe('a poll first posted in the other chat', () => {
         expect(plan.facts.polls.map(({ postedAt }) => postedAt)).toEqual([new Date('2025-05-07T07:00:00Z')]);
     });
 
+    it('stays a game of its own next to a main game 90 minutes away, with the copy of the main chat', () => {
+        const planAt = (time: string) =>
+            summaryOf(
+                planOf(
+                    [
+                        pollOf(1, '2025-05-07T07:00:00Z', 'Сегодня, 19.00 North'),
+                        pollOf(2, '2025-05-07T09:00:00Z', `Сегодня, ${time} North`)
+                    ],
+                    [pollOf(101, '2025-05-07T08:00:00Z', `Сегодня, ${time} North`), message(102, '2025-05-07T12:00:00Z', squadText)],
+                    { shared: [2, 101] }
+                )
+            );
+
+        expect(planAt('21.00')).toEqual([
+            ['2025-05-07', 'played', [1], 0],
+            ['2025-05-07', 'played', [101, 2], 2]
+        ]);
+        expect(planAt('20.15')).toEqual([['2025-05-07', 'played', [1, 2, 101], 2]]);
+    });
+
+    it('keeps the voters of the main chat when it has any', () => {
+        const votersOf = (mainVoters: readonly number[]) => {
+            const contentOf = (id: number, sentAt: string, voters: readonly number[]) => ({
+                messages: [pollOf(id, sentAt, 'Сегодня, 19.00 North')],
+                snapshot: Option.fromNullishOr({
+                    users: new Map(),
+                    pollIdByMessage: new Map([[id, 'shared']]),
+                    votes: voters.map(userId => ({ pollId: 'shared', userId, choice: 'yes' as const, votedAt: new Date(0) }))
+                } satisfies TelegramSnapshot)
+            });
+            const { snapshot } = planChats({
+                config,
+                main: contentOf(1, '2025-05-07T09:00:00Z', mainVoters),
+                others: [contentOf(postIdOf(1, 101), '2025-05-07T08:00:00Z', [8, 9])],
+                asOf: '2025-06-30'
+            });
+
+            return Option.getOrThrow(snapshot).votes.map(({ userId }) => userId);
+        };
+
+        expect(votersOf([7])).toEqual([7]);
+        expect(votersOf([])).toEqual([8, 9]);
+    });
+
     it('stays a match when the main chat forwards it', () => {
         const plan = planOf(
             [pollOf(1, '2025-05-07T09:00:00Z', 'Сегодня, 19.00 North, friendly')],
@@ -372,6 +416,7 @@ describe('dates of polls', () => {
         expect(resolvePollDate('Среда, 15 декабря, 19.00 North', '2025-01-14').date).toBe('2025-01-15');
         expect(resolvePollDate('Среда, 12 марта, 19.00 North', '2025-01-14').date).toBe('2025-03-12');
         expect(resolvePollDate('Суббота, 20 декабря', '2025-08-10').date).toBe('2025-12-20');
+        expect(resolvePollDate('Среда, 4 ноября', '2026-11-09').date).toBe('2026-11-11');
     });
 });
 

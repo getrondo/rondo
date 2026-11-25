@@ -16,7 +16,7 @@ import { lookupId } from '../utils/lookup-id.util';
 import { deleteStaleSessions } from './delete-stale-sessions';
 import { liveMessages } from './live-messages';
 import { mainChatId } from './main-chat-id';
-import { existingSessions, matchSessions, messageIdsOf, nearTo } from './match-sessions';
+import { existingSessions, matchOf, matchSessions } from './match-sessions';
 import { sessionMillis, startOf } from './start-of';
 
 import type { LineupFact } from '../extract/fact.model';
@@ -41,8 +41,7 @@ const upsertSessionRows = Effect.fn('IngestTelegram.upsertSessionRows')(function
     const matched = matchSessions(
         plan.sessions.map(item => ({
             key: `${item.localDate}|${reference.activityIdBySport.get(item.sport)}`,
-            messageIds: messageIdsOf(item),
-            isNear: nearTo(item, config)
+            ...matchOf(item, config)
         })),
         existing
     );

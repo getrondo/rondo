@@ -3,10 +3,10 @@ import * as Option from 'effect/Option';
 
 import { mergeUsers } from '../parse/parse-snapshot';
 
-import { assemblePlan } from './assemble-plan';
+import { assemblePlan, type PlannedSession } from './assemble-plan';
 import { extractAll } from './extract-all';
 import { extractOtherChat, gameOfPolls } from './extract-other-chat';
-import { mergePlans } from './merge-plans';
+import { isOtherGame, mergePlans } from './merge-plans';
 import { originalPolls } from './original-polls';
 import { postIdOf, sourceOf } from './post-id';
 
@@ -14,6 +14,7 @@ import type { CommunityConfig } from '../config/community-config';
 import type { ChatContent } from '../interface/chat-content.interface';
 import type { TelegramMessage } from '../model/telegram-message.model';
 import type { TelegramSnapshot } from '../model/telegram-snapshot.model';
+import type { ExtractedFacts, PollFact } from './fact.model';
 
 interface Chats {
     readonly config: CommunityConfig;
@@ -53,8 +54,9 @@ const extractMain = (config: CommunityConfig, { messages, snapshot }: ChatConten
         })
     });
 
-const mergeSnapshots = (main: TelegramSnapshot, other: TelegramSnapshot): TelegramSnapshot => {
-    const known = new Set(main.pollIdByMessage.values());
+const mergeSnapshots = (main: TelegramSnapshot, other: TelegramSnapshot, isOriginal: (pollId: string) => boolean): TelegramSnapshot => {
+    const voted = new Set(main.votes.map(({ pollId }) => pollId));
+    const known = new Set([...main.pollIdByMessage.values()].filter(pollId => voted.has(pollId) || !isOriginal(pollId)));
 
     return {
         ...main,
@@ -64,11 +66,34 @@ const mergeSnapshots = (main: TelegramSnapshot, other: TelegramSnapshot): Telegr
     };
 };
 
+// A copy in the main chat of a game 90 minutes from the main one only refers to it
+const separateCopies = (facts: ExtractedFacts, asOf: string, isCopy: (poll: PollFact) => boolean) => {
+    const own = assemblePlan({ ...facts, polls: facts.polls.filter(poll => !isCopy(poll)) }, asOf);
+    const apart = facts.polls.filter(poll => {
+        const times = { statedTimes: [poll.localTime].filter(time => isDefined(time)) };
+
+        return isCopy(poll) && own.sessions.some(game => game.key === `${poll.localDate}|${poll.sport}` && isOtherGame(game, times));
+    });
+
+    return { facts: { ...facts, polls: facts.polls.filter(poll => !apart.includes(poll)) }, apart };
+};
+
+const withCopies = (planned: PlannedSession, copies: readonly PollFact[], pollIdOf: (messageId: number) => string | undefined) => {
+    const pollIds = new Set(planned.pollMessageIds.map(messageId => pollIdOf(messageId)));
+    const ids = copies.map(({ messageId }) => messageId).filter(messageId => pollIds.has(pollIdOf(messageId)));
+
+    return { ...planned, pollMessageIds: [...planned.pollMessageIds, ...ids] };
+};
+
 export const planChats = ({ config, main, others, asOf }: Chats) => {
     const originals = originalPolls(config, [main, ...others]);
     const review: (ReturnType<typeof sourceOf> & { readonly localDate: string })[] = [];
-    let plan = assemblePlan(extractMain(config, main, originals), asOf);
     let merged = main.snapshot;
+    const pollIdOf = (messageId: number) => Option.getOrUndefined(merged)?.pollIdByMessage.get(messageId);
+    const { facts, apart } = separateCopies(extractMain(config, main, originals), asOf, ({ messageId }) =>
+        originals.has(pollIdOf(messageId) ?? '')
+    );
+    let plan = assemblePlan(facts, asOf);
 
     for (const [index, { messages, snapshot: content }] of others.entries()) {
         const chat = config.otherChats?.[index];
@@ -78,10 +103,11 @@ export const planChats = ({ config, main, others, asOf }: Chats) => {
                 Option.map(({ pollIdByMessage }) => pollIdByMessage),
                 Option.getOrElse((): ReadonlyMap<number, string> => new Map())
             );
+            const isOriginal = (pollId: string): boolean => originals.get(pollId)?.place === index + 1;
             const extracted = extractOtherChat(messages, config, {
                 chat,
                 pollIdByMessage: content.value.pollIdByMessage,
-                gameOfPoll: gameOfPolls(pollIds, plan, pollId => originals.get(pollId)?.place === index + 1)
+                gameOfPoll: gameOfPolls(pollIds, plan, isOriginal)
             });
             const { unattached, ...next } = mergePlans(plan, {
                 plan: assemblePlan(extracted.facts, asOf),
@@ -96,10 +122,10 @@ export const planChats = ({ config, main, others, asOf }: Chats) => {
                 )
             );
             merged = Option.some(
-                Option.match(merged, { onNone: () => content.value, onSome: known => mergeSnapshots(known, content.value) })
+                Option.match(merged, { onNone: () => content.value, onSome: known => mergeSnapshots(known, content.value, isOriginal) })
             );
         }
     }
 
-    return { plan, snapshot: merged, review };
+    return { plan: { ...plan, sessions: plan.sessions.map(planned => withCopies(planned, apart, pollIdOf)) }, snapshot: merged, review };
 };

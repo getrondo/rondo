@@ -43,7 +43,13 @@ const seedMatchChat = Effect.fn('test.seedMatchChat')(function* (slug: string, s
         .where(eq(session.communityId, communityId))
         .orderBy(lineupEntry.teamOrdinal, lineupEntry.position);
 
-    return { communityId, post, entries };
+    const squads = db
+        .selectDistinct({ sessionId: lineupEntry.sessionId, chatId: lineupEntry.chatId })
+        .from(lineupEntry)
+        .innerJoin(session, eq(session.id, lineupEntry.sessionId))
+        .where(eq(session.communityId, communityId));
+
+    return { communityId, post, entries, squads };
 });
 
 layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it => {
@@ -368,7 +374,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
 
     it.effect('finds the own game of each chat on a day with two', () =>
         Effect.gen(function* () {
-            const { communityId, post } = yield* seedMatchChat('live-scope-two', -940);
+            const { communityId, post, squads } = yield* seedMatchChat('live-scope-two', -940);
             const db = yield* Db;
             yield* post(-940, 1, '2026-05-13T08:00:00Z', { question: 'Сегодня, 20.30 North' });
             yield* post(-941, 2, '2026-05-13T08:00:00Z', { question: 'Сегодня, 17.30 North' });
@@ -378,15 +384,11 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             const squad = { text: 'Составы на сегодня, North:\n🟢Я, Иван\n🔵Олег, Семён' };
             yield* post(-941, 4, '2026-05-13T15:00:00Z', squad);
             yield* post(-940, 5, '2026-05-13T15:00:00Z', squad);
-            const squads = yield* db
-                .selectDistinct({ sessionId: lineupEntry.sessionId, chatId: lineupEntry.chatId })
-                .from(lineupEntry)
-                .innerJoin(session, eq(session.id, lineupEntry.sessionId))
-                .where(eq(session.communityId, communityId));
+            const squadGames = yield* squads;
 
             expect(cancelled.map(({ cancellation }) => cancellation?.sessionId)).toEqual(games.map(({ id }) => id));
-            expect(squads).toHaveLength(2);
-            expect(squads).toEqual(
+            expect(squadGames).toHaveLength(2);
+            expect(squadGames).toEqual(
                 expect.arrayContaining([
                     { sessionId: games[0]?.id, chatId: null },
                     { sessionId: games[1]?.id, chatId: -940 }
@@ -453,6 +455,29 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('live group listener', it =>
             const own = yield* post(-960, 3, '2026-05-13T10:00:00Z', { text: 'Сегодня отмена, дождь' });
 
             expect([friendly, own].map(({ cancellation }) => isDefined(cancellation))).toEqual([false, true]);
+        })
+    );
+
+    it.effect('keeps a game without a poll with the chat that posted its squad', () =>
+        Effect.gen(function* () {
+            const { communityId, post, squads } = yield* seedMatchChat('live-scope-squad', -970);
+            const db = yield* Db;
+            const squad = { text: 'Составы на сегодня, North:\n🟢Я, Иван\n🔵Олег, Семён' };
+            const cancel = { text: 'Сегодня отмена, дождь' };
+            yield* post(-970, 1, '2026-05-13T07:00:00Z', squad);
+            const [second] = yield* db.select().from(session).where(eq(session.communityId, communityId));
+            const foreign = yield* post(-971, 2, '2026-05-13T08:00:00Z', cancel);
+            const own = yield* post(-970, 3, '2026-05-13T08:00:00Z', cancel);
+            yield* post(-971, 4, '2026-05-13T09:00:00Z', squad);
+            const squadGames = yield* squads;
+            const mainGame = squadGames.find(({ chatId }) => !isDefined(chatId));
+            const main = yield* post(-971, 5, '2026-05-13T10:00:00Z', cancel);
+
+            expect(isDefined(foreign.cancellation)).toBe(false);
+            expect(own.cancellation?.sessionId).toBe(second?.id);
+            expect(squadGames).toHaveLength(2);
+            expect(squadGames).toContainEqual({ sessionId: second?.id, chatId: -970 });
+            expect(main.cancellation?.sessionId).toBe(mainGame?.sessionId);
         })
     );
 });

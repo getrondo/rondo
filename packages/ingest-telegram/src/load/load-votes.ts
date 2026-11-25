@@ -18,7 +18,9 @@ import type { LoadContext } from '../interface/load-context.interface';
 const firstPosts = (posts: readonly PollPostFact[], pollIdByMessage: ReadonlyMap<number, string>): Map<string, PollPostFact> => {
     const first = new Map<string, PollPostFact>();
 
-    for (const post of posts.toSorted((left, right) => left.messageId - right.messageId)) {
+    for (const post of posts.toSorted(
+        (left, right) => left.postedAt.getTime() - right.postedAt.getTime() || left.messageId - right.messageId
+    )) {
         const pollId = pollIdByMessage.get(post.messageId);
 
         if (isDefined(pollId) && !first.has(pollId)) {

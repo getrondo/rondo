@@ -7,7 +7,7 @@ import { lineupEntry } from '@rondo/db/schema/play.schema';
 import { attendance, session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { testDbLayer } from '@rondo/db/testing/test-db.layer';
-import { and, asc, eq, isNotNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 import * as Option from 'effect/Option';
@@ -589,6 +589,107 @@ layer(testDbLayer, { timeout: 60_000 })('a community with two chats', it => {
 
             expect(namesOn('2025-05-12')).toContain('Семён');
             expect(namesOn('2025-05-19')).toContain('Павел');
+        })
+    );
+
+    it.effect('never puts a main poll on a live game of the second chat 90 minutes away', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'two-main-near-fc';
+            const [chatId, mainChat] = [secondChat - 50, secondChat - 51];
+            const second = { messages: [pollOn(91, '2025-06-04')], pollIds: new Map([[91, `${slug}-s-9`]]), chatId };
+            const first = yield* load(slug, second);
+            yield* db.insert(telegramChat).values(
+                [chatId, mainChat].map(id => ({
+                    chatId: BigInt(id),
+                    communityId: first.communityId,
+                    kind: 'supergroup' as const,
+                    title: 'Chat'
+                }))
+            );
+            const liveGame = Effect.fn('test.liveGame')(function* (
+                localDate: string,
+                time: string,
+                messageId: number,
+                chats: readonly number[]
+            ) {
+                const [game] = yield* db
+                    .insert(session)
+                    .values({
+                        communityId: first.communityId,
+                        activityId: first.games[0]?.activityId ?? '',
+                        localDate,
+                        startsAt: new Date(`${localDate}T${time}:00Z`),
+                        status: 'played',
+                        source: 'bot'
+                    })
+                    .returning();
+                yield* db.insert(messageRef).values(
+                    chats.map(chat => ({
+                        chatId: BigInt(chat),
+                        messageId,
+                        purpose: 'poll' as const,
+                        entityType: 'session',
+                        entityId: game?.id ?? ''
+                    }))
+                );
+            });
+            yield* liveGame('2025-05-14', '18:30', 501, [chatId]);
+            yield* liveGame('2025-05-21', '18:00', 502, [chatId]);
+            yield* liveGame('2025-05-28', '18:30', 503, [chatId, mainChat]);
+            const main = [...postsOn(mondays, 'Олег, Семён'), pollOn(61, '2025-05-14'), pollOn(71, '2025-05-21'), pollOn(81, '2025-05-28')];
+            const { games } = yield* load(slug, second, main);
+            const on = (date: string) => games.filter(({ localDate }) => localDate === date).length;
+
+            expect([on('2025-05-14'), on('2025-05-21'), on('2025-05-28')]).toEqual([2, 1, 1]);
+        })
+    );
+
+    it.effect('stores a poll with its first post, and takes the votes of that chat when the main one has none', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const slug = 'two-original-fc';
+            const at = (id: number, date: string, hour: number): Message => ({
+                ...pollOn(id, date),
+                sentAt: new Date(`${date}T0${hour}:00:00Z`)
+            });
+            const main = [...postsOn(mondays, 'Олег, Семён'), at(61, '2025-05-14', 9), at(71, '2025-05-21', 7)];
+            const shared = new Map([
+                [61, `${slug}-s-first`],
+                [71, `${slug}-s-later`]
+            ]);
+            const { communityId } = yield* load(
+                slug,
+                {
+                    messages: [at(51, '2025-05-14', 8), at(52, '2025-05-21', 8)],
+                    pollIds: new Map([
+                        [51, `${slug}-s-first`],
+                        [52, `${slug}-s-later`]
+                    ])
+                },
+                main,
+                shared
+            );
+            const polls = yield* db
+                .select({
+                    pollId: importedPoll.pollId,
+                    chatId: importedPoll.chatId,
+                    messageId: importedPoll.messageId,
+                    postedAt: importedPoll.postedAt
+                })
+                .from(importedPoll)
+                .where(and(eq(importedPoll.communityId, communityId), inArray(importedPoll.pollId, [...shared.values()])))
+                .orderBy(asc(importedPoll.pollId));
+            const votes = yield* db
+                .select()
+                .from(pollVote)
+                .where(inArray(pollVote.pollId, [...shared.values()]));
+
+            expect(polls).toEqual([
+                { pollId: `${slug}-s-first`, chatId: secondChat, messageId: 51, postedAt: new Date('2025-05-14T08:00:00Z') },
+                { pollId: `${slug}-s-later`, chatId: null, messageId: 71, postedAt: new Date('2025-05-21T07:00:00Z') }
+            ]);
+            expect(votes.map(({ pollId }) => pollId)).toEqual([`${slug}-s-first`, `${slug}-s-first`]);
         })
     );
 

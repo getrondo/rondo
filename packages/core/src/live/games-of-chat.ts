@@ -1,4 +1,4 @@
-import { isDefined } from '@rnw-community/shared';
+import { isDefined, isEmptyArray } from '@rnw-community/shared';
 import { extraction, messageRef, sourceRef } from '@rondo/db/schema/platform.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -15,7 +15,7 @@ interface PostingChat {
     readonly chatId: GroupMessage['chatId'];
 }
 
-// Games posted in this chat. Games without a poll belong to the chats that have no match rules
+// Games posted in this chat. Games without any post belong to the chats that have no match rules
 export const gamesOfChat = Effect.fn('Core.gamesOfChat')(function* <Game extends { readonly id: string }>(
     games: readonly Game[],
     { communityId, config, chatId }: PostingChat
@@ -40,10 +40,8 @@ export const gamesOfChat = Effect.fn('Core.gamesOfChat')(function* <Game extends
 
     return games.filter(({ id }) => {
         const posts = [...live, ...imported].filter(({ sessionId }) => sessionId === id);
+        const isPolled = posts.some(({ kind }) => kind === 'poll');
 
-        return (
-            posts.some(post => isOwn(post) && (post.kind === 'poll' || !isOther)) ||
-            (!isOther && posts.every(({ kind }) => kind !== 'poll'))
-        );
+        return posts.some(post => isOwn(post) && (post.kind === 'poll' || !isOther || !isPolled)) || (!isOther && isEmptyArray(posts));
     });
 });
