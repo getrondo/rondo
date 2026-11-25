@@ -54,6 +54,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* db.update(session).set({ status: 'played' }).where(eq(session.id, sessionId));
             yield* setNow(Date.parse('2026-11-27T21:00:00Z'));
             const absent = people[1] ?? '';
+            yield* db.insert(attendance).values({ sessionId, personId: absent, outcome: 'attended', source: 'bot' });
             const mark = Effect.gen(function* () {
                 const { row } = yield* draftTeams(sessionId);
                 yield* admin.press(teamsData({ sessionId, version: row.version, page: 0 }, 'e'));
@@ -82,7 +83,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(marked).toEqual([['🚫 Не прийшов на гру'], ['⬅️ До складів']]);
             expect(missed.map(row => [row.outcome, row.source])).toEqual([['no_show', 'manual']]);
             expect(unmarked).toEqual([['↩️ Все ж прийшов'], ['⬅️ До складів']]);
-            expect(back).toEqual([]);
+            expect(back.map(row => [row.outcome, row.source])).toEqual([['attended', 'bot']]);
             expect(seat?.status).toBe('in');
             expect((yield* draftTeams(sessionId)).teams.flat()).toContain('Bohdan');
         })

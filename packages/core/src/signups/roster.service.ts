@@ -154,9 +154,16 @@ export const toggleNoShow = Effect.fn('Core.toggleNoShow')(function* (change: Ro
     const db = yield* Db;
 
     if ((yield* markedNoShows(change.sessionId)).has(personId)) {
-        yield* db
-            .delete(attendance)
-            .where(and(eq(attendance.sessionId, change.sessionId), eq(attendance.personId, personId), eq(attendance.source, 'manual')));
+        const row = and(eq(attendance.sessionId, change.sessionId), eq(attendance.personId, personId));
+        const guests = yield* db
+            .select({ id: signup.id })
+            .from(signup)
+            .where(and(eq(signup.sessionId, change.sessionId), eq(signup.personId, personId), eq(signup.isGuest, true)));
+
+        // A guest never has attendance
+        yield* isNotEmptyArray(guests)
+            ? db.delete(attendance).where(row)
+            : db.update(attendance).set({ outcome: 'attended', source: 'bot', recordedBy: null }).where(row);
     } else {
         yield* markNoShow(change, personId);
     }
