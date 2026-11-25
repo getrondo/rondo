@@ -122,9 +122,9 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect(announce.text).toContain('Гра вже є, опитування ще ні');
             expect(announce.buttons.map(row => row.map(button => button.text))).toEqual([
-                ['📣 Опублікувати в «Games»', '🔁 Куди надіслати'],
+                ['📣 Опублікувати в «Games»'],
                 ['Пн 30.11 18:30 · Park Field'],
-                ['🛠 Вручну', '✖️']
+                ['🔁 Куди', '🛠 Вручну', '✖️']
             ]);
             expect(duplicate).toContain('На цей день уже є гра: Пт 27.11');
             expect(games).toHaveLength(1);

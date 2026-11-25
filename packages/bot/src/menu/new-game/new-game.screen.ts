@@ -1,6 +1,5 @@
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { describeAction, displayOfVenue } from '@rondo/core/actions/describe-action';
-import { communityProfile } from '@rondo/core/community/community.repository';
 import { requireSession } from '@rondo/core/sessions/session.service';
 import { placeHtml } from '@rondo/core/signups/place-block';
 import { pollFor } from '@rondo/core/signups/poll-for';
@@ -97,13 +96,11 @@ const selection = (user: MenuUser, draft: Draft, data: NewGameData): string =>
     ].join(' · ');
 
 const mainText = Effect.fn('Bot.newGameMainText')(function* (user: MenuUser, draft: Draft, data: NewGameData) {
-    const profile = yield* communityProfile(user.communityId);
-    const slug = Option.match(profile, { onNone: () => '', onSome: value => value.slug });
     const poll = yield* pollOf(user, draft).pipe(Effect.option);
     const venue = data.venues.find(entry => entry.id === draft.venueId);
     const duplicate = data.planned.some(game => game.localDate === draft.localDate && game.sessionId !== draft.sessionId);
     const warnings = [
-        ...(data.hasGroup ? [] : [menuText(user.locale, 'noGroup', { slug: escapeHtml(slug) })]),
+        ...(data.hasGroup ? [] : [menuText(user.locale, 'noGroup')]),
         ...(isDefined(venue) && !venue.located && !isDefined(draft.sessionId) ? [menuText(user.locale, 'noAddress')] : []),
         ...(duplicate && isDefined(draft.localDate)
             ? [menuText(user.locale, 'duplicate', { label: dayLabel(user.locale, draft.localDate) })]

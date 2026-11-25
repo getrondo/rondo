@@ -47,7 +47,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect(card.buttons.map(row => row.map(button => button.text))).toEqual([
                 ['🕖 Час', '📍 Місце', '👥 Місця'],
-                ['✖️ Скасувати гру', '🗑 Видалити гру'],
+                ['✖️ Скасувати', '🗑 Видалити'],
                 ['⬅️ Назад', '🏠 Меню']
             ]);
             expect(confirmTime.text).toContain('Так буде в групі');
@@ -65,12 +65,12 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const { communityId } = yield* seedSeason('card-actions', { groupChatId: -2002, adminId: 202 });
             const admin = conversation(recorder, adminNumbered(202, 'ru'));
             yield* admin.type('/newgame');
-            yield* admin.tap('🛠 Вручную');
+            yield* admin.tap('🛠 Ручной');
             yield* admin.tap('Пт 27.11');
             yield* admin.tap('North Arena');
             yield* admin.tap('19:00');
             yield* admin.tap('👥 22');
-            yield* admin.tap('💾 Без опроса');
+            yield* admin.tap('💾 Только игра');
             const [game] = yield* gamesOn(communityId, '2026-11-27');
             yield* signUp(communityId, game?.id ?? '', 4);
             yield* admin.type('/games');
@@ -83,7 +83,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const teams = admin.screen().text;
             yield* admin.tap('✅ Опубликовать');
             const lineup = groupPosts(-2002).at(-1);
-            yield* admin.tap('✖️ Отменить игру');
+            yield* admin.tap('✖️ Отменить');
             yield* admin.tap('погода');
             yield* admin.tap('✅ Отменить и сообщить');
             const cancelled = groupPosts(-2002).at(-1);

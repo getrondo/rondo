@@ -73,9 +73,10 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             expect([card.id, games.id].every(id => id === home.id)).toBe(true);
             expect(admin.screen().id).not.toBe(home.id);
-            expect(card.text).toContain('зіграно');
+            expect(card.text).toContain('Зіграно');
             expect(card.buttons.flat().map(button => button.text)).toEqual(['⬅️ Назад', '🏠 Меню']);
-            expect(games.text).toContain('Минулі');
+            expect(games.buttons.flat().map(button => button.text)).toContain('Пт 20.11 19:00 · North Arena');
+            expect(games.buttons.flat().map(button => button.text)).not.toContain('Вт 24.11 20:00');
             expect(unchanged).toBe(sends);
             expect(fallback).toBe(unchanged + 1);
             expect(admin.tidy()).toEqual({ unanswered: [], oversized: [] });

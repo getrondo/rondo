@@ -1,7 +1,10 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { dayChoices, placeSizes, rankTimes, rankVenues, timeChoices } from '@rondo/core/menu/game-suggestions';
 
+import { buttonBudget } from '../../utils/button-budget.util';
 import { dayLabel } from '../../utils/day-label.util';
+import { fitLabel } from '../../utils/fit-label.util';
+import { labelWidth } from '../../utils/label-width.util';
 import { toShortId } from '../../utils/to-short-id.util';
 import { menuText } from '../menu-text';
 
@@ -20,10 +23,22 @@ const chunk = (buttons: readonly MenuButton[], size: number): Rows =>
 
 const marked = (label: string, isCurrent: boolean): string => (isCurrent ? `✓ ${label}` : label);
 
-export const venueLabel = (data: NewGameData, venueId: string | null): string => {
-    const label = data.venues.find(entry => entry.id === venueId)?.label ?? '—';
+export const venueLabel = (data: NewGameData, venueId: string | null): string =>
+    data.venues.find(entry => entry.id === venueId)?.label ?? '—';
 
-    return label.length > 16 ? `${label.slice(0, 15)}…` : label;
+const full = buttonBudget(1);
+
+const destinationLabel = (draft: Draft, data: NewGameData, locale: Locale): string => {
+    const announce = isDefined(draft.sessionId);
+
+    if (isSelfAudience(draft, data)) {
+        return menuText(locale, announce ? 'sendExistingMe' : 'sendMe');
+    }
+
+    const key = announce ? 'postExistingTo' : 'postTo';
+    const room = full - labelWidth(menuText(locale, key, { where: '' }));
+
+    return menuText(locale, key, { where: fitLabel(destinationOf(draft, data), room) });
 };
 
 const mainRows = (
@@ -33,28 +48,13 @@ const mainRows = (
     button: (text: string, op: string, arg?: string) => MenuButton
 ): Rows => {
     const other = candidatesOf(data).find(candidate => candidate.localDate !== draft.localDate);
-    const otherRow =
-        isDefined(other) && !draft.manual
-            ? [
-                  [
-                      button(
-                          other._tag === 'new'
-                              ? `${dayLabel(locale, other.localDate)} ${other.localTime} · ${venueLabel(data, other.venueId)}`
-                              : `📣 ${dayLabel(locale, other.localDate)}`,
-                          'a',
-                          other.localDate.replaceAll('-', '')
-                      )
-                  ]
-              ]
-            : [];
-    const self = isSelfAudience(draft, data);
-    const where = destinationOf(draft, data);
-    const announce = isDefined(draft.sessionId);
-    const postLabel = self
-        ? menuText(locale, announce ? 'sendExistingMe' : 'sendMe')
-        : menuText(locale, announce ? 'postExistingTo' : 'postTo', { where });
-    const first = [button(postLabel, 'ok'), button(menuText(locale, 'where'), 'au')];
-    const closing = [button(menuText(locale, 'manual'), 'm'), button('✖️', 'x')];
+    const otherLabel =
+        other?._tag === 'new'
+            ? fitLabel(`${dayLabel(locale, other.localDate)} ${other.localTime} · ${venueLabel(data, other.venueId)}`, full)
+            : `📣 ${isDefined(other) ? dayLabel(locale, other.localDate) : ''}`;
+    const otherRow = isDefined(other) && !draft.manual ? [[button(otherLabel, 'a', other.localDate.replaceAll('-', ''))]] : [];
+    const first = [button(destinationLabel(draft, data, locale), 'ok')];
+    const closing = [button(menuText(locale, 'where'), 'au'), button(menuText(locale, 'manual'), 'm'), button('✖️', 'x')];
 
     if (isDefined(draft.sessionId)) {
         return [first, ...otherRow, closing];
@@ -62,6 +62,7 @@ const mainRows = (
 
     const venue = data.venues.find(entry => entry.id === draft.venueId);
     const manualRow = draft.manual ? [[button(menuText(locale, 'save'), 'sv'), button(menuText(locale, 'note'), 'nt')]] : [];
+    const addressRow = isDefined(venue) && !venue.located ? [[button(menuText(locale, 'address'), 'ad')]] : [];
 
     return [
         first,
@@ -70,15 +71,16 @@ const mainRows = (
         [button('👥 −', 'p-'), button(`👥 ${draft.places ?? '♾'}`, 'pz'), button('👥 +', 'p+')],
         [
             button(`🕖 ${draft.localTime ?? '—'}`, 't'),
-            button(`📍 ${venueLabel(data, draft.venueId)}`, 'v'),
             button(`📅 ${isDefined(draft.localDate) ? dayLabel(locale, draft.localDate) : '—'}`, 'd')
         ],
-        [...(isDefined(venue) && !venue.located ? [button(menuText(locale, 'address'), 'ad')] : []), ...closing]
+        [button(fitLabel(`📍 ${venueLabel(data, draft.venueId)}`, full), 'v')],
+        ...addressRow,
+        closing
     ];
 };
 
 const venueButtons = (venues: readonly VenueChoice[], draft: Draft, button: (text: string, op: string, arg?: string) => MenuButton) =>
-    venues.map(venue => [button(marked(venue.name, venue.id === draft.venueId), 'vs', toShortId(venue.id))]);
+    venues.map(venue => [button(fitLabel(marked(venue.name, venue.id === draft.venueId), full), 'vs', toShortId(venue.id))]);
 
 const listRows = (
     draft: Draft,
@@ -95,7 +97,7 @@ const listRows = (
 
             return chunk(
                 days.map(day => button(marked(dayLabel(locale, day), day === draft.localDate), 'ds', day.replaceAll('-', ''))),
-                3
+                2
             );
         }
         case 'time': {

@@ -54,11 +54,13 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             expect(main.text).toContain('⚽ Пʼятниця, 27 листопада, 19.00 North Arena');
             expect(main.text).toContain('1 поле, 22 місця');
             expect(main.buttons.map(row => row.map(button => button.text))).toEqual([
-                ['✅ Опублікувати в «Games»', '🔁 Куди надіслати'],
+                ['✅ Опублікувати в «Games»'],
                 ['Пн 30.11 18:30 · Park Field'],
                 ['👥 −', '👥 22', '👥 +'],
-                ['🕖 19:00', '📍 North Arena', '📅 Пт 27.11'],
-                ['📍 Адреса', '🛠 Вручну', '✖️']
+                ['🕖 19:00', '📅 Пт 27.11'],
+                ['📍 North Arena'],
+                ['📍 Адреса'],
+                ['🔁 Куди', '🛠 Вручну', '✖️']
             ]);
             expect(game).toMatchObject({ venueId: north, capacityMax: 22, fieldsPlanned: 1, status: 'open' });
             expect(poll?.payload).toMatchObject({ description: '📍 <b>North Arena</b>', description_parse_mode: 'HTML' });
@@ -151,7 +153,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             yield* admin.type('17:00');
             yield* admin.tap('♾ Без ліміту');
             const preview = admin.screen();
-            yield* admin.tap('💾 Без опитування');
+            yield* admin.tap('💾 Лише гра');
             const [game] = yield* gamesOn(communityId, '2026-11-28');
 
             expect(preview.text).toContain('Субота, 28 листопада, 17.00 Hill Park');
@@ -174,8 +176,8 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             const [game] = yield* gamesOn(communityId, '2026-11-27');
 
             expect(home).toContain('Rondo');
-            expect(main.text).toContain('Групу не підключено');
-            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати мені', '🔁 Куди надіслати']);
+            expect(main.text).toContain('Опитування прийде тобі сюди');
+            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Надіслати мені']);
             expect(main.text).toContain('У групу нічого не надіслано.');
             expect(game?.status).toBe('open');
         })

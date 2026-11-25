@@ -8,6 +8,8 @@ import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
+import { buttonBudget } from '../utils/button-budget.util';
+import { fitLabel } from '../utils/fit-label.util';
 import { toShortId } from '../utils/to-short-id.util';
 
 import { menuText } from './menu-text';
@@ -64,7 +66,14 @@ export const homeScreen = Effect.fn('Bot.homeScreen')(function* (user: MenuUser)
                 { text: menuText(user.locale, 'games'), callback_data: 'm:gl' }
             ],
             ...(isDefined(next)
-                ? [[{ text: `⚽ ${formatSessionLabel(user.locale, next)}`, callback_data: `m:g:${toShortId(next.id)}` }]]
+                ? [
+                      [
+                          {
+                              text: fitLabel(`⚽ ${formatSessionLabel(user.locale, next)}`, buttonBudget(1)),
+                              callback_data: `m:g:${toShortId(next.id)}`
+                          }
+                      ]
+                  ]
                 : [])
         ]
     } satisfies Screen;

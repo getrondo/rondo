@@ -98,8 +98,8 @@ const confirm = Effect.fn('Bot.confirmNewGame')(function* (
     const results = { announced: self ? 'announcedMe' : 'announced', created: self ? 'createdMe' : 'created' } as const;
     const result = isDefined(draft.sessionId) ? results.announced : results.created;
     const header = [
-        menuText(user.locale, announce ? result : 'createdQuiet', { where }),
         ...(announce && self ? [menuText(user.locale, 'selfHint')] : []),
+        menuText(user.locale, announce ? result : 'createdQuiet', { where }),
         ...failures
     ].join('\n');
     const card = yield* gameCardScreen(user, outcome.sessionId, header);

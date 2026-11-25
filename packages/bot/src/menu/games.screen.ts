@@ -1,6 +1,6 @@
 import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { linkedChatsOf } from '@rondo/core/community/community.repository';
-import { countOf, formatSessionLabel } from '@rondo/core/i18n/messages';
+import { formatSessionLabel } from '@rondo/core/i18n/messages';
 import { hasOpenPoll, hasPollFor } from '@rondo/core/menu/game-history.repository';
 import { isDeletableSession } from '@rondo/core/sessions/delete-session';
 import { listSessions, requireSession } from '@rondo/core/sessions/session.service';
@@ -10,6 +10,8 @@ import { addDays } from '@rondo/core/utils/add-days.util';
 import { escapeHtml } from '@rondo/telegram/format/html';
 import * as Effect from 'effect/Effect';
 
+import { buttonBudget } from '../utils/button-budget.util';
+import { fitLabel } from '../utils/fit-label.util';
 import { toShortId } from '../utils/to-short-id.util';
 
 import { signedUpLine, upcomingGames } from './home.screen';
@@ -21,25 +23,9 @@ import type { SessionView } from '@rondo/core/sessions/session.model';
 
 const pastShown = 5;
 
-const statusText: Readonly<Record<Locale, Readonly<Record<string, string>>>> = {
-    uk: {
-        open: 'запис відкрито',
-        full: 'місць немає',
-        locked: 'склад закрито',
-        played: 'зіграно',
-        cancelled: 'скасовано',
-        moved: 'перенесено',
-        draft: 'чернетка'
-    },
-    ru: {
-        open: 'запись открыта',
-        full: 'мест нет',
-        locked: 'состав закрыт',
-        played: 'сыграно',
-        cancelled: 'отменено',
-        moved: 'перенесено',
-        draft: 'черновик'
-    }
+const closedText: Readonly<Record<Locale, Readonly<Record<string, string>>>> = {
+    uk: { played: 'Зіграно', cancelled: 'Скасовано', moved: 'Перенесено' },
+    ru: { played: 'Сыграно', cancelled: 'Отменено', moved: 'Перенесено' }
 };
 
 export const navRow = (locale: Locale, back: string): MenuButton[] => [
@@ -49,33 +35,26 @@ export const navRow = (locale: Locale, back: string): MenuButton[] => [
 
 const gameButton = (locale: Locale, game: SessionView): MenuButton[] => [
     {
-        text: `${game.status === 'cancelled' ? '✖️ ' : ''}${formatSessionLabel(locale, game)}`,
+        text: fitLabel(`${game.status === 'cancelled' ? '✖️ ' : ''}${formatSessionLabel(locale, game)}`, buttonBudget(1)),
         callback_data: `m:g:${toShortId(game.id)}`
     }
 ];
 
 export const gamesScreen = Effect.fn('Bot.gamesScreen')(function* (user: MenuUser) {
     const upcoming = yield* upcomingGames(user);
-    const past = (yield* listSessions(user.communityId, { from: addDays(user.today, -180), to: addDays(user.today, -1) }))
+    const recent = yield* listSessions(user.communityId, { from: addDays(user.today, -180), to: addDays(user.today, -1) });
+    const past = recent
+        .filter(game => isDefined(game.venueName))
         .slice(-pastShown)
         .toSorted((left, right) => right.localDate.localeCompare(left.localDate));
-    const sections = [
-        ...(isNotEmptyArray(upcoming)
-            ? [`<b>${menuText(user.locale, 'upcoming')}</b>`, ...upcoming.map(game => escapeHtml(formatSessionLabel(user.locale, game)))]
-            : []),
-        ...(isNotEmptyArray(past)
-            ? [`<b>${menuText(user.locale, 'past')}</b>`, ...past.map(game => escapeHtml(formatSessionLabel(user.locale, game)))]
-            : [])
-    ];
+    const games = [...upcoming, ...past];
 
     return {
-        text: [
-            menuText(user.locale, 'gamesTitle'),
-            '',
-            ...(isNotEmptyArray(sections) ? sections : [menuText(user.locale, 'noneYet')])
-        ].join('\n'),
+        text: isNotEmptyArray(games)
+            ? menuText(user.locale, 'gamesTitle')
+            : `${menuText(user.locale, 'gamesTitle')}\n${menuText(user.locale, 'noneYet')}`,
         keyboard: [
-            ...[...upcoming, ...past].map(game => gameButton(user.locale, game)),
+            ...games.map(game => gameButton(user.locale, game)),
             [{ text: menuText(user.locale, 'newGame'), callback_data: 'm:ng' }],
             navRow(user.locale, 'm:h')
         ]
@@ -84,8 +63,7 @@ export const gamesScreen = Effect.fn('Bot.gamesScreen')(function* (user: MenuUse
 
 const capitalized = (value: string): string => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 
-const names = (entries: readonly { readonly displayName: string }[]) =>
-    isNotEmptyArray(entries) ? entries.map(entry => escapeHtml(entry.displayName)).join(', ') : '—';
+const names = (entries: readonly { readonly displayName: string }[]) => entries.map(entry => escapeHtml(entry.displayName)).join(', ');
 
 const actionRows = (
     user: MenuUser,
@@ -104,7 +82,10 @@ const actionRows = (
     });
     const first = [...(state.canPost ? [button('postPoll', 'p')] : []), ...(state.signed >= 2 ? [button('teams', 'k')] : [])];
     const openRows = state.closedTo.map(chat => [
-        { text: menuText(user.locale, 'openFor', { title: chat.title.slice(0, 24) }), callback_data: `c:f:${id}:${chat.chatId}` }
+        {
+            text: fitLabel(menuText(user.locale, 'openFor', { title: chat.title }), buttonBudget(1)),
+            callback_data: `c:f:${id}:${chat.chatId}`
+        }
     ]);
 
     return [
@@ -129,21 +110,17 @@ export const gameCardScreen = Effect.fn('Bot.gameCardScreen')(function* (user: M
     const free = isDefined(game.capacityMax)
         ? [menuText(user.locale, 'free', { free: Math.max(0, game.capacityMax - signed.length) })]
         : [];
-    const size = [
-        ...(isDefined(game.fieldsPlanned) ? [countOf(user.locale, 'field', game.fieldsPlanned)] : []),
-        ...(isDefined(game.capacityMax) ? [countOf(user.locale, 'place', game.capacityMax)] : []),
-        statusText[user.locale][game.status] ?? game.status
-    ];
+    const waiting = roster.filter(entry => entry.status === 'waitlisted');
+    const keepers = roster.filter(entry => entry.status === 'in' && entry.role === 'gk');
+    const closed = closedText[user.locale][game.status];
     const signedLine = yield* signedUpLine(user, game);
     const lines = [
         ...(isDefined(header) ? [header, ''] : []),
         `⚽ <b>${escapeHtml(formatSessionLabel(user.locale, game))}</b>`,
-        size.join(' · '),
-        menuText(user.locale, hasPoll ? 'pollPosted' : 'pollMissing'),
+        ...(isDefined(closed) ? [closed] : []),
         [capitalized(signedLine), ...free].join(' · '),
-        ...(isNotEmptyArray(signed) ? [names(signed)] : []),
-        `${menuText(user.locale, 'waiting')}: ${names(roster.filter(entry => entry.status === 'waitlisted'))}`,
-        `${menuText(user.locale, 'keepers')}: ${names(roster.filter(entry => entry.status === 'in' && entry.role === 'gk'))}`
+        ...(isNotEmptyArray(waiting) ? [`${menuText(user.locale, 'waiting')}: ${names(waiting)}`] : []),
+        ...(isNotEmptyArray(keepers) ? [`${menuText(user.locale, 'keepers')}: ${names(keepers)}`] : [])
     ];
 
     return {

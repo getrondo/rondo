@@ -35,7 +35,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('✅ Опублікувати');
             const [game] = yield* gamesOn(communityId, '2026-12-02');
 
-            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Опублікувати в «Second»', '🔁 Куди надіслати']);
+            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Опублікувати в «Second»']);
             expect(callsTo(-4002, 'sendPoll')).toHaveLength(1);
             expect(callsTo(-4001, 'sendPoll')).toHaveLength(0);
             expect(game).toMatchObject({ venueId: park, capacityMax: 18 });
@@ -61,7 +61,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 .from(signup)
                 .where(eq(signup.sessionId, game?.id ?? ''));
 
-            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Опублікувати в «Games + Second»', '🔁 Куди надіслати']);
+            expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Опублікувати в «Games + Second»']);
             expect(callsTo(-4011, 'sendPoll')).toHaveLength(1);
             expect(callsTo(-4012, 'forwardMessage')[0]?.payload).toMatchObject({ from_chat_id: -4011 });
             expect(callsTo(-4012, 'sendPoll')).toHaveLength(0);
@@ -75,8 +75,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* seedSecondGroup(communityId, { main: -4021, second: -4022, venueId: park });
             const admin = conversation(recorder, adminNumbered(703));
             yield* admin.type('/newgame');
-            yield* admin.tap('🔁 Куди надіслати');
-            yield* admin.tap('🔁 Куди надіслати');
+            yield* admin.tap('🔁 Куди');
+            yield* admin.tap('🔁 Куди');
             yield* admin.tap('👥 22');
             yield* admin.type('2');
             yield* admin.tap('✅ Опублікувати');

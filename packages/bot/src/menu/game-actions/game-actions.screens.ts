@@ -85,13 +85,7 @@ export const gameListScreen = (user: MenuUser, game: SessionView, data: NewGameD
         case 'x': {
             return {
                 text: header(user, game, 'cancelWhy'),
-                keyboard: [
-                    ...chunk(
-                        reasons.map(reason => button(cancelReasonText(user.locale, reason), 'xr', reason)),
-                        2
-                    ),
-                    nav
-                ]
+                keyboard: [...reasons.map(reason => [button(cancelReasonText(user.locale, reason), 'xr', reason)]), nav]
             };
         }
         default: {
@@ -135,9 +129,7 @@ const groupHtml = Effect.fn('Bot.groupHtml')(function* (user: MenuUser, game: Se
 
             return pollHtml(poll);
         }
-        case 'delete_session': {
-            return menuText(user.locale, 'nothingSent');
-        }
+        case 'delete_session':
         case 'create_person':
         case 'create_session':
         case 'create_venue':
@@ -172,7 +164,7 @@ const confirmButtons = (user: MenuUser, action: Action, revision: number, hasGro
 
     const [loud, quiet]: [MenuKey, MenuKey] = action._tag === 'cancel_session' ? ['cancelYes', 'cancelNo'] : ['notifyYes', 'notifyNo'];
 
-    return [hasGroup ? [ok(loud, true), ok(quiet, false)] : [ok(quiet, false)]];
+    return hasGroup ? [[ok(loud, true)], [ok(quiet, false)]] : [[ok(quiet, false)]];
 };
 
 export const confirmScreen = Effect.fn('Bot.confirmScreen')(function* (
@@ -182,12 +174,22 @@ export const confirmScreen = Effect.fn('Bot.confirmScreen')(function* (
 ) {
     const sessionId = sessionOf(action);
     const game = yield* requireSession(user.communityId, sessionId);
-    const summary = yield* describeAction(action, user.locale, user.communityId);
+    const summary = yield* describeAction('notify' in action ? { ...action, notify: false } : action, user.locale, user.communityId);
+    const heading = escapeHtml(summary.split('\n\n')[0] ?? summary);
+    const keyboard = [
+        ...confirmButtons(user, action, context.revision, context.hasGroup),
+        navRow(user.locale, `m:g:${toShortId(sessionId)}`)
+    ];
+
+    if (action._tag === 'delete_session') {
+        return { text: [heading, '', `<i>${menuText(user.locale, 'nothingSent')}</i>`].join('\n'), keyboard } satisfies Screen;
+    }
+
     const html = yield* groupHtml(user, game, action);
     const quoted = action._tag === 'announce_session' || action._tag === 'forward_poll' ? html : `<blockquote>${html}</blockquote>`;
 
     return {
-        text: [escapeHtml(summary.split('\n\n')[0] ?? summary), '', menuText(user.locale, 'groupSees'), quoted].join('\n'),
-        keyboard: [...confirmButtons(user, action, context.revision, context.hasGroup), navRow(user.locale, `m:g:${toShortId(sessionId)}`)]
+        text: [heading, '', menuText(user.locale, 'groupSees'), quoted].join('\n'),
+        keyboard
     } satisfies Screen;
 });
