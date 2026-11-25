@@ -185,7 +185,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(preview).toContain(`<blockquote>${String(poll?.question)}\n\n`);
             expect(preview).toContain('▫️ ✅ Граю\n▫️ ❌ Не граю</blockquote>');
             expect(preview).toContain(String(poll?.description));
-            expect(preview).toContain(route.replace('&', '&amp;'));
+            expect(preview).toContain(route.replaceAll('&', '&amp;'));
             expect(poll?.question).toContain('U2 Stadium');
             expect(poll?.description).toBe(
                 '📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=48.3,16.5"><b>Arena Way 2</b></a>'

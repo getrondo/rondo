@@ -112,9 +112,9 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the poll in the style of th
 
             expect(poll.route).toEqual({ label: '🗺 Маршрут', url });
             expect(placeHtml(poll.place)).toBe(
-                `📍 <b>Sport Arena Vienna North</b>\n<a href="${url.replace('&', '&amp;')}"><b>Main Street 1 &amp; Co</b></a>\n🚇 U9 Station`
+                `📍 <b>Sport Arena Vienna North</b>\n<a href="${url.replaceAll('&', '&amp;')}"><b>Main Street 1 &amp; Co</b></a>\n🚇 U9 Station`
             );
-            expect(poll.description).toBe(`📍 <a href="${url.replace('&', '&amp;')}"><b>Main Street 1 &amp; Co</b></a>`);
+            expect(poll.description).toBe(`📍 <a href="${url.replaceAll('&', '&amp;')}"><b>Main Street 1 &amp; Co</b></a>`);
             expect(previewOf(poll)).toBe(
                 [
                     'Пятница, 20 ноября, 19.00 Sport Arena, U9 Station!',
