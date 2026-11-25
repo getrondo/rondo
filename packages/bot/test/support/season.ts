@@ -88,3 +88,12 @@ export const seedSecondGroup = Effect.fn('test.seedSecondGroup')(function* (
         }
     }
 });
+
+export const gamesOn = Effect.fn('test.gamesOn')(function* (communityId: string, localDate: string) {
+    const db = yield* Db;
+
+    return yield* db
+        .select()
+        .from(session)
+        .where(and(eq(session.communityId, communityId), eq(session.localDate, localDate)));
+});

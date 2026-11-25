@@ -31,7 +31,7 @@ let nextUpdateId = 50_000;
 const keyboardOf = (markup: unknown): readonly (readonly Button[])[] =>
     (markup as { inline_keyboard?: Button[][] } | undefined)?.inline_keyboard ?? [];
 
-export const deliver = (body: Omit<Update, 'update_id'>) => {
+export const deliver = (body: Omit<Update, 'update_id'> & { readonly update_id?: number }) => {
     nextUpdateId += 1;
 
     return handleUpdate({ update_id: nextUpdateId, ...body }).pipe(Effect.flatMap(Option.getOrElse(() => Effect.void)));

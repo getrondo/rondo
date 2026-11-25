@@ -1,28 +1,17 @@
 import { expect, layer } from '@effect/vitest';
 import { syncMember } from '@rondo/core/identity/telegram-user';
 import { setSeedRating } from '@rondo/core/teams/team.service';
-import { session, signup } from '@rondo/db/schema/scheduling.schema';
+import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder } from '@rondo/telegram/testing/recording-telegram.layer';
-import { and, eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { conversation } from './support/conversation';
-import { seedSeason } from './support/season';
+import { gamesOn, seedSeason } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
 const groupPosts = (chatId: number) => recorder.calls.filter(call => call.method.startsWith('send') && call.payload.chat_id === chatId);
-
-const fridayGame = Effect.fn('test.fridayGame')(function* (communityId: string) {
-    const db = yield* Db;
-    const [game] = yield* db
-        .select()
-        .from(session)
-        .where(and(eq(session.communityId, communityId), eq(session.localDate, '2026-11-27')));
-
-    return game;
-});
 
 const signUp = Effect.fn('test.signUp')(function* (communityId: string, sessionId: string, count: number) {
     const db = yield* Db;
@@ -53,7 +42,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('👥 Місця');
             yield* admin.tap('20');
             yield* admin.tap('🔕 Змінити тихо');
-            const game = yield* fridayGame(communityId);
+            const [game] = yield* gamesOn(communityId, '2026-11-27');
             const posts = groupPosts(-2001).slice(before);
 
             expect(card.buttons.map(row => row.map(button => button.text))).toEqual([
@@ -82,7 +71,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('19:00');
             yield* admin.tap('👥 22');
             yield* admin.tap('💾 Без опроса');
-            const game = yield* fridayGame(communityId);
+            const [game] = yield* gamesOn(communityId, '2026-11-27');
             yield* signUp(communityId, game?.id ?? '', 4);
             yield* admin.type('/games');
             yield* admin.tap('Пт 27.11 19:00');
@@ -98,7 +87,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.tap('погода');
             yield* admin.tap('✅ Отменить и сообщить');
             const cancelled = groupPosts(-2002).at(-1);
-            const after = yield* fridayGame(communityId);
+            const [after] = yield* gamesOn(communityId, '2026-11-27');
 
             expect(pollConfirm).toContain('Так будет в группе');
             expect(pollConfirm).toContain('▫️ ✅ Граю');

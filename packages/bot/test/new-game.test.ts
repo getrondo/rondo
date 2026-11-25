@@ -2,18 +2,17 @@ import { expect, layer } from '@effect/vitest';
 import { AiGateway } from '@rondo/assistant/service/ai-gateway.service';
 import { Access } from '@rondo/core/access/admin-access';
 import { roleGrant } from '@rondo/db/schema/org.schema';
-import { session } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { testDbLayer } from '@rondo/db/testing/test-db.layer';
 import { makeRecorder, recordingTelegramLayer, refusal } from '@rondo/telegram/testing/recording-telegram.layer';
 import { MockLanguageModelV4 } from 'ai/test';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 
 import { conversation } from './support/conversation';
 import { advanceNow, fixedClockLayer } from './support/fixed-clock';
-import { grantOrganizer, seedSeason } from './support/season';
+import { gamesOn, grantOrganizer, seedSeason } from './support/season';
 
 const adminNumbered = (id: number, languageCode = 'uk') => ({
     id,
@@ -38,14 +37,6 @@ const testLayer = Layer.mergeAll(
     fixedClockLayer
 );
 
-const gamesOf = Effect.fn('test.gamesOf')(function* (communityId: string, localDate: string) {
-    const db = yield* Db;
-
-    return yield* db
-        .select()
-        .from(session)
-        .where(and(eq(session.communityId, communityId), eq(session.localDate, localDate)));
-});
 const pollsTo = (chatId: number) => recorder.calls.filter(call => call.method === 'sendPoll' && call.payload.chat_id === chatId);
 
 layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it => {
@@ -57,7 +48,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             yield* admin.type('/newgame');
             const main = admin.screen();
             yield* admin.tap('✅ Опублікувати');
-            const [game] = yield* gamesOf(communityId, '2026-11-27');
+            const [game] = yield* gamesOn(communityId, '2026-11-27');
             const [poll] = pollsTo(-1001);
 
             expect(main.text).toContain('⚽ Пʼятниця, 27 листопада, 19.00 North Arena');
@@ -101,7 +92,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             yield* admin.tap('👥 +');
             const ready = admin.screen();
             yield* admin.tap('✅ Опублікувати');
-            const [game] = yield* gamesOf(communityId, '2026-11-30');
+            const [game] = yield* gamesOn(communityId, '2026-11-30');
 
             expect(monday.text).toContain('Понеділок, 30 листопада, 18.30 Park Field');
             expect(times.flat()).toEqual(expect.arrayContaining(['18:00', '✓ 18:30', '19:00', '⬅️ Назад']));
@@ -133,7 +124,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             yield* admin.location(48.2, 16.4);
             const ready = admin.screen();
             yield* admin.tap('✅ Опублікувати');
-            const [game] = yield* gamesOf(communityId, '2026-12-05');
+            const [game] = yield* gamesOn(communityId, '2026-12-05');
             const [poll] = pollsTo(-1003);
 
             expect(refused).toContain('минул');
@@ -161,7 +152,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             yield* admin.tap('♾ Без ліміту');
             const preview = admin.screen();
             yield* admin.tap('💾 Без опитування');
-            const [game] = yield* gamesOf(communityId, '2026-11-28');
+            const [game] = yield* gamesOn(communityId, '2026-11-28');
 
             expect(preview.text).toContain('Субота, 28 листопада, 17.00 Hill Park');
             expect(game).toMatchObject({ capacityMax: null, status: 'open' });
@@ -180,7 +171,7 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             yield* admin.type('/newgame');
             const main = admin.screen();
             yield* admin.tap('💾 Створити без опитування');
-            const [game] = yield* gamesOf(communityId, '2026-11-27');
+            const [game] = yield* gamesOn(communityId, '2026-11-27');
 
             expect(home).toContain('Rondo');
             expect(main.text).toContain('Групу не підключено');
@@ -231,8 +222,8 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
                 .set({ valid: sql`tstzrange('2020-01-01', '2020-01-02')` })
                 .where(eq(roleGrant.communityId, communityId));
             yield* other.tap('✅ Опубликовать');
-            const friday = yield* gamesOf(communityId, '2026-11-27');
-            const monday = yield* gamesOf(communityId, '2026-11-30');
+            const friday = yield* gamesOn(communityId, '2026-11-27');
+            const monday = yield* gamesOn(communityId, '2026-11-30');
 
             expect(friday.map(game => game.capacityMax)).toEqual([23]);
             expect(pollsTo(-1007)).toHaveLength(1);
@@ -252,9 +243,9 @@ layer(testLayer, { timeout: 60_000, excludeTestServices: true })('/newgame', it 
             yield* admin.tap('✅ Опублікувати');
             recorder.failures.delete('sendPoll');
             const refused = admin.screen();
-            const none = yield* gamesOf(communityId, '2026-11-27');
+            const none = yield* gamesOn(communityId, '2026-11-27');
             yield* admin.tap('✅ Опублікувати');
-            const created = yield* gamesOf(communityId, '2026-11-27');
+            const created = yield* gamesOn(communityId, '2026-11-27');
 
             expect(refused.text).toContain('Telegram');
             expect(none).toHaveLength(0);

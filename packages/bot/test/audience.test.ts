@@ -1,31 +1,21 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { telegramChat } from '@rondo/db/schema/org.schema';
-import { session, signup } from '@rondo/db/schema/scheduling.schema';
+import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { makeRecorder, refusal } from '@rondo/telegram/testing/recording-telegram.layer';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { conversation, deliver } from './support/conversation';
 import { setNow } from './support/fixed-clock';
-import { seedSecondGroup, seedSeason } from './support/season';
+import { gamesOn, seedSeason, seedSecondGroup } from './support/season';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
 const callsTo = (chatId: number, method: string) =>
     recorder.calls.filter(call => call.method === method && call.payload.chat_id === chatId);
 const voter = (id: number) => ({ id, is_bot: false as const, first_name: `Voter ${id}` });
-
-const gameOn = Effect.fn('test.gameOn')(function* (communityId: string, localDate: string) {
-    const db = yield* Db;
-    const [game] = yield* db
-        .select()
-        .from(session)
-        .where(and(eq(session.communityId, communityId), eq(session.localDate, localDate)));
-
-    return game;
-});
 
 const pollIdIn = (chatId: number) => {
     const sent = callsTo(chatId, 'sendPoll').at(-1)?.result as { poll?: { id?: string } } | undefined;
@@ -43,7 +33,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('/newgame');
             const main = admin.screen();
             yield* admin.tap('✅ Опублікувати');
-            const game = yield* gameOn(communityId, '2026-12-02');
+            const [game] = yield* gamesOn(communityId, '2026-12-02');
 
             expect(main.buttons[0]?.map(button => button.text)).toEqual(['✅ Опублікувати', '➡️ Second']);
             expect(callsTo(-4002, 'sendPoll')).toHaveLength(1);
@@ -65,7 +55,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const answer = { poll_id: pollId, user: voter(9201), option_ids: [0], option_persistent_ids: [] };
             yield* deliver({ poll_answer: answer });
             yield* deliver({ poll_answer: answer });
-            const game = yield* gameOn(communityId, '2026-11-27');
+            const [game] = yield* gamesOn(communityId, '2026-11-27');
             const signups = yield* db
                 .select()
                 .from(signup)
