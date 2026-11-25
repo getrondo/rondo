@@ -49,26 +49,25 @@ const walkTeams = Effect.fn('test.walkTeams')(function* (locale: 'uk' | 'ru', id
     yield* setNow(Date.parse('2026-11-27T17:00:00Z'));
     yield* runTeamsTick(new Date('2026-11-27T17:00:00Z'));
     const admin = conversation(recorder, adminNumbered(id, locale));
+    const word = (uk: string, ru: string) => (locale === 'uk' ? uk : ru);
     yield* openEditor(admin);
     yield* admin.press(gridButton(admin.screen(), 2, 0));
     yield* admin.press(titleData(admin.screen(), 1));
-    yield* admin.press(titleData(admin.screen(), 2));
-    yield* admin.press(titleData(admin.screen(), 2));
-    yield* admin.tap(toEditor);
-
-    for (const label of ['➕', '🎚', locale === 'uk' ? '➕ Прийшов ще' : '➕ Пришёл ещё']) {
-        yield* admin.press(buttonData(admin.screen(), label));
-        yield* admin.tap(toEditor);
-    }
-
-    yield* admin.press(buttonData(admin.screen(), '➕'));
-    yield* admin.press(firstButton(admin.screen()));
+    yield* admin.press(buttonData(admin.screen(), word('Інші дві команди', 'Другие две команды')));
+    yield* admin.press(gridButton(admin.screen(), 1, 0));
+    yield* admin.press(buttonData(admin.screen(), word('➕ Гість від', '➕ Гость от')));
     yield* admin.press(buttonData(admin.screen(), '+2'));
     yield* admin.press(firstButton(admin.screen()));
-    yield* admin.press(gridButton(admin.screen(), 1, 1));
-    yield* admin.press(buttonData(admin.screen(), '🗑'));
+    yield* admin.press(buttonData(admin.screen(), word('⚙️ Рівні та кольори', '⚙️ Уровни и цвета')));
+    yield* admin.press(buttonData(admin.screen(), '🎨'));
+    yield* admin.press(buttonData(admin.screen(), word('⬅️ Назад', '⬅️ Назад')));
     yield* admin.tap(toEditor);
-    yield* admin.press(buttonData(admin.screen(), '✅'));
+    yield* admin.press(buttonData(admin.screen(), word('➕ Хтось прийшов', '➕ Кто-то пришёл')));
+    yield* admin.tap(toEditor);
+    yield* admin.press(gridButton(admin.screen(), 1, 1));
+    yield* admin.press(buttonData(admin.screen(), word('🚫 Не грає', '🚫 Не играет')));
+    yield* admin.tap(toEditor);
+    yield* admin.press(buttonData(admin.screen(), word('👌 Готово', '👌 Готово')));
     yield* admin.press(buttonData(admin.screen(), '✅'));
 });
 
@@ -85,11 +84,12 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             }
 
             expect(overflowing()).toEqual([]);
-            expect(labels().filter(label => label.endsWith('у найслабшу') || label.endsWith('в самую слабую'))).toHaveLength(2);
             expect(labels()).toEqual(
                 expect.arrayContaining([
-                    '🗑 Прибрати',
-                    '🗑 Убрать',
+                    '🚫 Не грає',
+                    '🚫 Не играет',
+                    '⏳ Додати в чергу',
+                    '⏳ Добавить в очередь',
                     '✅ Надіслати в «A very long group…',
                     '✅ Отправить в «A very long group…'
                 ])

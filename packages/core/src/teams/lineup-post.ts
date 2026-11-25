@@ -1,7 +1,10 @@
 import { isDefined, isNotEmptyString } from '@rnw-community/shared';
 import { escapeHtml, mentionHtml } from '@rondo/telegram/format/html';
 
+import { badgeOfEmoji } from './badges';
+
 import type { Locale } from '../i18n/locale';
+import type { BadgeColour } from './interface/badge.interface';
 import type { LineupPost, PostMember, PostTeam } from './interface/lineup-post.interface';
 
 const telegramLimit = 4096;
@@ -10,11 +13,36 @@ const shortName = 24;
 const words: Readonly<
     Record<
         Locale,
-        { readonly title: string; readonly updated: string; readonly fromLosers: string; readonly friend: string; readonly guest: string }
+        {
+            readonly title: string;
+            readonly updated: string;
+            readonly fromLosers: string;
+            readonly friend: string;
+            readonly guest: string;
+            readonly team: string;
+        }
     >
 > = {
-    uk: { title: 'Склади', updated: 'Оновлені склади', fromLosers: 'з команди, що програла', friend: 'друг', guest: 'гість' },
-    ru: { title: 'Составы', updated: 'Обновлённые составы', fromLosers: 'из проигравшей команды', friend: 'друг', guest: 'гость' }
+    uk: {
+        title: 'Склади',
+        updated: 'Оновлені склади',
+        fromLosers: 'з команди, що програла',
+        friend: 'друг',
+        guest: 'гість',
+        team: 'Команда'
+    },
+    ru: { title: 'Составы', updated: 'Обновлённые составы', fromLosers: 'от проигравших', friend: 'друг', guest: 'гость', team: 'Команда' }
+};
+
+const teamNames: Readonly<Record<Locale, Readonly<Record<BadgeColour, string>>>> = {
+    uk: { red: 'Червоні', blue: 'Сині', green: 'Зелені', yellow: 'Жовті', white: 'Білі', orange: 'Помаранчеві' },
+    ru: { red: 'Красные', blue: 'Синие', green: 'Зелёные', yellow: 'Жёлтые', white: 'Белые', orange: 'Оранжевые' }
+};
+
+export const teamName = (locale: Locale, badge: string, index: number): string => {
+    const colour = badgeOfEmoji(badge)?.colour;
+
+    return isDefined(colour) ? teamNames[locale][colour] : `${words[locale].team} ${index + 1}`;
 };
 
 const autoGuest = /\+\d+$/u;
@@ -50,13 +78,13 @@ const memberHtml = (member: PostMember, team: PostTeam, post: LineupPost, limit:
     return `${nameHtml(member, post, limit)}${guests > 0 ? ` +${guests}` : ''}${gk}`;
 };
 
-const teamHtml = (team: PostTeam, post: LineupPost, limit: number): string => {
+const teamHtml = (team: PostTeam, index: number, post: LineupPost, limit: number): string => {
     const largest = Math.max(...post.teams.map(entry => entry.members.length));
     const missing = largest - team.members.length;
     const note = missing > 0 ? ` (+${missing} ${words[post.locale].fromLosers})` : '';
     const names = team.members.flatMap(member => memberHtml(member, team, post, limit) ?? []);
 
-    return `${team.badge} ${names.join(', ')}${note}`;
+    return [`${team.badge} <b>${teamName(post.locale, team.badge, index)} · ${team.members.length}</b>${note}`, ...names].join('\n');
 };
 
 const visibleLength = (html: string): number => html.replaceAll(/<[^<>]*>/gu, '').replaceAll(/&(?:amp|lt|gt|quot);/gu, '-').length;
@@ -67,7 +95,7 @@ export const lineupPostHtml = (post: LineupPost): string => {
             ...(post.isUpdate ? [words[post.locale].updated] : []),
             `<b>${words[post.locale].title}: ${escapeHtml(post.title)}</b>`,
             '',
-            post.teams.map(team => teamHtml(team, post, limit)).join('\n\n')
+            post.teams.map((team, index) => teamHtml(team, index, post, limit)).join('\n\n')
         ].join('\n');
     const full = render(Infinity);
 

@@ -2,13 +2,15 @@ import { isDefined, isNotEmptyArray } from '@rnw-community/shared';
 import { formatSessionLabel } from '@rondo/core/i18n/messages';
 import { badges } from '@rondo/core/teams/badges';
 import { playersOf } from '@rondo/core/teams/draft-state';
+import { teamName } from '@rondo/core/teams/lineup-post';
+import { usualTeamCount } from '@rondo/core/teams/team-draft.service';
 import { escapeHtml } from '@rondo/telegram/format/html';
 
 import { toShortId } from '../../utils/to-short-id.util';
 
 import { teamsData, type TeamsBase } from './teams-callback';
-import { badgeAt, nameOf, shortName } from './teams-editor.screen';
-import { teamsText } from './teams-text';
+import { badgeAt, nameOf, shortName, teamAt } from './teams-editor.screen';
+import { teamsCount, teamsText } from './teams-text';
 
 import type { MenuButton, MenuUser, Screen } from '../screen.interface';
 import type { EditorView } from './teams-view.interface';
@@ -24,93 +26,61 @@ const backRow = (user: MenuUser, view: EditorView): MenuButton[] => [
 ];
 
 const header = (user: MenuUser, view: EditorView): string =>
-    teamsText(user.locale, 'title', { label: escapeHtml(formatSessionLabel(user.locale, view.inputs.game)) });
-
-export const guestHostScreen = (user: MenuUser, view: EditorView): Screen => {
-    const players = playersOf(view.row.state);
-    const hosts = view.inputs.members.filter(member => !member.isGuest && players.includes(member.personId));
-
-    return {
-        text: [header(user, view), teamsText(user.locale, 'guestHost')].join('\n'),
-        keyboard: [
-            ...chunk(
-                hosts.map(member => ({
-                    text: shortName(member.displayName, 16),
-                    callback_data: teamsData(baseOf(view), 'G', [players.indexOf(member.personId)])
-                })),
-                3
-            ),
-            [{ text: teamsText(user.locale, 'noHost'), callback_data: teamsData(baseOf(view), 'G', ['n']) }],
-            backRow(user, view)
-        ]
-    };
-};
+    teamsText(user.locale, 'editorTitle', { label: escapeHtml(formatSessionLabel(user.locale, view.inputs.game)) });
 
 export const guestCountScreen = (user: MenuUser, view: EditorView, host: string): Screen => {
     const hostId = playersOf(view.row.state)[Number(host)];
-    const hostName = isDefined(hostId) && host !== 'n' ? ` у ${escapeHtml(nameOf(view, hostId))}` : '';
 
     return {
-        text: [header(user, view), teamsText(user.locale, 'guestCount', { host: hostName })].join('\n'),
+        text: [header(user, view), teamsText(user.locale, 'guestCount', { name: escapeHtml(nameOf(view, hostId ?? '')) })].join('\n'),
         keyboard: [
-            [1, 2, 3].map(count => ({ text: `+${count}`, callback_data: teamsData(baseOf(view), 'N', [host, count]) })),
+            [1, 2, 3].map(count => ({ text: `+${count}`, callback_data: teamsData(baseOf(view), 'P', [host, count]) })),
             backRow(user, view)
         ]
     };
 };
 
-export const guestPlaceScreen = (
+export const fullAsk = (
     user: MenuUser,
     view: EditorView,
-    place: { readonly host: string; readonly count: number; readonly weakest: number }
-): Screen => {
-    const hostId = place.host === 'n' ? null : playersOf(view.row.state)[Number(place.host)];
-    const hostTeam = isDefined(hostId) ? view.row.state.teams.findIndex(members => members.includes(hostId)) : -1;
-    const toHost =
-        isDefined(hostId) && hostTeam >= 0
+    ask: {
+        readonly who: string;
+        readonly taken: number;
+        readonly limit: number;
+        readonly op: string;
+        readonly args: readonly (string | number)[];
+    }
+): Screen => ({
+    text: [
+        header(user, view),
+        teamsText(user.locale, 'fullAsk', { taken: ask.taken, limit: ask.limit, name: escapeHtml(ask.who) }),
+        ...(isNotEmptyArray(view.waiting)
             ? [
-                  {
-                      text: teamsText(user.locale, 'toHost', { badge: badgeAt(view, hostTeam), name: shortName(nameOf(view, hostId)) }),
-                      callback_data: teamsData(baseOf(view), 'P', [place.host, place.count, hostTeam])
-                  }
+                  teamsText(user.locale, 'queue', {
+                      names: escapeHtml(view.waiting.map((name, index) => `${index + 1}. ${name}`).join(', '))
+                  })
               ]
-            : [];
-
-    return {
-        text: [header(user, view), teamsText(user.locale, 'guestPlace')].join('\n'),
-        keyboard: [
-            [
-                ...toHost,
-                {
-                    text: teamsText(user.locale, 'toWeakest', { badge: badgeAt(view, place.weakest) }),
-                    callback_data: teamsData(baseOf(view), 'P', [place.host, place.count, place.weakest])
-                }
-            ],
-            backRow(user, view)
-        ]
-    };
-};
+            : [])
+    ].join('\n'),
+    keyboard: [
+        [{ text: teamsText(user.locale, 'toQueue'), callback_data: teamsData(baseOf(view), ask.op, [...ask.args, 0]) }],
+        [{ text: teamsText(user.locale, 'overLimit'), callback_data: teamsData(baseOf(view), ask.op, [...ask.args, 1]) }],
+        backRow(user, view)
+    ]
+});
 
 export const removeScreen = (
     user: MenuUser,
     view: EditorView,
-    ask: { readonly personId: string; readonly guests: number; readonly waiting: string | null }
+    ask: { readonly personId: string; readonly guests: number; readonly waiting: string | null; readonly hasStarted: boolean }
 ): Screen => {
     const index = playersOf(view.row.state).indexOf(ask.personId);
     const name = nameOf(view, ask.personId);
-    const options =
-        ask.guests > 0
-            ? [
-                  {
-                      text: teamsText(user.locale, 'withGuests', { count: ask.guests }),
-                      callback_data: teamsData(baseOf(view), 'R', [index, 1])
-                  },
-                  {
-                      text: teamsText(user.locale, 'onlyHost', { name: shortName(name) }),
-                      callback_data: teamsData(baseOf(view), 'R', [index, 0])
-                  }
-              ]
-            : [{ text: teamsText(user.locale, 'removeYes'), callback_data: teamsData(baseOf(view), 'R', [index, 0]) }];
+    const remove = (key: 'withGuests' | 'onlyHost' | 'removeYes', guests: number): MenuButton => ({
+        text: teamsText(user.locale, key, { count: ask.guests, name: shortName(name) }),
+        callback_data: teamsData(baseOf(view), 'R', [index, guests])
+    });
+    const options = ask.guests > 0 ? [remove('withGuests', 1), remove('onlyHost', 0)] : [remove('removeYes', 0)];
 
     return {
         text: [
@@ -118,7 +88,11 @@ export const removeScreen = (
             teamsText(user.locale, 'removeAsk', { name: escapeHtml(name) }),
             ...(isDefined(ask.waiting) ? [teamsText(user.locale, 'waiting', { name: escapeHtml(ask.waiting) })] : [])
         ].join('\n'),
-        keyboard: [options, backRow(user, view)]
+        keyboard: [
+            ...(ask.hasStarted ? [[{ text: teamsText(user.locale, 'noShow'), callback_data: teamsData(baseOf(view), 'o', [index]) }]] : []),
+            options,
+            backRow(user, view)
+        ]
     };
 };
 
@@ -146,24 +120,32 @@ export const moveScreen = (
 };
 
 export const colourScreen = (user: MenuUser, view: EditorView, team: number): Screen => ({
-    text: [header(user, view), teamsText(user.locale, 'colourTitle', { badge: badgeAt(view, team) })].join('\n'),
+    text: [
+        header(user, view),
+        teamsText(user.locale, 'colourTitle', { team: `${badgeAt(view, team)} ${teamAt(user.locale, view, team)}` })
+    ].join('\n'),
     keyboard: [
-        badges.map((badge, index) => ({
-            text: view.row.state.colours[team] === badge.colour ? `✓${badge.badge}` : badge.badge,
-            callback_data: teamsData(baseOf(view), 'C', [team, index])
-        })),
-        backRow(user, view)
+        ...chunk(
+            badges.map((badge, index) => ({
+                text: `${view.row.state.colours[team] === badge.colour ? '✓' : ''}${badge.badge} ${teamName(user.locale, badge.badge, index)}`,
+                callback_data: teamsData(baseOf(view), 'C', [team, index])
+            })),
+            2
+        ),
+        [{ text: teamsText(user.locale, 'toSettings'), callback_data: teamsData(baseOf(view), 'L') }]
     ]
 });
 
 const tierMark: Readonly<Record<Tier, string>> = { strong: '💪', normal: '🙂', new: '🌱' };
 
-export const tiersScreen = (user: MenuUser, view: EditorView): Screen => {
+export const settingsScreen = (user: MenuUser, view: EditorView): Screen => {
     const players = playersOf(view.row.state);
     const members = view.inputs.members.filter(member => !member.isGuest && players.includes(member.personId));
+    const count = view.row.state.teams.length;
+    const counts = [2, 3, 4].filter(entry => entry !== count && entry <= Math.max(2, usualTeamCount(players.length) + 1));
 
     return {
-        text: [header(user, view), teamsText(user.locale, 'tiersTitle')].join('\n'),
+        text: [header(user, view), teamsText(user.locale, 'settingsTitle')].join('\n'),
         keyboard: [
             ...chunk(
                 members.map(member => ({
@@ -172,6 +154,17 @@ export const tiersScreen = (user: MenuUser, view: EditorView): Screen => {
                 })),
                 2
             ),
+            ...chunk(
+                view.row.state.teams.map((_members, team) => ({
+                    text: teamsText(user.locale, 'colourOf', { team: `${badgeAt(view, team)} ${teamAt(user.locale, view, team)}` }),
+                    callback_data: teamsData(baseOf(view), 'c', [team])
+                })),
+                2
+            ),
+            counts.map(entry => ({
+                text: teamsText(user.locale, 'teamCount', { count: teamsCount(user.locale, entry) }),
+                callback_data: teamsData(baseOf(view), 'n', [entry])
+            })),
             backRow(user, view)
         ]
     };
@@ -191,32 +184,12 @@ export const joinersScreen = (
             })),
             2
         ),
-        [{ text: teamsText(user.locale, 'guest'), callback_data: teamsData(baseOf(view), 'g') }],
+        [{ text: teamsText(user.locale, 'writeName'), callback_data: teamsData(baseOf(view), 'g') }],
         backRow(user, view)
     ]
 });
 
-export const overLimitAsk = (
-    user: MenuUser,
-    view: EditorView,
-    ask: {
-        readonly joiner: string;
-        readonly taken: number;
-        readonly limit: number;
-        readonly waiting: readonly string[];
-        readonly arg: string;
-    }
-): Screen => ({
-    text: [
-        header(user, view),
-        teamsText(user.locale, 'fullAsk', { taken: ask.taken, limit: ask.limit, name: escapeHtml(ask.joiner) }),
-        ...(isNotEmptyArray(ask.waiting)
-            ? [teamsText(user.locale, 'queue', { names: escapeHtml(ask.waiting.map((name, index) => `${index + 1}. ${name}`).join(', ')) })]
-            : [])
-    ].join('\n'),
-    keyboard: [
-        [{ text: teamsText(user.locale, 'overLimit'), callback_data: teamsData(baseOf(view), 'J', [ask.arg, 1]) }],
-        [{ text: teamsText(user.locale, 'toQueue'), callback_data: teamsData(baseOf(view), 'J', [ask.arg, 0]) }],
-        backRow(user, view)
-    ]
+export const namePrompt = (user: MenuUser, view: EditorView): Screen => ({
+    text: [header(user, view), teamsText(user.locale, 'namePrompt')].join('\n'),
+    keyboard: [backRow(user, view)]
 });

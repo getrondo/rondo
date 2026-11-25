@@ -152,11 +152,14 @@ const escapeEmoji = (emoji: string): string => emoji.replaceAll(/[.*+?^${}()|[\]
 
 const colorLabel = /^[^:\n]*?(?:ые|ие|і|i)\s*:/iu;
 
+const teamHeading = /^[\p{L}\s]+·\s*\d+$/u;
+
 const parseTeam = (rawSegment: string, context: RosterContext): LineupMember[] => {
     const segment = rawSegment.split(/\n\s*\n/u)[0] ?? '';
-    const firstLine = segment.replace(colorLabel, '').split('\n')[0] ?? '';
+    const [firstLine = '', ...rest] = segment.replace(colorLabel, '').split('\n');
+    const names = teamHeading.test(stripParentheses(firstLine).trim()) ? rest.join('\n') : firstLine;
 
-    return attachLooseGuests(splitMembers(firstLine))
+    return attachLooseGuests(splitMembers(names))
         .map(token => toMember(token, context))
         .filter(member => isDefined(member));
 };

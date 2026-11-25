@@ -6,8 +6,10 @@ export interface EditorView {
     readonly row: DraftRow;
     readonly inputs: TeamInputs;
     readonly plan: LineupPlan;
+    readonly waiting: readonly string[];
+    readonly joinedNames: readonly string[];
+    readonly leftNames: readonly string[];
     readonly selected: string | null;
-    readonly title: number | null;
     readonly page: number;
     readonly notes: readonly string[];
     readonly offerLevels: boolean;

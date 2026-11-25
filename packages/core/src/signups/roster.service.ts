@@ -57,7 +57,7 @@ const setStatus = Effect.fn('Core.setRosterStatus')(function* (
 
 export const addGuests = Effect.fn('Core.addGuests')(function* (
     change: RosterChange,
-    guest: { readonly hostPersonId: string | null; readonly count: number; readonly name: string | null }
+    guest: { readonly hostPersonId: string | null; readonly count: number; readonly name: string | null; readonly isOverLimit?: boolean }
 ) {
     const db = yield* Db;
 
@@ -89,7 +89,7 @@ export const addGuests = Effect.fn('Core.addGuests')(function* (
                 const [created] = yield* db.insert(person).values({ displayName, source: 'manual' }).returning({ id: person.id });
                 const personId = created?.id ?? '';
                 const taken = yield* fieldPlayersIn(change.sessionId, null);
-                const status = !isDefined(game.capacityMax) || taken < game.capacityMax ? 'in' : 'waitlisted';
+                const status = guest.isOverLimit === true || !isDefined(game.capacityMax) || taken < game.capacityMax ? 'in' : 'waitlisted';
                 const [stored] = yield* db
                     .insert(signup)
                     .values({ sessionId: change.sessionId, personId, status, isGuest: true, guestOfPersonId: guest.hostPersonId })

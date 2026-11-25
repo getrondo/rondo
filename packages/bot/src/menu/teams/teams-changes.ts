@@ -79,13 +79,23 @@ const rosterTransform = Effect.fn('Bot.teamsRosterChange')(function* (context: C
 
     switch (tap.op) {
         case 'P': {
-            const host = tap.args[0] === 'n' ? null : (players[Number(tap.args[0])] ?? null);
-            const added = yield* addGuests(rosterChange(context), { hostPersonId: host, count: Number(tap.args[1]), name: null });
+            const host = players[Number(tap.args[0])] ?? null;
+            const added = yield* addGuests(rosterChange(context), {
+                hostPersonId: host,
+                count: Number(tap.args[1]),
+                name: null,
+                isOverLimit: tap.args[2] === '1'
+            });
             const seated = added.filter(guest => guest.status === 'in').map(guest => guest.personId);
 
-            return yield* afterRoster(context, state, synced =>
-                isNotEmptyArray(seated) ? movePlayers(synced, seated, Number(tap.args[2])) : synced
-            );
+            return yield* afterRoster(context, state, synced => {
+                const sizes = synced.teams.map(members => members.length);
+                const hostTeam = isDefined(host) ? teamIndexOf(synced, host) : -1;
+
+                return isNotEmptyArray(seated)
+                    ? movePlayers(synced, seated, hostTeam >= 0 ? hostTeam : sizes.indexOf(Math.min(...sizes)))
+                    : synced;
+            });
         }
         case 'R':
         case 'o': {
@@ -143,8 +153,10 @@ const transformOf = (context: ChangeContext, state: DraftState) => {
         case 'h': {
             return Effect.succeed(shuffled(inputs, state));
         }
-        case 'v': {
-            return Effect.succeed(syncByAdmin(pickVariant(state, number(0)), roster));
+        case 'V': {
+            const next = syncByAdmin(pickVariant(state, (Math.max(state.variant, 0) + 1) % Math.max(1, state.variants.length)), roster);
+
+            return Effect.succeed(isNotEmptyArray(next.pending) ? rebalanced(inputs, next) : next);
         }
         case 'b':
         case 'A': {

@@ -57,7 +57,7 @@ const navigate = Effect.fn('Bot.navigate')(function* (user: MenuUser, parts: rea
             return Option.some(menuText(user.locale, 'stale'));
         }
 
-        const card = yield* gameCardPage(user, sessionId, null, Number(page ?? '0') || 0).pipe(Effect.option);
+        const card = yield* gameCardPage(user, sessionId, null, { page: Number(page ?? '0') || 0 }).pipe(Effect.option);
 
         if (Option.isNone(card)) {
             return Option.some(menuText(user.locale, 'unknownGame'));

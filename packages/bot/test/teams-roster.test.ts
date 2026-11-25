@@ -31,33 +31,31 @@ const statusOf = (sessionId: string, personId: string) =>
     ).pipe(Effect.map(rows => rows[0]?.status ?? null));
 
 layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('guests and the roster in the team editor', it => {
-    it.effect('adds guests of a host in four taps, by «Name +2» and by a typed name, all counted in the limit', () =>
+    it.effect('adds guests of a host in three taps, by «Name +2» and by a typed name, all counted in the limit', () =>
         Effect.gen(function* () {
             const { sessionId } = yield* teamsGame('teams-guests', { groupChatId: -3101, adminId: 311, players: 12 });
             const admin = conversation(recorder, adminNumbered(311));
             yield* openEditor(admin);
             const host = (yield* draftTeams(sessionId)).teams[0]?.[0] ?? '';
-            yield* admin.press(buttonData(admin.screen(), '➕'));
-            const hosts = admin.screen();
-            yield* admin.press(buttonData(hosts, host));
+            yield* admin.press(playerData(admin.screen(), host));
+            yield* admin.press(buttonData(admin.screen(), `➕ Гість від ${host}`));
             const counts = admin.screen();
             yield* admin.press(buttonData(counts, '+2'));
-            const places = admin.screen();
-            yield* admin.press(buttonData(places, `до ${host}`));
             const placed = yield* draftTeams(sessionId);
             yield* admin.type('Bohdan +1');
             const typed = yield* draftTeams(sessionId);
-            yield* admin.press(buttonData(admin.screen(), '➕'));
-            yield* admin.press(buttonData(admin.screen(), '👤 Ні чий'));
+            yield* admin.press(buttonData(admin.screen(), '➕ Хтось прийшов'));
+            yield* admin.press(buttonData(admin.screen(), '✍️ Інший — напиши імʼя'));
+            const prompt = admin.screen();
             yield* admin.type('Friend Mark');
             const named = yield* draftTeams(sessionId);
             const guests = (yield* seats(sessionId)).filter(seat => seat.isGuest);
 
-            expect(hosts.text).toContain('➕ <b>Гість</b>. Чий він?');
+            expect(counts.text).toContain(`➕ Скільки гостей у ${host}?`);
             expect(labelsOf(counts)[0]).toEqual(['+1', '+2', '+3']);
-            expect(places.text).toContain('Куди поставити?');
             expect(placed.teams[0]?.filter(name => name.startsWith(`${host} +`))).toHaveLength(2);
             expect(typed.teams.flat().filter(name => name.startsWith('Bohdan +'))).toHaveLength(1);
+            expect(prompt.text).toContain('✍️ Напиши імʼя гравця, який прийшов.');
             expect(named.teams.flat()).toContain('Friend Mark');
             expect(named.row.state.joined).toEqual([]);
             expect(guests.map(seat => seat.status)).toEqual(['in', 'in', 'in', 'in']);
@@ -77,16 +75,16 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* db.update(signup).set({ status: 'in' }).where(eq(signup.sessionId, sessionId));
             yield* db.insert(signup).values({ sessionId, personId: waiting, status: 'waitlisted' });
             yield* admin.press(playerData(admin.screen(), host));
-            yield* admin.press(buttonData(admin.screen(), '🔴'));
+            yield* admin.press(buttonData(admin.screen(), '➡️ до Червоних'));
             const moveAsk = admin.screen();
             yield* admin.press(buttonData(moveAsk, '👥 Разом'));
             const movedTogether = yield* draftTeams(sessionId);
             yield* admin.press(playerData(admin.screen(), host));
-            yield* admin.press(buttonData(admin.screen(), '🗑'));
+            yield* admin.press(buttonData(admin.screen(), '🚫 Не грає'));
             const removeAsk = admin.screen();
             yield* admin.press(buttonData(removeAsk, '🗑 Разом з гостями'));
             const removed = yield* draftTeams(sessionId);
-            yield* admin.press(buttonData(admin.screen(), '➕ Прийшов ще'));
+            yield* admin.press(buttonData(admin.screen(), '➕ Хтось прийшов'));
             const joiners = admin.screen();
             yield* admin.press(buttonData(joiners, host));
             const joined = yield* draftTeams(sessionId);
@@ -107,14 +105,15 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const db = yield* Db;
             const { sessionId } = yield* teamsGame('teams-field', { groupChatId: -3103, adminId: 313, players: 13 });
             const admin = conversation(recorder, adminNumbered(313, 'ru'));
-            yield* setNow(Date.parse('2026-11-27T17:45:00Z'));
+            yield* setNow(Date.parse('2026-11-27T18:05:00Z'));
             yield* openEditor(admin);
             const noLevels = admin.screen().text;
             const absent = (yield* draftTeams(sessionId)).teams[0]?.[0] ?? '';
             yield* admin.press(playerData(admin.screen(), absent));
-            yield* admin.press(buttonData(admin.screen(), '➖ Не пришёл'));
+            yield* admin.press(buttonData(admin.screen(), '🚫 Не играет'));
+            yield* admin.press(buttonData(admin.screen(), '🚫 Не пришёл'));
             const after = yield* draftTeams(sessionId);
-            yield* admin.press(buttonData(admin.screen(), '🎚 Уровни'));
+            yield* admin.press(buttonData(admin.screen(), '⚙️ Уровни и цвета'));
             const tiers = admin.screen();
             const someone = after.teams[1]?.[0] ?? '';
             yield* admin.press(buttonData(tiers, someone));
@@ -127,7 +126,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.press(buttonData(cycled, '⬅️ К составам'));
             const withLevels = admin.screen().text;
 
-            expect(noLevels).toContain('⚖️ уровни не заданы — делю по прошлым составам');
+            expect(noLevels).not.toContain('уровни не заданы');
             expect(after.teams.flat()).not.toContain(absent);
             expect(after.teams.map(members => members.length)).toEqual([6, 6]);
             expect(tiers.text).toContain('видишь только ты');
@@ -175,14 +174,14 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(361));
             yield* setNow(Date.parse('2026-11-27T17:00:00Z'));
             yield* openEditor(admin);
-            yield* admin.tap('➕ Прийшов ще');
+            yield* admin.tap('➕ Хтось прийшов');
             yield* admin.tap('Latecomer');
             const asked = admin.screen();
-            yield* admin.press(buttonData(asked, '⏳ У чергу'));
+            yield* admin.press(buttonData(asked, '⏳ Додати в чергу'));
             const queued = yield* statusOf(sessionId, late);
-            yield* admin.tap('➕ Прийшов ще');
+            yield* admin.tap('➕ Хтось прийшов');
             yield* admin.tap('Latecomer');
-            yield* admin.press(buttonData(admin.screen(), '➕ Понад ліміт'));
+            yield* admin.press(buttonData(admin.screen(), '➕ Додати понад ліміт'));
             const over = yield* statusOf(sessionId, late);
             const { teams } = yield* draftTeams(sessionId);
 
@@ -194,25 +193,26 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         })
     );
 
-    it.effect('offers remove next to no-show near the start and lets a no-show who came after all join again', () =>
+    it.effect('asks after the kick-off whether a player did not come or left, and lets a no-show who came after all join again', () =>
         Effect.gen(function* () {
             const db = yield* Db;
             const { sessionId } = yield* teamsGame('teams-seats-noshow', { groupChatId: -3602, adminId: 362, players: 12 });
             const admin = conversation(recorder, adminNumbered(362));
-            yield* setNow(Date.parse('2026-11-27T17:45:00Z'));
+            yield* setNow(Date.parse('2026-11-27T18:10:00Z'));
             yield* openEditor(admin);
             const absent = (yield* draftTeams(sessionId)).teams[0]?.[0] ?? '';
             yield* admin.press(playerData(admin.screen(), absent));
-            const selected = labelsOf(admin.screen()).flat();
-            yield* admin.press(buttonData(admin.screen(), '➖ Не прийшов'));
-            yield* admin.tap('➕ Прийшов ще');
+            yield* admin.press(buttonData(admin.screen(), '🚫 Не грає'));
+            const asked = labelsOf(admin.screen()).flat();
+            yield* admin.press(buttonData(admin.screen(), '🚫 Не прийшов'));
+            yield* admin.tap('➕ Хтось прийшов');
             yield* admin.tap(absent);
             const marks = yield* db
                 .select()
                 .from(attendance)
                 .where(and(eq(attendance.sessionId, sessionId), eq(attendance.outcome, 'no_show')));
 
-            expect(selected).toEqual(expect.arrayContaining(['🗑 Прибрати', '➖ Не прийшов']));
+            expect(asked).toEqual(expect.arrayContaining(['🚫 Не прийшов', '🗑 Прибрати з гри']));
             expect((yield* draftTeams(sessionId)).teams.flat()).toContain(absent);
             expect(marks).toEqual([]);
         })
@@ -226,7 +226,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* openEditor(admin);
             yield* admin.type('🔴 Bohdan, Vasyl, Hryhoriy, Pasted\n🔵 Dmytro, Yevhen, Zakhar, Ivan');
 
-            expect(admin.screen().text).toContain('⏳ Гра повна — у черзі: Pasted. Понад ліміт: ➕ Прийшов ще.');
+            expect(admin.screen().text).toContain('⏳ Гра повна — у черзі: Pasted. Понад ліміт: ➕ Хтось прийшов.');
             expect(yield* statusOf(sessionId, late)).toBe('waitlisted');
             expect((yield* draftTeams(sessionId)).teams.flat()).not.toContain('Pasted');
         })
@@ -242,18 +242,12 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 .where(eq(person.id, people[9] ?? ''));
             const admin = conversation(recorder, adminNumbered(316));
             yield* openEditor(admin);
-            yield* admin.tap('➕');
-            yield* admin.tap('Lev Polishchuk');
+            yield* admin.tap('Lev P.');
+            yield* admin.tap('➕ Гість від Lev P.');
             yield* admin.tap('+2');
-            yield* admin.press(
-                admin
-                    .screen()
-                    .buttons.flat()
-                    .find(button => button.text.includes('Lev'))?.callback_data ?? ''
-            );
             const guests = labelsOf(admin.screen())
                 .flat()
-                .filter(label => label.startsWith('+'));
+                .filter(label => label.includes(' +'));
 
             expect(guests).toHaveLength(2);
             expect(new Set(guests).size).toBe(2);

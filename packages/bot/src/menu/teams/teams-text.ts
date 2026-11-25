@@ -16,5 +16,9 @@ export const teamsCount = (locale: Locale, count: number): string => {
     return locale === 'ru' ? `${count} ${few ? 'команды' : 'команд'}` : `${count} ${few ? 'команди' : 'команд'}`;
 };
 
-export const isReasonKey = (value: string): value is 'balanced' | 'usual' | 'fresh' | 'fewest' =>
-    value === 'balanced' || value === 'usual' || value === 'fresh' || value === 'fewest';
+const towards: Readonly<Record<Locale, Readonly<Record<string, string>>>> = {
+    uk: { '🔴': 'до Червоних', '🔵': 'до Синіх', '🟢': 'до Зелених', '🟡': 'до Жовтих', '⚪': 'до Білих', '🟠': 'до Помаранчевих' },
+    ru: { '🔴': 'к Красным', '🔵': 'к Синим', '🟢': 'к Зелёным', '🟡': 'к Жёлтым', '⚪': 'к Белым', '🟠': 'к Оранжевым' }
+};
+
+export const towardsTeam = (locale: Locale, badge: string): string => `➡️ ${towards[locale][badge] ?? badge}`;

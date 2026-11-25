@@ -124,7 +124,17 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions, on
             const promoted = String(postsSince(start).at(-1)?.payload.text);
 
             expect(lineup).toBe(
-                '<b>Склади: Нд 06.12 10:00 · North Arena</b>\n\n🔴 <a href="tg://user?id=7001">Name1</a>, <a href="tg://user?id=7002">Name2</a>\n\n🔵 <a href="tg://user?id=7003">Name3</a>, <a href="tg://user?id=7004">Name4</a>'
+                [
+                    '<b>Склади: Нд 06.12 10:00 · North Arena</b>',
+                    '',
+                    '🔴 <b>Червоні · 2</b>',
+                    '<a href="tg://user?id=7001">Name1</a>',
+                    '<a href="tg://user?id=7002">Name2</a>',
+                    '',
+                    '🔵 <b>Сині · 2</b>',
+                    '<a href="tg://user?id=7003">Name3</a>',
+                    '<a href="tg://user?id=7004">Name4</a>'
+                ].join('\n')
             );
             expect(lineup).not.toMatch(/4\.75|9\.5|Σ/u);
             expect(promoted).toBe(

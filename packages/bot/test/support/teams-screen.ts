@@ -19,7 +19,7 @@ interface Shown {
     readonly buttons: readonly (readonly Button[])[];
 }
 
-const titlePattern = /^▶?[🔴🔵🟢🟡⚪🟠] \d+$/u;
+const titlePattern = /^(?:[🔴🔵🟢🟡⚪🟠] \S+ · \d+|➡️ .+)$/u;
 
 export const buttonData = (shown: Shown, label: string): string => {
     const button =
@@ -29,7 +29,7 @@ export const buttonData = (shown: Shown, label: string): string => {
 };
 
 export const playerData = (shown: Shown, name: string): string =>
-    shown.buttons.flat().find(entry => entry.text.replace(/^[▶⭐🔒🧤]+ /u, '') === name)?.callback_data ?? 'm:gone';
+    shown.buttons.flat().find(entry => entry.text.replace(/^(?:[▶⭐🔒🧤]+ )+/u, '') === name)?.callback_data ?? 'm:gone';
 
 export const titleData = (shown: Shown, index: number): string => {
     const titles = shown.buttons.find(row => row.every(button => titlePattern.test(button.text)));
@@ -55,7 +55,7 @@ export const draftTeams = Effect.fn('test.draftTeams')(function* (sessionId: str
     };
 });
 
-export const openEditor = (admin: ReturnType<typeof conversation>) =>
+export const openOverview = (admin: ReturnType<typeof conversation>) =>
     Effect.gen(function* () {
         yield* admin.type('/games');
         yield* admin.tap('Пт 27.11 19:00');
@@ -64,6 +64,17 @@ export const openEditor = (admin: ReturnType<typeof conversation>) =>
                 .screen()
                 .buttons.flat()
                 .find(button => /Склад|Состав/u.test(button.text))?.callback_data ?? 'm:gone'
+        );
+    });
+
+export const openEditor = (admin: ReturnType<typeof conversation>) =>
+    Effect.gen(function* () {
+        yield* openOverview(admin);
+        yield* admin.press(
+            admin
+                .screen()
+                .buttons.flat()
+                .find(button => /Змінити склади|Изменить составы/u.test(button.text))?.callback_data ?? 'm:gone'
         );
     });
 

@@ -24,7 +24,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('🔴 Andriy, Bohdan, Vasyl, Hryhoriy\n🔵 Andriy, Dmytro, Yevhen, Zakhar, Ivan');
             const pasted = admin.screen();
             const { teams } = yield* draftTeams(sessionId);
-            yield* admin.press(buttonData(pasted, '✅ Надіслати в «Games»'));
+            yield* admin.press(buttonData(pasted, '👌 Готово'));
             yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
 
             expect(pasted.text).toContain('«Andriy» двічі у списку — лишив у 🔴.');
@@ -44,7 +44,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.type('Andriy +1');
 
             expect(admin.screen().text).toContain('⚠️ Гра вже завершена або скасована, нічого не надіслано.');
-            expect(admin.screen().text).toContain('👕');
+            expect(admin.screen().text).toContain('✏️ <b>Склади');
         })
     );
 
@@ -96,8 +96,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const { sessionId, people } = yield* teamsGame('teams-guest-host', { groupChatId: -3305, adminId: 335, players: 10 });
             const admin = conversation(recorder, adminNumbered(335));
             yield* openEditor(admin);
-            yield* admin.tap('➕');
             yield* admin.tap('Lev');
+            yield* admin.tap('➕ Гість від Lev');
             yield* db
                 .update(signup)
                 .set({ status: 'out' })
@@ -118,11 +118,11 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const { sessionId } = yield* teamsGame('teams-guest-full', { groupChatId: -3306, adminId: 336, players: 22 });
             const admin = conversation(recorder, adminNumbered(336));
             yield* openEditor(admin);
-            yield* admin.tap('➕');
             yield* admin.tap('Lev');
+            yield* admin.tap('➕ Гість від Lev');
             yield* admin.tap('+1');
             const place = admin.screen();
-            const button = place.buttons.flat().find(entry => entry.text.includes('до Lev'))?.callback_data ?? '';
+            const button = buttonData(place, '⏳ Додати в чергу');
             yield* admin.press(button);
             yield* admin.press(button);
             const guests = yield* db
@@ -151,21 +151,19 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 .where(and(eq(signup.sessionId, sessionId), eq(signup.personId, start.row.state.teams[0]?.[1] ?? '')));
             const comer = yield* syncMember(communityId, { id: 937_101n, firstName: 'Comer' }, 'active');
             yield* db.insert(signup).values({ sessionId, personId: comer, status: 'in' });
-            yield* admin.press(buttonData(admin.screen(), '⬅️ Назад'));
             yield* openEditor(admin);
-            yield* admin.press(buttonData(admin.screen(), '↩️'));
+            yield* admin.press(buttonData(admin.screen(), '↩️ Скасувати останнє'));
             const undone = yield* draftTeams(sessionId);
-            yield* admin.press(buttonData(admin.screen(), '⚖️ Розставити нових'));
-            const placed = yield* draftTeams(sessionId);
-            const locked = placed.teams[1]?.[0] ?? '';
+            const locked = undone.teams[1]?.[0] ?? '';
             yield* admin.press(playerData(admin.screen(), locked));
-            yield* admin.press(buttonData(admin.screen(), '🔒'));
+            yield* admin.press(buttonData(admin.screen(), '🔒 Не чіпати'));
+            yield* admin.press(buttonData(admin.screen(), '👌 Готово'));
             const variants = [];
 
-            for (const label of ['2️⃣']) {
+            for (const _turn of [1, 2]) {
                 const shown = admin.screen();
-                expect(shown.buttons.flat().map(button => button.text)).toContain(label);
-                yield* admin.press(buttonData(shown, label));
+                expect(shown.buttons.flat().some(button => button.text.startsWith('🔀 Інший варіант'))).toBe(true);
+                yield* admin.press(buttonData(shown, '🔀 Інший варіант'));
                 variants.push(yield* draftTeams(sessionId));
             }
 
@@ -176,6 +174,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
 
             for (const shown of variants) {
                 expect(shown.teams[1]).toContain(locked);
+                expect(shown.pending).toEqual([]);
             }
         })
     );

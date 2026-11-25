@@ -72,21 +72,32 @@ describe('the posted line-up', () => {
             [
                 '<b>Склади: Пт 27.11 19:00 · North Arena</b>',
                 '',
-                '🔴 <a href="tg://user?id=501">Andriy</a> +2, <a href="tg://user?id=502">Bohdan</a> 🧤',
+                '🔴 <b>Червоні · 4</b>',
+                '<a href="tg://user?id=501">Andriy</a> +2',
+                '<a href="tg://user?id=502">Bohdan</a> 🧤',
                 '',
-                '🔵 <a href="tg://user?id=503">Vasyl &amp; &lt;Co&gt;</a>, Hryhoriy, друг Andriy, Dmytro',
+                '🔵 <b>Сині · 4</b>',
+                '<a href="tg://user?id=503">Vasyl &amp; &lt;Co&gt;</a>',
+                'Hryhoriy',
+                'друг Andriy',
+                'Dmytro',
                 '',
-                '🟢 Ivan, Oleh, Petro, Friend Mark'
+                '🟢 <b>Зелені · 4</b>',
+                'Ivan',
+                'Oleh',
+                'Petro',
+                'Friend Mark'
             ].join('\n')
         );
         expect(lineupPostHtml({ ...post, showHandles: true, isUpdate: true, locale: 'ru' })).toContain('Обновлённые составы\n<b>Составы:');
-        expect(lineupPostHtml({ ...post, showHandles: true })).toContain('🔴 @andriy_k +2');
-        expect(
-            lineupPostHtml({
-                ...post,
-                teams: [teams[0] ?? { badge: '', members: [] }, { badge: '🔵', members: [member('A'), member('B'), member('C')] }]
-            })
-        ).toContain('🔵 A, B, C (+1 з команди, що програла)');
+        expect(lineupPostHtml({ ...post, showHandles: true, isUpdate: true, locale: 'ru' })).toContain('🔴 <b>Красные · 4</b>');
+        expect(lineupPostHtml({ ...post, showHandles: true })).toContain('\n@andriy_k +2\n');
+        const short = {
+            ...post,
+            teams: [teams[0] ?? { badge: '', members: [] }, { badge: '🔵', members: [member('A'), member('B'), member('C')] }]
+        };
+        expect(lineupPostHtml(short)).toContain('🔵 <b>Сині · 3</b> (+1 з команди, що програла)\nA\nB\nC');
+        expect(lineupPostHtml({ ...short, locale: 'ru' })).toContain('🔵 <b>Синие · 3</b> (+1 от проигравших)');
     });
 
     it('stays under the Telegram limit by shortening long names', () => {

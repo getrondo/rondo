@@ -18,7 +18,10 @@ const recorder = makeRecorder();
 const at = (time: string) => new Date(`2026-11-27T${time}:00Z`);
 const proposals = (chatId: number) =>
     recorder.calls.filter(
-        call => call.method === 'sendMessage' && call.payload.chat_id === chatId && String(call.payload.text).includes('готові')
+        call =>
+            call.method === 'sendMessage' &&
+            call.payload.chat_id === chatId &&
+            String(call.payload.text).includes('Поки нічого не надіслано.')
     ).length;
 const notes = (chatId: number) =>
     recorder.calls

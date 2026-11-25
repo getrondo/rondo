@@ -11,7 +11,7 @@ import * as Predicate from 'effect/Predicate';
 import { conversation } from './support/conversation';
 import { grantOrganizer } from './support/season';
 import { teamsGame } from './support/teams-game';
-import { buttonData, draftTeams, openEditor, labelsOf, playerData, titleData } from './support/teams-screen';
+import { buttonData, draftTeams, openEditor, openOverview, labelsOf, playerData, titleData } from './support/teams-screen';
 import { adminNumbered, menuTestLayer } from './support/test-layer';
 
 const recorder = makeRecorder();
@@ -32,23 +32,35 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* admin.press(titleData(admin.screen(), 0));
             const moved = yield* draftTeams(sessionId);
             yield* admin.press(playerData(admin.screen(), second));
-            yield* admin.press(buttonData(admin.screen(), '✖️'));
+            yield* admin.press(buttonData(admin.screen(), '✖️ Скасувати вибір'));
             const deselected = admin.screen();
             const locked = swapped.teams[0]?.[0] ?? '';
             yield* admin.press(playerData(admin.screen(), locked));
-            yield* admin.press(buttonData(admin.screen(), '🔒'));
-            yield* admin.press(buttonData(admin.screen(), '🔀'));
+            yield* admin.press(buttonData(admin.screen(), '🔒 Не чіпати'));
+            const lockedScreen = admin.screen();
+            yield* admin.press(buttonData(admin.screen(), '🔀 Перемішати інших'));
             const shuffled = yield* draftTeams(sessionId);
-            yield* admin.press(buttonData(admin.screen(), '↩️'));
+            yield* admin.press(buttonData(admin.screen(), '↩️ Скасувати останнє'));
             const undone = yield* draftTeams(sessionId);
             const keeper = undone.teams[1]?.[3] ?? '';
             yield* admin.press(playerData(admin.screen(), keeper));
-            yield* admin.press(buttonData(admin.screen(), '🧤'));
+            yield* admin.press(buttonData(admin.screen(), '🧤 Воротар'));
             const marked = admin.screen();
 
-            expect(labelsOf(selected).find(row => row[0] === '🔒')).toEqual(['🔒', '🧤', '✖️']);
-            expect(labelsOf(selected)).toContainEqual(['🗑 Прибрати']);
-            expect(selected.text).toContain(`▶ ${first}: торкнись іншого гравця`);
+            expect(labelsOf(selected).slice(-4)).toEqual([
+                ['🧤 Воротар', '🔒 Не чіпати'],
+                ['🚫 Не грає'],
+                [`➕ Гість від ${first}`],
+                ['✖️ Скасувати вибір']
+            ]);
+            expect(labelsOf(selected)[0]).toEqual(['🔴 Червоні · 7', '➡️ до Синіх']);
+            expect(selected.text).toContain(`Вибрано: <b>${first}</b> (Червоні)`);
+            expect(
+                labelsOf(lockedScreen)
+                    .flat()
+                    .some(label => label.startsWith('🔒') && label.endsWith(locked))
+            ).toBe(true);
+            expect(labelsOf(lockedScreen).flat()).toContain('🔀 Перемішати інших');
             expect(swapped.teams[0]).toContain(second);
             expect(swapped.teams[1]).toContain(first);
             expect(moved.teams.map(members => members.length)).toEqual([8, 6]);
@@ -61,27 +73,30 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
         })
     );
 
-    it.effect('picks colours by a second tap on a title, keeps two teams apart in colour and shows four teams two at a time', () =>
+    it.effect('picks colours in the settings, keeps two teams apart in colour and shows four teams two at a time', () =>
         Effect.gen(function* () {
-            yield* teamsGame('teams-colours', { groupChatId: -3002, adminId: 302, players: 26, keepers: 4 });
+            const { sessionId } = yield* teamsGame('teams-colours', { groupChatId: -3002, adminId: 302, players: 26, keepers: 4 });
             const admin = conversation(recorder, adminNumbered(302, 'ru'));
             yield* openEditor(admin);
             const four = admin.screen();
-            yield* admin.press(titleData(four, 1));
-            yield* admin.press(titleData(admin.screen(), 1));
+            yield* admin.press(buttonData(four, '⚙️ Уровни и цвета'));
+            const settings = admin.screen();
+            yield* admin.press(buttonData(settings, '🎨 🔵 Синие'));
             const palette = admin.screen();
-            yield* admin.press(buttonData(palette, '🔴'));
-            const recoloured = admin.screen();
-            yield* admin.press(buttonData(recoloured, '▶'));
+            yield* admin.press(buttonData(palette, '🔴 Красные'));
+            const { row } = yield* draftTeams(sessionId);
+            yield* admin.press(buttonData(admin.screen(), '⬅️ К составам'));
+            yield* admin.press(buttonData(admin.screen(), 'Другие две команды ▶'));
             const second = admin.screen();
 
-            expect(labelsOf(four)[0]).toEqual(['🔴 7', '🔵 7', '🟢 6', '🟡 6']);
+            expect(labelsOf(four)[0]).toEqual(['🔴 Красные · 7', '🔵 Синие · 7']);
             expect(labelsOf(four)[1]).toHaveLength(2);
-            expect(labelsOf(four).some(row => row.join(',') === '◀,1/2,▶')).toBe(true);
-            expect(palette.text).toContain('🎨 Выбери цвет для 🔵');
-            expect(labelsOf(palette)[0]).toEqual(['🔴', '✓🔵', '🟢', '🟡', '⚪', '🟠']);
-            expect(labelsOf(recoloured)[0]).toEqual(['🔵 7', '🔴 7', '🟢 6', '🟡 6']);
-            expect(labelsOf(second).some(row => row.join(',') === '◀,2/2,▶')).toBe(true);
+            expect(labelsOf(four).flat()).toContain('🟢🟡 Другие две команды ▶');
+            expect(palette.text).toContain('🎨 Цвет для 🔵 Синие:');
+            expect(labelsOf(palette)[0]).toEqual(['🔴 Красные', '✓🔵 Синие']);
+            expect(row.state.colours.slice(0, 2)).toEqual(['blue', 'red']);
+            expect(labelsOf(second)[0]).toEqual(['🟢 Зелёные · 6', '🟡 Жёлтые · 6']);
+            expect(labelsOf(second).flat()).toContain('🔵🔴 Другие две команды ▶');
             expect(admin.tidy()).toEqual({ unanswered: [], oversized: [] });
         })
     );
@@ -108,11 +123,11 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const toasts = recorder.calls
                 .filter(call => call.method === 'answerCallbackQuery')
                 .map(call => (Predicate.isString(call.payload.text) ? call.payload.text : ''));
-            yield* admin.press(buttonData(uneven, '↩️ '));
+            yield* admin.press(buttonData(uneven, '⚖️ Вирівняти:'));
             const evened = yield* draftTeams(sessionId);
 
             expect(moved.teams.map(members => members.length)).toEqual([5, 7]);
-            expect(uneven.text).toContain('⚠️ Команди відрізняються на двох');
+            expect(uneven.text).toContain('⚠️ Команди нерівні.');
             expect(twice.row.version).toBe(moved.row.version);
             expect(told.text).toContain('🔄 Составы изменил другой админ');
             expect(toasts.at(-1)).toBe('🔄 Составы изменил другой админ — вот новые.');
@@ -150,19 +165,19 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                     actorPersonId: null
                 });
                 const admin = conversation(recorder, adminNumbered(305));
-                yield* openEditor(admin);
+                yield* openOverview(admin);
                 const offered = admin.screen();
                 yield* admin.tap('Не зараз');
                 const dismissed = admin.screen();
-                yield* openEditor(admin);
+                yield* openOverview(admin);
                 const again = admin.screen();
                 const second = conversation(recorder, adminNumbered(306, 'ru'));
-                yield* openEditor(second);
+                yield* openOverview(second);
                 const third = conversation(recorder, adminNumbered(307));
-                yield* openEditor(third);
+                yield* openOverview(third);
 
                 expect(offered.text).toContain('💡 Хочеш рівніші команди? Познач сильних, це один дотик.');
-                expect(labelsOf(offered)).toContainEqual(['🎚 Позначити сильних']);
+                expect(labelsOf(offered)).toContainEqual(['⚙️ Позначити сильних']);
                 expect(labelsOf(offered)).toContainEqual(['Не зараз']);
                 expect(dismissed.text).not.toContain('💡 Хочеш');
                 expect(again.text).not.toContain('💡 Хочеш');

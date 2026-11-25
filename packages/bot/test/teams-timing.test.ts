@@ -63,9 +63,10 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             expect(first.proposed).toBe(1);
             expect(again.proposed).toBe(0);
             expect(proposal).toHaveLength(1);
-            expect(String(proposal[0]?.payload.text)).toContain(
-                '👕 Склади на Пт 27.11 19:00 · North Arena готові — глянь і надішли, коли зручно.'
+            expect(String(proposal[0]?.payload.text)).toMatch(
+                /^<b>Склади: Пт 27\.11 19:00 · North Arena<\/b>\n\n🔴 <b>Червоні · 6<\/b>\n/u
             );
+            expect(String(proposal[0]?.payload.text)).toContain('Поки нічого не надіслано.');
             expect(proposal[0]?.payload.disable_notification).toBe(true);
             expect(few.map(call => String(call.payload.text))).toEqual([
                 '👕 На Пт 27.11 19:00 · North Arena поки записалося 6 — замало для команд. Запропоную, коли буде 8.'
@@ -141,29 +142,27 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* more.type('/games');
             yield* more.tap('Пт 27.11 19:00');
             yield* more.tap('👕 Склади');
-            yield* more.press(buttonData(more.screen(), '🔴'));
-            yield* more.press(buttonData(more.screen(), '🔴'));
-            yield* more.press(buttonData(more.screen(), '⬅️ До складів'));
             const three = yield* draftTeams(extra.sessionId);
-            yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
             yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
             yield* setNow(at('21:30').getTime());
             yield* admin.type('/games');
             yield* admin.tap('Пт 27.11');
             const card = labelsOf(admin.screen());
-            yield* admin.press(buttonData(admin.screen(), '🏆 🔴'));
+            yield* admin.press(buttonData(admin.screen(), '🏆 Червоні'));
             const saved = admin.screen().text;
-            yield* admin.press(buttonData(admin.screen(), '🏆 🔵'));
+            const savedLabels = labelsOf(admin.screen());
+            yield* admin.press(buttonData(admin.screen(), '↩️ Змінити результат'));
+            yield* admin.press(buttonData(admin.screen(), '🏆 Сині'));
             const corrected = admin.screen();
             const learned = yield* db.select().from(rating).where(eq(rating.model, 'openskill_pl'));
             const ranks = yield* db.select({ rank: team.rank }).from(team).where(eq(team.sessionId, sessionId)).orderBy(team.ordinal);
 
             expect(two.flat()).not.toContain('🔢 Зробити 3 команди');
             expect(three.teams).toHaveLength(3);
-            expect(card.find(row => row[0] === '🏆 🔴')).toEqual(['🏆 🔴', '🏆 🔵', '🤝']);
-            expect(saved).toContain('🏆 Записав, дякую!');
-            expect(corrected.text).toContain('🏆 Виправив результат.');
-            expect(labelsOf(corrected).find(row => row.includes('✓🏆 🔵'))).toEqual(['🏆 🔴', '✓🏆 🔵', '🤝']);
+            expect(card).toEqual([['🏆 Червоні', '🏆 Сині'], ['🤝 Нічия'], ['✏️ Хто грав', '🏠 Меню']]);
+            expect(saved).toContain('🏆 Записав: Червоні виграли.');
+            expect(savedLabels).toEqual([['↩️ Змінити результат'], ['✏️ Хто грав', '🏠 Меню']]);
+            expect(corrected.text).toContain('🏆 Записав: Сині виграли.');
             expect(ranks.map(row => row.rank)).toEqual([2, 1]);
             expect(learned.length).toBeGreaterThanOrEqual(12);
             expect(saved).not.toMatch(/[μσ💪]|рівень/u);
@@ -178,8 +177,8 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             yield* russian.press('m:h');
             yield* runTeamsTick(at('17:05'));
 
-            expect(String(privateTo(361).at(-1)?.payload.text)).toContain('Составы на Пт 27.11 19:00 · North Arena готовы');
-            expect(String(privateTo(362).at(-1)?.payload.text)).toContain('Склади на Пт 27.11 19:00 · North Arena готові');
+            expect(String(privateTo(361).at(-1)?.payload.text)).toContain('Пока ничего не отправлено.');
+            expect(String(privateTo(362).at(-1)?.payload.text)).toContain('Поки нічого не надіслано.');
         })
     );
 
@@ -192,7 +191,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const admin = conversation(recorder, adminNumbered(371));
             yield* admin.type('/newgame');
             const creating = admin.screen();
-            yield* admin.tapOn(sentMessage(proposal), '🔀');
+            yield* admin.tapOn(sentMessage(proposal), '✏️ Змінити склади');
             const [state] = yield* db.select({ messageId: adminState.messageId }).from(adminState).where(eq(adminState.tgUserId, 371n));
 
             expect(state?.messageId).toBe(creating.id);

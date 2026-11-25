@@ -82,17 +82,23 @@ and five undo steps. Every change is an update `where version = ?`; a tap on an 
 admin's repeated tap is ignored, another admin's change is shown with "the teams were changed by another admin". Callback
 data is `t:<game>:<version>:<page>:<op>:<args>`, at most 64 bytes, and every tap checks the admin and the game's community.
 
-The send button names every destination ("✅ Надіслати в «Games» і мені") and opens a preview with the exact text and, after a
-first post, the diff. The ✅ in the preview carries a fingerprint of the chats, topics and text it shows; under the community
-lock the plan is made again and a different fingerprint sends nothing and shows a fresh preview. `play.lineup_delivery` keeps
-one claim and receipt per destination: each send is one bounded Telegram call with its own receipt, so a refusal or timeout
-in one group never touches another. An unknown result is shown with its own "✅ Немає, надіслати в «X»" button, whose random
-token is rotated on every claim; it is never resent by itself. "Nothing changed" compares the rendered text with the last
-delivered text of that destination, and a ✅ appears only when something would be sent. Groups get one message that is edited
-later; only messages the bot sent are edited, organizer posts and forwarded copies are only remembered. When the poll
-audience is the admin's private chat, the clean message to forward goes below and the editor follows under it with the
-hint; after a first post a new message is headed "Оновлені склади". The post reads back through our squad importer, and a linked
-group that sees the forwarded copy only remembers the message.
+The first screen (the hourly proposal, the card's 👕 Склади) is the line-up exactly as it goes out, «Поки нічого не
+надіслано» and four rows: ✅ Надіслати в «X» (several destinations are listed in the text and the button says ✅ Надіслати),
+✏️ Змінити склади, 🔀 Інший варіант (n з 3) with ➕ Хтось прийшов, and ⬅️ До гри. ✅ sends at once: it carries a fingerprint of
+the chats, topics and text shown; under the community lock the plan is made again, and a different fingerprint sends nothing
+and shows the fresh line-up naming what changed. The editor shows team titles as words with counts («🔴 Червоні · 7»), names
+as «Vasyl T.» (longer only for clashes, guests «Lev P. +1»), and only worded buttons: ↩️ Скасувати останнє after a change,
+🔀 Перемішати (… інших with a lock), ➕ Хтось прийшов, ⚙️ Рівні та кольори and 👌 Готово back to the line-up with «Що змінилося».
+A selected player turns the other titles into ➡️ до Синіх and offers 🧤 Воротар, 🔒 Не чіпати, 🚫 Не грає (a removal before the
+kick-off, «не прийшов» or «прибрати» after it; a promotion from the queue is named first), ➕ Гість від Vasyl and ✖️ Скасувати
+вибір. A full game asks ⏳ Додати в чергу or ➕ Додати понад ліміт; queued players are listed «У черзі» and never counted.
+`play.lineup_delivery` keeps one claim and receipt per destination and `team_draft.publish_token` one publish of the game at a
+time: each send is one bounded Telegram call with its own receipt, a refusal or timeout in one group never touches another, a
+claim younger than a minute is busy, and an unknown result gets its own ✅ Немає, надіслати в «X». The post has a bold header,
+«🔴 <b>Червоні · 7</b>» per team and one player per line; only messages the bot sent are edited. For the admin's own chat the
+clean message to forward is the newest one and the instruction is on the screen above it; after a first post a new message
+is headed "Оновлені склади". After the kick-off the card asks «Як зіграли?» with 🏆 per team and 🤝 Нічия, then «Записав: …»
+and ↩️ Змінити результат.
 
 Private texts follow the admin's language from their last update (stored on every message and tap), Ukrainian when it
 is unknown; group texts use the community's configured language.

@@ -31,7 +31,8 @@ import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 
 import { teamsData } from './teams-callback';
-import { editorScreen, stackRows } from './teams-editor.screen';
+import { stackRows } from './teams-editor.screen';
+import { overviewScreen } from './teams-publish';
 import { teamsText } from './teams-text';
 import { loadView } from './teams-view';
 
@@ -128,11 +129,9 @@ export const proposeTeamsFor = Effect.fn('Bot.proposeTeamsFor')(function* (game:
         const reached: boolean[] = [];
 
         for (const admin of admins) {
-            const isReached = yield* loadView(admin, game.id, {
-                offerLevels: true,
-                notes: [teamsText(admin.locale, 'auto', { label: labelOf(admin.locale, inputs.game) })]
-            }).pipe(
-                Effect.flatMap(view => sendScreen(admin, editorScreen(admin, view))),
+            const isReached = yield* loadView(admin, game.id, { offerLevels: true }).pipe(
+                Effect.flatMap(view => overviewScreen(admin, view)),
+                Effect.flatMap(screen => sendScreen(admin, screen)),
                 Effect.catchCause(cause => Effect.logError('[teams] proposal screen failed', cause).pipe(Effect.as(false)))
             );
             reached.push(isReached);
