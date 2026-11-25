@@ -134,14 +134,14 @@ describe('the posted line-up', () => {
 
     it('shows what changed between two line-ups', () => {
         const before = [
-            { personId: 'a', name: 'A', badge: '🔴' },
-            { personId: 'b', name: 'B', badge: '🔵' },
-            { personId: 'c', name: 'C', badge: '🔵' }
+            { personId: 'a', name: 'A', badge: '🔴', team: 1 },
+            { personId: 'b', name: 'B', badge: '🔵', team: 2 },
+            { personId: 'c', name: 'C', badge: '🔵', team: 2 }
         ];
         const after = [
-            { personId: 'a', name: 'A', badge: '🔵' },
-            { personId: 'b', name: 'B', badge: '🔵' },
-            { personId: 'd', name: 'D', badge: '🔴' }
+            { personId: 'a', name: 'A', badge: '🔵', team: 2 },
+            { personId: 'b', name: 'B', badge: '🔵', team: 2 },
+            { personId: 'd', name: 'D', badge: '🔴', team: 1 }
         ];
 
         expect(lineupDiff(before, after)).toEqual(['A: 🔴 → 🔵', '+ D 🔴', '− C']);

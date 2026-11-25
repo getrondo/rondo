@@ -80,7 +80,7 @@ export const teamsTextRu = {
     readapt: '🔄 Состав изменился: {changes}',
     readaptReady: 'Расставил с наименьшими изменениями:',
     accept: '👌 Принять',
-    acceptSend: '✅ Принять и отправить',
+    acceptSend: '👌 Принять и показать пост',
     rebalanceScratch: '🔁 Разделить заново',
     edit: '✏️ Редактировать',
     resultAsk: '🏆 Кто выиграл вечер?',

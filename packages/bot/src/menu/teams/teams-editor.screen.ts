@@ -212,6 +212,7 @@ export const editorScreen = (user: MenuUser, view: EditorView): Screen => {
     });
     const pages = Math.ceil(state.teams.length / pageSize);
     const suggestedCount = usualTeamCount(players.length);
+    const due = view.plan.deliveries.filter(delivery => delivery.isDue);
 
     return {
         text: textOf(user, view, isDefined(back) ? back.personId : null),
@@ -269,7 +270,9 @@ export const editorScreen = (user: MenuUser, view: EditorView): Screen => {
                 base,
                 view.plan.deliveries.filter(delivery => isUnsure(delivery))
             ),
-            [{ text: sendLabel(user.locale, view.plan.deliveries, view.plan.isUpdate), callback_data: teamsData(base, 'x') }],
+            ...(isNotEmptyArray(due)
+                ? [[{ text: sendLabel(user.locale, due, view.plan.isUpdate), callback_data: teamsData(base, 'x') }]]
+                : []),
             [{ text: teamsText(user.locale, 'back'), callback_data: `m:g:${toShortId(view.row.sessionId)}` }]
         ])
     };

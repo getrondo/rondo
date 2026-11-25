@@ -49,7 +49,9 @@ export const postOf = (
 ): LineupPost => ({ title: formatSessionLabel(options.locale, game), teams, ...options });
 
 export const placementOf = (teams: readonly PostTeam[]): TeamPlacement[] =>
-    teams.flatMap(entry => entry.members.map(member => ({ personId: member.personId, name: member.name, badge: entry.badge })));
+    teams.flatMap((entry, index) =>
+        entry.members.map(member => ({ personId: member.personId, name: member.name, badge: entry.badge, team: index + 1 }))
+    );
 
 export const publishedPlacement = Effect.fn('Core.publishedPlacement')(function* (sessionId: string) {
     const db = yield* Db;
@@ -71,7 +73,8 @@ export const publishedPlacement = Effect.fn('Core.publishedPlacement')(function*
     return rows.map((row): TeamPlacement => ({
         personId: row.personId,
         name: row.name,
-        badge: badgeOfRow({ emoji: row.emoji, name: row.colour ?? '' })?.badge ?? `${row.ordinal}.`
+        badge: badgeOfRow({ emoji: row.emoji, name: row.colour ?? '' })?.badge ?? `${row.ordinal}.`,
+        team: row.ordinal
     }));
 });
 

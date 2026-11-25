@@ -89,7 +89,10 @@ export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInp
     const inputs = input.loaded?.inputs ?? (yield* loadTeamInputs(input.communityId, input.sessionId));
     const teams = postTeamsOf(input.state ?? row.state, inputs.members);
     const previous = yield* publishedPlacement(input.sessionId);
-    const diff = isNotEmptyArray(previous) ? lineupDiff(previous, placementOf(teams)) : [];
+    const placement = placementOf(teams);
+    const diff = isNotEmptyArray(previous) ? lineupDiff(previous, placement) : [];
+    const teamOf = new Map(previous.map(entry => [entry.personId, entry.team]));
+    const isSquadChanged = previous.length !== placement.length || placement.some(entry => teamOf.get(entry.personId) !== entry.team);
     const audience = yield* audienceForTeams(input.communityId, input.sessionId, input.fallback);
     const stored = yield* db.select().from(lineupDelivery).where(eq(lineupDelivery.sessionId, input.sessionId));
     const results = yield* db.select({ at: ratingEvent.at }).from(ratingEvent).where(eq(ratingEvent.sessionId, input.sessionId)).limit(1);
@@ -120,7 +123,7 @@ export const planLineup = Effect.fn('Core.planLineup')(function* (input: PlanInp
             )
         };
     });
-    const clearsResult = isNotEmptyArray(results) && isNotEmptyArray(diff);
+    const clearsResult = isNotEmptyArray(results) && isSquadChanged;
 
     return {
         version: row.version,

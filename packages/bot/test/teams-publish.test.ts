@@ -1,7 +1,7 @@
 import { expect, layer } from '@effect/vitest';
 import { isDefined } from '@rnw-community/shared';
 import { setTier } from '@rondo/core/teams/team.service';
-import { telegramAccount } from '@rondo/db/schema/identity.schema';
+import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { community } from '@rondo/db/schema/org.schema';
 import { messageRef } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
@@ -105,7 +105,6 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 const first = sentTo(322)
                     .filter(call => call.method === 'sendMessage')
                     .slice(-2);
-                yield* admin.press(buttonData(admin.screen(), '✅ Отправить обновлённые'));
                 const unchanged = admin.screen();
                 const quiet = sentTo(322).filter(call => call.method === 'sendMessage').length;
                 yield* openEditor(second);
@@ -139,8 +138,12 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
                 expect(String(first[0]?.payload.text)).toMatch(/^<b>Склади: Пт 27\.11 19:00/u);
                 expect(String(first[1]?.payload.text)).toContain('☝️ Составы выше: нажми и удерживай → Переслать → группа.');
                 expect(done.text).toContain('📨 Составы уже у тебя.');
-                expect(unchanged.text).toContain('👌 Ничего не изменилось — ничего не отправляю.');
-                expect(labelsOf(unchanged).flat()).not.toContain('✅ Отправить обновлённые');
+                expect(unchanged.text).toContain('📨 Составы уже у тебя.');
+                expect(
+                    labelsOf(unchanged)
+                        .flat()
+                        .filter(label => label.startsWith('✅'))
+                ).toEqual([]);
                 expect(sentTo(322).filter(call => call.method === 'sendMessage')).toHaveLength(quiet);
                 expect(secondPreview.text).toContain('Що змінилося:');
                 expect(String(update[0]?.payload.text)).toMatch(/^Оновлені склади\n<b>Склади:/u);
@@ -198,6 +201,86 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const edited = sentTo(-1_000_003_205);
 
             expect(edited.map(call => [call.method, call.payload.message_id])).toEqual([
+                ['editMessageText', Predicate.hasProperty(posted?.result, 'message_id') ? posted.result.message_id : 0]
+            ]);
+        })
+    );
+
+    it.effect('names a group and me together, refreshes a changed preview and resends an unknown delivery only from its own button', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { sessionId } = yield* teamsGame('teams-post-mixed', { groupChatId: -3206, adminId: 326, players: 8 });
+            yield* db
+                .insert(messageRef)
+                .values({ chatId: 326n, messageId: 2, purpose: 'poll', entityType: 'session', entityId: sessionId });
+            const admin = conversation(recorder, adminNumbered(326));
+            yield* openEditor(admin);
+            const editor = admin.screen();
+            yield* admin.press(buttonData(editor, '✅ Надіслати в «Games» і мені'));
+            const preview = admin.screen();
+            yield* db.update(person).set({ displayName: 'Andriy K' }).where(eq(person.displayName, 'Andriy'));
+            yield* admin.press(buttonData(preview, '✅ Надіслати в «Games» і мені'));
+            const changed = admin.screen();
+            const quiet = sentTo(-3206).length;
+
+            yield* teamsGame('teams-post-unknown', { groupChatId: -3207, adminId: 327, players: 8 });
+            const other = conversation(recorder, adminNumbered(327));
+            yield* openEditor(other);
+            yield* other.press(buttonData(other.screen(), '✅ Надіслати в «Games»'));
+            recorder.failures.set('sendMessage', new Error('socket hang up'));
+            yield* other.press(buttonData(other.screen(), '✅ Надіслати в «Games»'));
+            recorder.failures.delete('sendMessage');
+            const unknown = other.screen();
+            const retry = buttonData(unknown, '✅ Немає, надіслати в «Games»');
+            yield* other.press(retry);
+            const confirm = other.screen();
+            yield* other.press(buttonData(confirm, '✅ Немає, надіслати в «Games»'));
+            const done = other.screen();
+            yield* other.press(retry);
+            const delivered = sentTo(-3207).filter(call => call.method === 'sendMessage' && isDefined(call.result));
+
+            expect(preview.text).toContain('Так буде в «Games» і в тебе:');
+            expect(changed.text).toContain('🔄 Дані змінилися, нічого не надіслано. Ось як буде тепер:');
+            expect(changed.text).toContain('Andriy K');
+            expect(quiet).toBe(0);
+            expect(unknown.text).toContain('⚠️ Не знаю, чи дійшли склади в «Games». Зазирни туди.');
+            expect(labelsOf(unknown).flat()).not.toContain('✅ Надіслати в «Games»');
+            expect(confirm.text).toContain('Так буде в «Games»:');
+            expect(done.text).toContain('✅ Склади в «Games».');
+            expect(labelsOf(done).flat()).not.toContain('✅ Немає, надіслати в «Games»');
+            expect(delivered).toHaveLength(1);
+        })
+    );
+
+    it.effect('posts its own line-up next to an organizer post and a forwarded copy and edits only its own message', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { sessionId } = yield* teamsGame('teams-post-own', { groupChatId: -3208, adminId: 328, players: 8 });
+            yield* deliver({
+                message: {
+                    message_id: 9301,
+                    date: Math.floor(Date.parse('2026-11-27T16:00:00Z') / 1000),
+                    chat: { id: -3208, type: 'supergroup', title: 'Games' },
+                    from: { id: 328, is_bot: false, first_name: 'Admin 328' },
+                    text: 'Склади: Пт 27.11 19:00\n\n🔴 Andriy, Bohdan, Vasyl, Hryhoriy\n\n🔵 Dmytro, Yevhen, Zakhar, Ivan'
+                }
+            });
+            const organizer = yield* db
+                .select()
+                .from(messageRef)
+                .where(and(eq(messageRef.chatId, -3208n), eq(messageRef.messageId, 9301)));
+            const admin = conversation(recorder, adminNumbered(328));
+            yield* openEditor(admin);
+            yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
+            yield* admin.press(buttonData(admin.screen(), '✅ Надіслати в «Games»'));
+            const posted = sentTo(-3208).at(-1);
+            yield* swapFirstTwo(admin, sessionId);
+            yield* admin.press(buttonData(admin.screen(), '✅ Оновити в «Games»'));
+            yield* admin.press(buttonData(admin.screen(), '✅ Оновити в «Games»'));
+
+            expect(organizer.map(ref => ref.purpose)).toEqual(['lineup']);
+            expect(sentTo(-3208).map(call => [call.method, call.payload.message_id ?? null])).toEqual([
+                ['sendMessage', null],
                 ['editMessageText', Predicate.hasProperty(posted?.result, 'message_id') ? posted.result.message_id : 0]
             ]);
         })

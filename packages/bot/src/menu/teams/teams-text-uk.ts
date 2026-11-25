@@ -78,7 +78,7 @@ export const teamsTextUk = {
     readapt: '🔄 Склад змінився: {changes}',
     readaptReady: 'Розставив з найменшими змінами:',
     accept: '👌 Прийняти',
-    acceptSend: '✅ Прийняти й надіслати',
+    acceptSend: '👌 Прийняти й показати пост',
     rebalanceScratch: '🔁 Поділити заново',
     edit: '✏️ Редагувати',
     resultAsk: '🏆 Хто виграв вечір?',

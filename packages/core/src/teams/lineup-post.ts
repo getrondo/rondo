@@ -78,6 +78,7 @@ export interface TeamPlacement {
     readonly personId: string;
     readonly name: string;
     readonly badge: string;
+    readonly team: number;
 }
 
 export const lineupDiff = (before: readonly TeamPlacement[], after: readonly TeamPlacement[]): string[] => {

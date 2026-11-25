@@ -3,7 +3,7 @@ import { isDefined } from '@rnw-community/shared';
 import { person } from '@rondo/db/schema/identity.schema';
 import { telegramChat } from '@rondo/db/schema/org.schema';
 import { messageRef } from '@rondo/db/schema/platform.schema';
-import { lineupDelivery, teamDraft } from '@rondo/db/schema/play.schema';
+import { lineupDelivery, ratingEvent, team, teamDraft, teamMember } from '@rondo/db/schema/play.schema';
 import { signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { testDbLayer } from '@rondo/db/testing/test-db.layer';
@@ -19,6 +19,7 @@ import { setColour, swapPlayers } from '../src/teams/draft-state';
 import { planLineup } from '../src/teams/lineup-plan';
 import { lineupChanged, publishLineup } from '../src/teams/publish-lineup';
 import { changeDraft, openDraft } from '../src/teams/team-draft.service';
+import { recordResult } from '../src/teams/team-result';
 import { seedGame } from '../src/testing/seed-game';
 
 const blocked = new Map<number, Error>();
@@ -118,7 +119,7 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             );
             const edited = yield* publishPlanned(game);
             blocked.set(-7201, refusal('editMessageText', 'Bad Request: message can not be edited'));
-            const [first0 = '', first1 = ''] = recoloured.row.state.teams.map(team => team[0] ?? '');
+            const [first0 = '', first1 = ''] = recoloured.row.state.teams.map(members => members[0] ?? '');
             yield* changeDraft({ sessionId: game.sessionId, version: recoloured.row.version, key: 'w', actorPersonId: null }, state =>
                 Effect.succeed(swapPlayers(state, first0, first1))
             );
@@ -154,6 +155,41 @@ layer(testLayer, { timeout: 60_000 })('line-up delivery per destination', it => 
             expect(renamed).toMatchObject({ reason: lineupChanged });
             expect(sent.deliveries.map(delivery => delivery.status)).toEqual(['sent', 'sent']);
             expect(recorder.calls.filter(call => call.payload.chat_id === -7302).map(call => call.payload.message_thread_id)).toEqual([9]);
+        })
+    );
+
+    it.effect('stores exactly the posted squad and keeps the result through a republish that does not change it', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const game = yield* twoGroupGame('delivery-squad', [-7401, -7402], 74_000);
+            const posted = yield* publishPlanned(game);
+            yield* recordResult({ ...game, winner: 1, actorPersonId: null, now: new Date('2026-12-04T20:30:00Z') });
+            const [row] = yield* db.select().from(teamDraft).where(eq(teamDraft.sessionId, game.sessionId));
+            const recoloured = yield* changeDraft(
+                { sessionId: game.sessionId, version: row?.version ?? 0, key: 'c', actorPersonId: null },
+                state => Effect.succeed(setColour(state, 1, 'yellow'))
+            );
+            const plan = yield* planLineup({ ...game, locale: 'uk', privateChatId: null, fallback: Option.none() });
+            yield* publishPlanned(game);
+            const ranks = yield* db.select({ rank: team.rank }).from(team).where(eq(team.sessionId, game.sessionId)).orderBy(team.ordinal);
+            const members = yield* db
+                .select({ personId: teamMember.personId, ordinal: team.ordinal })
+                .from(teamMember)
+                .innerJoin(team, eq(team.id, teamMember.teamId))
+                .where(eq(teamMember.sessionId, game.sessionId));
+            const events = yield* db.select().from(ratingEvent).where(eq(ratingEvent.sessionId, game.sessionId));
+
+            expect(posted.deliveries.map(delivery => delivery.status)).toEqual(['sent', 'sent']);
+            expect(plan.clearsResult).toBe(false);
+            expect(ranks.map(entry => entry.rank)).toEqual([1, 2]);
+            expect(events).toHaveLength(8);
+            expect(
+                members.toSorted((left, right) => left.personId.localeCompare(right.personId)).map(entry => [entry.personId, entry.ordinal])
+            ).toEqual(
+                recoloured.row.state.teams
+                    .flatMap((personIds, index) => personIds.map(personId => [personId, index + 1]))
+                    .toSorted((left, right) => String(left[0]).localeCompare(String(right[0])))
+            );
         })
     );
 });
