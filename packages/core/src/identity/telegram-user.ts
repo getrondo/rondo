@@ -2,7 +2,7 @@ import { isDefined, isEmptyArray, isNotEmptyString } from '@rnw-community/shared
 import { person, telegramAccount } from '@rondo/db/schema/identity.schema';
 import { membership } from '@rondo/db/schema/org.schema';
 import { Db } from '@rondo/db/service/db.service';
-import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
@@ -29,7 +29,18 @@ export const upsertTelegramUser = Effect.fn('Core.upsertTelegramUser')(function*
             const [before] = yield* transaction
                 .select({ firstName: telegramAccount.firstName, lastName: telegramAccount.lastName })
                 .from(telegramAccount)
-                .where(eq(telegramAccount.tgUserId, user.id));
+                .where(eq(telegramAccount.tgUserId, user.id))
+                .for('update');
+            const [erased] = yield* transaction
+                .select({ id: person.id })
+                .from(person)
+                .innerJoin(telegramAccount, eq(telegramAccount.personId, person.id))
+                .where(and(eq(telegramAccount.tgUserId, user.id), isNotNull(person.anonymizedAt)));
+
+            if (isDefined(erased)) {
+                return erased.id;
+            }
+
             yield* releaseUsernames(isNotEmptyString(user.username) ? [user.username] : []);
             const [account] = yield* transaction
                 .insert(telegramAccount)

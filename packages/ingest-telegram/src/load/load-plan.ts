@@ -2,6 +2,7 @@ import { isDefined } from '@rnw-community/shared';
 import { applyApproved } from '@rondo/core/identity/apply-approved';
 import { countOccurrences } from '@rondo/core/identity/count-occurrences';
 import { loadDirectory } from '@rondo/core/identity/load-directory';
+import { scrubErasedEntries } from '@rondo/core/identity/mask-erased';
 import { refreshNames } from '@rondo/core/identity/refresh-names';
 import { linkByVotes, releaseVoteLinks } from '@rondo/core/identity/vote-links';
 import { alignGuests } from '@rondo/core/roster/align-guests';
@@ -13,6 +14,7 @@ import { loadAccounts } from './load-accounts';
 import { assertUniqueVenueNames, purgePreviousImport, upsertCommunity, upsertReference } from './load-community';
 import { insertMoneyAndLeague } from './load-league';
 import { insertPeople } from './load-people';
+import { maskErased } from './mask-plan';
 import { recordProvenance } from './load-provenance';
 import { loadSessions } from './load-sessions';
 import { insertVotes } from './load-votes';
@@ -30,8 +32,8 @@ interface LoadOptions {
 
 export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
     config: CommunityConfig,
-    plan: ImportPlan,
-    { fileSha256, snapshot, allowRemoval }: LoadOptions
+    imported: ImportPlan,
+    { fileSha256, snapshot: importedSnapshot, allowRemoval }: LoadOptions
 ) {
     const db = yield* Db;
 
@@ -40,6 +42,7 @@ export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
     return yield* db.transaction(transaction =>
         Effect.gen(function* () {
             const communityId = yield* upsertCommunity(transaction, config);
+            const { plan, snapshot } = yield* maskErased(communityId, imported, importedSnapshot);
             const context = { transaction, communityId, config, plan, snapshot, allowRemoval };
             yield* purgePreviousImport(transaction, communityId);
             const reference = yield* upsertReference(context);
@@ -57,6 +60,7 @@ export const loadPlan = Effect.fn('IngestTelegram.loadPlan')(function* (
             yield* alignGuests(communityId);
             yield* removeUnusedNicknames(context);
             yield* refreshNames(released);
+            yield* scrubErasedEntries(communityId);
             const fixtures = yield* insertMoneyAndLeague(context, reference.venueIdByKey);
             const stats = {
                 sessions: plan.sessions.length,

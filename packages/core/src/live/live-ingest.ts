@@ -1,5 +1,5 @@
 import { isDefined, isEmptyArray, isNotEmptyArray } from '@rnw-community/shared';
-import { telegramAuthor } from '@rondo/db/schema/identity.schema';
+import { person, telegramAuthor } from '@rondo/db/schema/identity.schema';
 import { messageRef } from '@rondo/db/schema/platform.schema';
 import { team, teamColor } from '@rondo/db/schema/play.schema';
 import { session } from '@rondo/db/schema/scheduling.schema';
@@ -49,26 +49,40 @@ interface LiveIngestResult {
 const recordAuthor = Effect.fn('Core.recordAuthor')(function* (communityId: string, message: GroupMessage) {
     const db = yield* Db;
 
-    yield* db
-        .insert(telegramAuthor)
-        .values({
-            communityId,
-            displayName: message.senderName,
-            tgUserId: message.senderTgUserId,
-            personId: message.senderPersonId,
-            messageCount: 1,
-            firstSeenAt: message.sentAt,
-            lastSeenAt: message.sentAt
-        })
-        .onConflictDoUpdate({
-            target: [telegramAuthor.communityId, telegramAuthor.displayName],
-            set: {
-                tgUserId: sql`coalesce(${telegramAuthor.tgUserId}, excluded.tg_user_id)`,
-                personId: sql`coalesce(${telegramAuthor.personId}, excluded.person_id)`,
-                messageCount: sql`${telegramAuthor.messageCount} + 1`,
-                lastSeenAt: sql`excluded.last_seen_at`
+    yield* db.transaction(transaction =>
+        Effect.gen(function* () {
+            const [sender] = yield* transaction
+                .select({ anonymizedAt: person.anonymizedAt })
+                .from(person)
+                .where(eq(person.id, message.senderPersonId))
+                .for('share');
+
+            if (isDefined(sender?.anonymizedAt)) {
+                return;
             }
-        });
+
+            yield* transaction
+                .insert(telegramAuthor)
+                .values({
+                    communityId,
+                    displayName: message.senderName,
+                    tgUserId: message.senderTgUserId,
+                    personId: message.senderPersonId,
+                    messageCount: 1,
+                    firstSeenAt: message.sentAt,
+                    lastSeenAt: message.sentAt
+                })
+                .onConflictDoUpdate({
+                    target: [telegramAuthor.communityId, telegramAuthor.displayName],
+                    set: {
+                        tgUserId: sql`coalesce(${telegramAuthor.tgUserId}, excluded.tg_user_id)`,
+                        personId: sql`coalesce(${telegramAuthor.personId}, excluded.person_id)`,
+                        messageCount: sql`${telegramAuthor.messageCount} + 1`,
+                        lastSeenAt: sql`excluded.last_seen_at`
+                    }
+                });
+        })
+    );
 });
 
 const venueIdFor = Effect.fn('Core.venueIdFor')(function* (communityId: string, config: CommunityConfig, venueKey: string | undefined) {

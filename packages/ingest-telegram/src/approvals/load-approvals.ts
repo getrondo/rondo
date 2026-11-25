@@ -1,5 +1,6 @@
 import { isDefined } from '@rnw-community/shared';
 import { applyApproved } from '@rondo/core/identity/apply-approved';
+import { erasedName, loadNicknameMask } from '@rondo/core/identity/mask-erased';
 import { alignGuests } from '@rondo/core/roster/align-guests';
 import { markUndecidedTeams } from '@rondo/core/roster/mark-undecided-teams';
 import { aliasLink, person, personAlias, telegramAccount } from '@rondo/db/schema/identity.schema';
@@ -11,6 +12,7 @@ import { withCommunityLock } from '@rondo/db/service/with-community-lock';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 
 import type { ApprovalRow } from './parse-approvals';
 
@@ -130,9 +132,16 @@ export const loadApprovals = Effect.fn('Approvals.loadApprovals')(({ slug, rows,
             const db = yield* Db;
             const [home] = yield* db.select({ id: community.id }).from(community).where(eq(community.slug, slug));
             const communityId = home?.id ?? '';
+            const keyOf = yield* loadNicknameMask(communityId);
+            const masked = rows.map(row =>
+                Option.match(keyOf(row.aliasNorm), {
+                    onNone: () => row,
+                    onSome: aliasNorm => ({ ...row, nickname: erasedName, aliasNorm })
+                })
+            );
             let stored = 0;
 
-            for (const group of groupApprovals(rows).values()) {
+            for (const group of groupApprovals(masked).values()) {
                 for (const first of group.slice(0, 1)) {
                     const personId = yield* ensurePerson(first.tgUserId, first.nickname);
                     const aliasId = yield* ensureAlias(communityId, first);

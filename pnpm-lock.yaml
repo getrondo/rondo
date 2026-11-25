@@ -367,6 +367,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@effect/platform-node':
+        specifier: 4.1.5
+        version: 4.1.5(effect@4.1.5)(redis@6.3.1)
       '@rnw-community/shared':
         specifier: 3.0.5
         version: 3.0.5
@@ -392,6 +395,9 @@ importers:
       '@rondo/test-kit':
         specifier: workspace:*
         version: link:../../tests/test-kit
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
       vitest:
         specifier: 5.1.0
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
