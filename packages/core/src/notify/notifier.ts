@@ -54,6 +54,9 @@ export const sessionChangedHtml = Effect.fn('Core.sessionChangedHtml')(function*
         `<b>${text(input.locale, 'changed')}</b>`,
         `<s>${escapeHtml(formatSessionLabel(input.locale, input.before))}</s>`,
         `➡️ <b>${escapeHtml(formatSessionLabel(input.locale, input.after))}</b>`,
+        ...(input.before.capacityMax === input.after.capacityMax
+            ? []
+            : [`👥 ${text(input.locale, 'placesWord')}: ${input.before.capacityMax ?? '♾'} → ${input.after.capacityMax ?? '♾'}`]),
         ...placeLines(input.after),
         ...(isEmptyString(mentions) ? [] : [mentions])
     ].join('\n');

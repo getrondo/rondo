@@ -6,7 +6,6 @@ import { venue } from '@rondo/db/schema/venue.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
-import * as Option from 'effect/Option';
 
 import { localTimeOf } from '../sessions/local-time';
 
@@ -128,16 +127,18 @@ export const lastPollChatOf = Effect.fn('Core.lastPollChatOf')(function* (tgUser
     return row?.chatId ?? null;
 });
 
-export const lastReceiptOf = Effect.fn('Core.lastReceiptOf')(function* (tgUserId: bigint, since: Date) {
+export const createdGamesBy = Effect.fn('Core.createdGamesBy')(function* (tgUserId: bigint) {
     const db = yield* Db;
     const [row] = yield* db
-        .select({ sessionId: sql<string | null>`${pendingAction.result} ->> 'sessionId'` })
+        .select({ count: sql<number>`count(*)::int` })
         .from(pendingAction)
         .where(
-            and(eq(pendingAction.requestedByTgUserId, tgUserId), eq(pendingAction.status, 'confirmed'), gte(pendingAction.decidedAt, since))
-        )
-        .orderBy(desc(pendingAction.decidedAt))
-        .limit(1);
+            and(
+                eq(pendingAction.requestedByTgUserId, tgUserId),
+                eq(pendingAction.kind, 'create_session'),
+                eq(pendingAction.status, 'confirmed')
+            )
+        );
 
-    return Option.fromNullishOr(row?.sessionId);
+    return row?.count ?? 0;
 });

@@ -23,4 +23,6 @@ export interface PollText {
     readonly answers: readonly string[];
     readonly place: PlaceBlock | null;
     readonly route: PollRoute | null;
+    readonly description: string | null;
+    readonly descriptionText: string | null;
 }

@@ -52,7 +52,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('confirmed admin actions', i
             const sent = recorder.calls.find(call => call.method === 'sendPoll')?.payload;
 
             expect(summary).toBe(
-                `➕ Нова гра: Сб 05.12 10:00 · Park Field, 2 поля, 16 місць і опублікувати опитування в групі:\n\n${String(sent?.question)}\n\n▫️ ✅ Граю\n▫️ ❌ Не граю\n\n📍 Park Field`
+                `➕ Нова гра: Сб 05.12 10:00 · Park Field, 2 поля, 16 місць і опублікувати опитування в групі:\n\n${String(sent?.question)}\n\n▫️ ✅ Граю\n▫️ ❌ Не граю`
             );
             expect(recorder.calls.at(-1)).toMatchObject({ method: 'pinChatMessage', payload: { chat_id: -100 } });
             expect(sent).toMatchObject({ options: [{ text: '✅ Граю' }, { text: '❌ Не граю' }] });

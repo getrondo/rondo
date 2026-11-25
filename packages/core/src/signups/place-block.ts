@@ -1,4 +1,4 @@
-import { isDefined, isNotEmptyString } from '@rnw-community/shared';
+import { isDefined, isNotEmptyArray, isNotEmptyString } from '@rnw-community/shared';
 import { escapeHtml } from '@rondo/telegram/format/html';
 
 import type { PlaceBlock, PollGame, PollRoute } from '../interface/poll.interface';
@@ -30,8 +30,26 @@ export const placeHtml = (place: PlaceBlock | null): string =>
           ].join('\n')
         : '';
 
-export const placePlain = (place: PlaceBlock): string[] => [
-    `📍 ${place.name}`,
-    ...(isNotEmptyString(place.address) ? [place.address] : []),
-    ...(isNotEmptyString(place.station) ? [`🚇 ${place.station}`] : [])
-];
+const descriptionLines = (place: PlaceBlock | null, question: string, render: (text: string) => string): string[] => {
+    if (!isDefined(place) || !isNotEmptyString(place.address)) {
+        return [];
+    }
+
+    const station = isNotEmptyString(place.station) && !question.includes(place.station) ? [`🚇 ${place.station}`] : [];
+
+    return [`📍 ${render(place.address)}`, ...station];
+};
+
+export const descriptionHtml = (place: PlaceBlock | null, question: string): string | null => {
+    const lines = descriptionLines(place, question, text => (isDefined(place) ? linked(place, text) : text)).map((line, index) =>
+        index === 0 ? line : escapeHtml(line)
+    );
+
+    return isNotEmptyArray(lines) ? lines.join('\n') : null;
+};
+
+export const descriptionText = (place: PlaceBlock | null, question: string): string | null => {
+    const lines = descriptionLines(place, question, text => text);
+
+    return isNotEmptyArray(lines) ? lines.join('\n') : null;
+};

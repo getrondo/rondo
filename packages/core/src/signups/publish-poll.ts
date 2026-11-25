@@ -13,7 +13,6 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { requireSession } from '../sessions/session.service';
 import { topicOptions } from '../utils/topic-options.util';
 
-import { placeHtml } from './place-block';
 import { pollFor, previewOf } from './poll-for';
 import { lockSession } from './signup.service';
 
@@ -70,7 +69,7 @@ export const publishPoll = Effect.fn('Core.publishPoll')(function* <PrepareFailu
             api.sendPoll(Number(chatId), poll.question, options, {
                 is_anonymous: false,
                 allows_multiple_answers: false,
-                ...(isDefined(poll.place) ? { description: placeHtml(poll.place), description_parse_mode: 'HTML' } : {}),
+                ...(isDefined(poll.description) ? { description: poll.description, description_parse_mode: 'HTML' } : {}),
                 ...(isDefined(poll.route)
                     ? { reply_markup: { inline_keyboard: [[{ text: poll.route.label, url: poll.route.url }]] } }
                     : {}),

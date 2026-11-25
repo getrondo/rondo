@@ -114,6 +114,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the poll in the style of th
             expect(placeHtml(poll.place)).toBe(
                 `📍 <b>Sport Arena Vienna North</b>\n<a href="${url.replace('&', '&amp;')}"><b>Main Street 1 &amp; Co</b></a>\n🚇 U9 Station`
             );
+            expect(poll.description).toBe(`📍 <a href="${url.replace('&', '&amp;')}"><b>Main Street 1 &amp; Co</b></a>`);
             expect(previewOf(poll)).toBe(
                 [
                     'Пятница, 20 ноября, 19.00 Sport Arena, U9 Station!',
@@ -123,12 +124,12 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the poll in the style of th
                     '▫️ 👍',
                     '▫️ 👎',
                     '',
-                    '📍 Sport Arena Vienna North',
-                    'Main Street 1 & Co',
-                    '🚇 U9 Station',
+                    '📍 Main Street 1 & Co',
                     `🗺 Маршрут: ${url}`
                 ].join('\n')
             );
+            expect(onlyLink.description).toBeNull();
+            expect(bareVenue.description).toBeNull();
             expect(placeHtml(onlyLink.place)).toBe('📍 <b>Sport Arena Vienna North</b>');
             expect(onlyLink.route?.url).toBe('https://maps.app.goo.gl/abc');
             expect(placeHtml(bareVenue.place)).toBe('📍 <b>Sport Arena Vienna North</b>');
@@ -170,10 +171,7 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('the poll in the style of th
                     'Мячи есть',
                     '',
                     '▫️ 👍',
-                    '▫️ 👎',
-                    '',
-                    '📍 Park Field',
-                    '🚇 U9 Park'
+                    '▫️ 👎'
                 ].join('\n')
             );
             expect(silent).toBe('➕ Нова гра: Пт 20.11 19:00 · Park Field, 1 поле, 20 місць');

@@ -9,7 +9,7 @@ import { ActionFailedError } from '../error/action-failed.error';
 import { resolveLocale, type Locale } from '../i18n/locale';
 import { countOf, text } from '../i18n/messages';
 
-import { placeOf, placePlain, routeOf } from './place-block';
+import { descriptionHtml, descriptionText, placeOf, routeOf } from './place-block';
 
 import type { PollGame, PollText } from '../interface/poll.interface';
 
@@ -82,14 +82,21 @@ export const pollFor = Effect.fn('Core.pollFor')(function* (communityId: string,
 
     const place = placeOf(game);
 
-    return { question, answers: template.answers, place, route: routeOf(place) } satisfies PollText;
+    return {
+        question,
+        answers: template.answers,
+        place,
+        route: routeOf(place),
+        description: descriptionHtml(place, question),
+        descriptionText: descriptionText(place, question)
+    } satisfies PollText;
 });
 
-export const previewOf = ({ question, answers, place, route }: PollText): string =>
+export const previewOf = ({ question, answers, descriptionText: description, route }: PollText): string =>
     [
         question,
         '',
         ...answers.map(answer => `▫️ ${answer}`),
-        ...(isDefined(place) ? ['', ...placePlain(place)] : []),
+        ...(isDefined(description) ? ['', description] : []),
         ...(isDefined(route) ? [`${route.label}: ${route.url}`] : [])
     ].join('\n');
