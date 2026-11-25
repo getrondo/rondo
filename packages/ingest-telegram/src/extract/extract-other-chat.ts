@@ -67,7 +67,12 @@ export const extractOtherChat = (
             ...facts,
             polls: [
                 ...forwarded,
-                ...regular.map(poll => Object.assign(poll, { joinDates: poll.joinDates.filter(date => ownDates.has(date)) }))
+                ...regular.map(poll =>
+                    Object.assign(poll, {
+                        isGame: poll.isGame && !poll.isDateChoice,
+                        joinDates: poll.joinDates.filter(date => ownDates.has(date))
+                    })
+                )
             ],
             lineups,
             prices: [],
