@@ -102,9 +102,9 @@ layer(postgresLayer, { timeout: 120_000, excludeTestServices: true })('a line-up
 
             expect(result.during).toMatchObject({ _tag: 'Success', value: { failure: { code: 'publish_busy' } } });
             expect(result.published._tag).toBe('Success');
-            expect(finish.during).toMatchObject({ _tag: 'Success', value: 0 });
+            expect(finish.during).toMatchObject({ _tag: 'Success', value: { finished: 0, failed: 0 } });
             expect(status).toBe('open');
-            expect(later).toBeGreaterThanOrEqual(1);
+            expect(later.finished).toBeGreaterThanOrEqual(1);
             expect(yield* teamOfPlayer(target, moved)).toBe(2);
         })
     );

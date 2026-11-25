@@ -22,7 +22,7 @@ import { handlePrivateMessage } from './handlers/private-message.handler';
 import { causeCodes } from './utils/cause-codes.util';
 import { updateShape } from './utils/update-shape.util';
 
-const maxAttempts = 3;
+export const maxAttempts = 3;
 // Longer than the route's maxDuration, so an unfinished attempt this old can no longer be running
 const leaseMs = 65_000;
 

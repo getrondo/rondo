@@ -2,12 +2,12 @@ import { expect, layer } from '@effect/vitest';
 import { syncMember } from '@rondo/core/identity/telegram-user';
 import { recordedTelegramDbLayer, recorder } from '@rondo/core/testing/recorded-telegram.layer';
 import { seedGame as seedBareGame } from '@rondo/core/testing/seed-game';
-import { pendingAction, telegramPoll } from '@rondo/db/schema/platform.schema';
+import { pendingAction, processedUpdate, telegramPoll } from '@rondo/db/schema/platform.schema';
 import { lineupEntry, team, teamMember } from '@rondo/db/schema/play.schema';
 import { attendance, session, signup } from '@rondo/db/schema/scheduling.schema';
 import { Db } from '@rondo/db/service/db.service';
 import { refusal } from '@rondo/telegram/testing/recording-telegram.layer';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import * as Effect from 'effect/Effect';
 
 import { runMaintenance } from '../src/jobs/maintenance.job';
@@ -234,6 +234,50 @@ layer(recordedTelegramDbLayer, { timeout: 60_000 })('nightly maintenance', it =>
                 scrubbed.map(() => ({ summary: '', payload: kept, result: receipt }))
             );
             expect(rows.find(row => row.id === recent?.id)).toMatchObject({ summary: 'Game of Ivan', payload: { note: 'Call Ivan' } });
+        })
+    );
+
+    it.effect('tells the owners once a day how many updates were dropped, and nothing about them', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const ownerNotes = () =>
+                recorder.calls.filter(call => call.method === 'sendMessage' && call.payload.chat_id === 42).map(call => call.payload.text);
+            const row = { attempts: 3, at: new Date('2026-12-04T10:00:00Z') };
+            yield* db.insert(processedUpdate).values([
+                { ...row, updateId: 700_001 },
+                { ...row, updateId: 700_002 },
+                { ...row, updateId: 700_003, attempts: 2 },
+                { ...row, updateId: 700_004, doneAt: row.at },
+                { ...row, updateId: 700_005, at: new Date('2026-12-03T10:00:00Z') }
+            ]);
+            yield* runMaintenance(afterTheGame);
+            yield* runMaintenance(afterTheGame);
+            yield* db.delete(processedUpdate);
+
+            expect(ownerNotes()).toEqual(['⚠️ За добу не оброблено повідомлень: 2. Подивись журнал.']);
+        })
+    );
+
+    it.effect('goes on after a failed step and tells the owners once a day', () =>
+        Effect.gen(function* () {
+            const db = yield* Db;
+            const { sessionId } = yield* seedGame('finish-broken-fc');
+            const before = recorder.calls.length;
+            const later = new Date('2026-12-05T22:00:00Z');
+            yield* db.execute(sql`alter function analytics.refresh_all() rename to refresh_gone`);
+            const broken = yield* runMaintenance(later);
+            yield* runMaintenance(later);
+            yield* db.execute(sql`alter function analytics.refresh_gone() rename to refresh_all`);
+            const healthy = yield* runMaintenance(new Date('2026-12-06T22:00:00Z'));
+            const [game] = yield* db.select().from(session).where(eq(session.id, sessionId));
+            const notes = recorder.calls.slice(before).filter(call => call.method === 'sendMessage');
+
+            expect(broken.failed).toBe(1);
+            expect(game?.status).toBe('played');
+            expect(healthy.failed).toBe(0);
+            expect(notes.map(call => [call.payload.chat_id, call.payload.text])).toEqual([
+                [42, '⚠️ Нічне обслуговування: збоїв 1. Подивись журнал.']
+            ]);
         })
     );
 });

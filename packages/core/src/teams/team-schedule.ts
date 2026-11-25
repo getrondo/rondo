@@ -9,6 +9,7 @@ import { and, desc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from 'dri
 import * as Effect from 'effect/Effect';
 
 import { Access } from '../access/admin-access';
+import { recipientsOf } from '../access/recipients-of';
 import { resolveLocale } from '../i18n/locale';
 import { addMillis } from '../utils/add-millis.util';
 
@@ -135,18 +136,9 @@ export const communityAdmins = Effect.fn('Core.communityAdmins')(function* (comm
         .orderBy(telegramAccount.personId, desc(telegramAccount.lastSeenAt));
 
     const ownerIds = [...access.ownerTgUserIds].filter(tgUserId => !granted.some(row => row.tgUserId === tgUserId));
-    const known = isNotEmptyArray(ownerIds)
-        ? yield* db
-              .select({ tgUserId: telegramAccount.tgUserId, languageCode: telegramAccount.languageCode })
-              .from(telegramAccount)
-              .where(inArray(telegramAccount.tgUserId, ownerIds))
-        : [];
-    const owners = ownerIds.map(tgUserId => ({
-        tgUserId,
-        languageCode: known.find(row => row.tgUserId === tgUserId)?.languageCode ?? null
-    }));
+    const admins = granted.map(row => ({ tgUserId: row.tgUserId, locale: resolveLocale(row.languageCode) }));
 
-    return [...granted, ...owners].map(row => ({ tgUserId: row.tgUserId, locale: resolveLocale(row.languageCode) }));
+    return [...admins, ...(yield* recipientsOf(ownerIds))];
 });
 
 const offerPauseMs = 30 * 24 * 60 * minute;

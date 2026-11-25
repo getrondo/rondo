@@ -206,6 +206,9 @@ export const menuTextUk = {
     reasonTeamsUnsaved: 'Склади надіслано, але вони могли не зберегтися. Перевір чат.',
     reasonVenueExists: 'Таке місце вже є або назва порожня.',
     reasonPublishBusy: 'Склади саме надсилаються. Спробуй за хвилину.',
+    ownerDroppedUpdates: '⚠️ За добу не оброблено повідомлень: {count}. Подивись журнал.',
+    ownerMaintenanceFailed: '⚠️ Нічне обслуговування: збоїв {count}. Подивись журнал.',
+    ownerTeamsFailed: '⚠️ Перевірка складів: збоїв {count}. Подивись журнал.',
     uncertainPlain: '⚠️ Не знаю, чи все виконано. Перевір гру й чат, перш ніж пробувати ще раз.',
     reasonChangedPlain: 'Дані змінилися, нічого не надіслано. Спробуй ще раз.',
     reasonRefusedPlain: 'Telegram не прийняв повідомлення.'

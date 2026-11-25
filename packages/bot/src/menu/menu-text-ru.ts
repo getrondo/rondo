@@ -208,6 +208,9 @@ export const menuTextRu = {
     reasonTeamsUnsaved: 'Составы отправлены, но могли не сохраниться. Проверь чат.',
     reasonVenueExists: 'Такое место уже есть или название пустое.',
     reasonPublishBusy: 'Составы как раз отправляются. Попробуй через минуту.',
+    ownerDroppedUpdates: '⚠️ За сутки не обработано сообщений: {count}. Посмотри журнал.',
+    ownerMaintenanceFailed: '⚠️ Ночное обслуживание: сбоев {count}. Посмотри журнал.',
+    ownerTeamsFailed: '⚠️ Проверка составов: сбоев {count}. Посмотри журнал.',
     uncertainPlain: '⚠️ Не знаю, всё ли выполнено. Проверь игру и чат, прежде чем пробовать ещё раз.',
     reasonChangedPlain: 'Данные изменились, ничего не отправлено. Попробуй ещё раз.',
     reasonRefusedPlain: 'Telegram не принял сообщение.'

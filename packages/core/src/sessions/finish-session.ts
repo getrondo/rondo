@@ -77,10 +77,13 @@ export const finishPastSessions = Effect.fn('Core.finishPastSessions')(function*
         over.map(({ id, communityId }) =>
             withCommunityLock({ id: communityId }, finishSession(id, startedBefore)).pipe(
                 Effect.tapCause(cause => Effect.logError(`[maintenance] game ${id} not finished`, cause)),
-                Effect.catchCause(() => Effect.succeed(false))
+                Effect.catchCause(() => Effect.succeed(null))
             )
         )
     );
 
-    return finished.filter(Boolean).length;
+    return {
+        finished: finished.filter(outcome => outcome === true).length,
+        failed: finished.filter(outcome => !isDefined(outcome)).length
+    };
 });

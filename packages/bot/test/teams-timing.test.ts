@@ -67,7 +67,7 @@ layer(menuTestLayer(recorder), { timeout: 60_000, excludeTestServices: true })('
             const afterStart = yield* teamsGame('teams-auto-after', { groupChatId: -3306, adminId: 336, players: 10 });
             yield* runTeamsTick(at('18:05'));
 
-            expect(early).toEqual({ games: 0, proposed: 0, noticed: 0 });
+            expect(early).toEqual({ games: 0, proposed: 0, noticed: 0, failed: 0 });
             expect(first.proposed).toBe(1);
             expect(again.proposed).toBe(0);
             expect(proposal).toHaveLength(1);
