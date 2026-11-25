@@ -29,7 +29,9 @@ isec run getrondo prod -- sh -c 'printf %s "$CRON_SECRET" | vercel env add CRON_
 Merging to `main` deploys production. The production build first runs
 `pnpm -F @rondo/db db:migrate` against the unpooled Neon URL, then builds the app.
 
-After the first production deploy, and whenever the domain or `allowed_updates` changes, register the webhook:
+After the first production deploy, and whenever the domain, `allowed_updates` or the command list changes, register the webhook.
+It also sets the commands: everyone sees `/start`; each owner from `RONDO_OWNER_TG_USER_IDS` sees
+`/newgame`, `/games`, `/menu`, `/start`, `/reset`. Other admins get the same list the first time they open `/start` or `/menu`:
 
 ```bash
 isec run getrondo prod -- sh -c 'RONDO_WEBHOOK_URL=https://<production-domain>/api/telegram pnpm -F @rondo/telegram webhook:set'
@@ -59,8 +61,17 @@ isec run getrondo prod -- sh -c 'RONDO_WEBHOOK_URL=https://<production-domain>/a
    Short names and stations of the places are set through the assistant.
 5. Make every organizer an admin through the assistant (they must have written in the group first). Polls, line-ups and cancellations posted by anyone else are ignored.
 
-From then on the bot keeps sessions, line-ups and cancellations current, and admins can talk to
-it privately. `/start` shows examples; `/reset` clears the conversation.
+From then on the bot keeps sessions, line-ups and cancellations current, and admins run the community
+from a private chat:
+
+- `/newgame` opens the most likely next game as the exact poll, ready for ✅. The other likely game, the
+  size row and the time, place and day buttons change it in place; 🛠 walks through day, place, time and size.
+  It needs only the database and Telegram: the AI gateway is not involved.
+- `/menu` (and `/start`) shows the next game; `/games` lists upcoming and recent games, each with a card to post
+  its poll, change time, place or size, balance teams or cancel.
+- Any other text goes to the assistant; `/reset` clears that conversation.
+- A place without an address gets a "📍 Address" hint on the preview: an admin sends a location pin, a Google Maps
+  link or the address, and the poll shows it with a route button.
 
 ## Operate
 
@@ -73,5 +84,7 @@ it privately. `/start` shows examples; `/reset` clears the conversation.
   then ask for the game again. A game with an open poll is not announced twice: if that poll was deleted in Telegram, set
   its `comms.telegram_poll.closed_at` first.
 - **Audit:** `select * from audit.log order by at desc`.
+- **Admin menus:** `select * from comms.admin_state` shows one row per admin with an open screen or typed input;
+  rows expire after 30 minutes, and deleting one only closes that screen.
 - **Import again:** see [import-telegram-history](import-telegram-history.md); stop re-importing
   once the bot has run sign-ups on imported sessions.
